@@ -3,6 +3,7 @@ JSON replies with a forced schema, and a model that has neither and prints its r
 import json
 import logging
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -188,6 +189,36 @@ job, data = run('Fix it.', root, TEST, FIX, fake)
 rb_user = server.job_rollback(job)
 ok('skipped (modified after job ended): calc.py' in rb_user and '# user edit after job' in (root / 'calc.py').read_text(),
    'rollback does not overwrite subsequent user edits')
+
+# large pre-existing file (>2 MB) skipped by snapshot is NOT deleted on rollback
+root = project()
+(root / 'big.bin').write_bytes(b'A' * 2_100_000)
+job, data = run('Touch big file.', root, [], [('run', {'command': 'echo more >> big.bin'}),
+                                              ('finish', {'summary': 'Touched.'})], fake, allow_run=['^echo '])
+rb_big = server.job_rollback(job)
+ok((root / 'big.bin').exists() and 'not undone (too large/skipped from snapshot): big.bin' in rb_big,
+   'rollback preserves pre-existing >2MB file without snapshot backup')
+
+# >40 files modified/created by a command are all recorded and all undone by rollback
+root = project()
+job, data = run('Generate 50 files.', root, [], [
+    ('run', {'command': f'{PY} -c "import pathlib; [pathlib.Path(f\'gen_{{i}}.txt\').write_text(\'x\') for i in range(50)]"'}),
+    ('finish', {'summary': 'Generated 50 files.'}),
+], fake, allow_run=[f'^{re.escape(PY)} '])
+ok(len(data['touched']) == 50, f'all 50 touched files recorded (got {len(data["touched"])})')
+rb_50 = server.job_rollback(job)
+ok(all(not (root / f'gen_{i}.txt').exists() for i in range(50)), 'rollback undoes all 50 command-created files')
+
+# shell command modifying a file outside write_globs is detected and reverted
+root = project()
+orig_calc = (root / 'calc.py').read_text()
+job, data = run('Write outside globs.', root, [], [
+    ('run', {'command': f'{PY} -c "open(\'calc.py\', \'a\').write(\'evil\\n\'); open(\'out.txt\', \'w\').write(\'ok\\n\')"'}),
+    ('finish', {'summary': 'Tried.'}),
+], fake, write_globs=['out.txt'], allow_run=[f'^{re.escape(PY)} '])
+tool_msgs = [m.get('content', '') for m in fake.requests[-1]['messages'] if m.get('role') == 'tool' or 'ERROR:' in str(m.get('content', ''))]
+ok((root / 'calc.py').read_text() == orig_calc and any('outside write_globs (reverted): calc.py' in m for m in tool_msgs),
+   'command modifying file outside write_globs is reverted and reported')
 
 # verify checks run isolated with secret env vars stripped
 if sandbox.jail_available():

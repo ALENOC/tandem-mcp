@@ -242,13 +242,29 @@ class Task:
         if name == 'run':
             command = str(args['command'])
             self.ws.check_command(command)
+            self.take_snapshot()
             before = sandbox.stamp(self.ws.root)
             rem = self._remaining_seconds()
             run_timeout = 180 if rem is None else max(1.0, min(180.0, rem))
             code, out = sandbox.run(command, self.ws.root, timeout=run_timeout, jail=True)
             after = sandbox.stamp(self.ws.root)
-            self.touched |= {rel for rel in set(before) | set(after)
-                             if before.get(rel) != after.get(rel) and rel not in self.journal}
+            changed = [rel for rel in sorted(set(before) | set(after))
+                       if before.get(rel) != after.get(rel)]
+            outside = [rel for rel in changed
+                       if self.ws.write_globs and not self.ws._in_globs(rel) and rel not in self.guard]
+            if outside:
+                reverted, unbacked = self._revert_from_snapshot(outside)
+                self.touched |= {rel for rel in changed if rel not in self.journal and rel not in reverted}
+                cap = max(1500, min(OUT_CAP, self.budget // 4))
+                tail = out[-cap:] if len(out) > cap else out
+                parts = []
+                if reverted:
+                    parts.append(f'ERROR: command modified file(s) outside write_globs (reverted): {", ".join(reverted)}')
+                if unbacked:
+                    parts.append('ERROR: command modified pre-existing file(s) outside write_globs without snapshot backup '
+                                 f'(could not revert): {", ".join(unbacked)}')
+                return '\n'.join(parts) + f'\nexit {code}\n{tail}'
+            self.touched |= {rel for rel in changed if rel not in self.journal}
             cap = max(1500, min(OUT_CAP, self.budget // 4))
             return f'exit {code}\n' + (out[-cap:] if len(out) > cap else out)
         return f'ERROR: unknown tool {name}. The tools are: {", ".join(NAMES)}'
@@ -334,14 +350,16 @@ class Task:
         blobs.mkdir(exist_ok=True)
         manifest = {}
         total_bytes = 0
-        for rel in sandbox.walk(self.ws.root, '*', 4000):
+        for rel in sandbox.walk(self.ws.root, '*', 6000):
             p = self.ws.root / rel
             try:
                 sz = p.stat().st_size
                 if sz > 2_000_000 or total_bytes + sz > 50_000_000:
+                    manifest[rel] = None
                     continue
                 data = p.read_bytes()
             except OSError:
+                manifest[rel] = None
                 continue
             total_bytes += len(data)
             digest_hex = hashlib.sha256(data).hexdigest()
@@ -350,6 +368,34 @@ class Task:
                 blob.write_bytes(zlib.compress(data, level=3))
             manifest[rel] = digest_hex
         store.write_json(snap_path, manifest)
+
+    def _revert_from_snapshot(self, rels):
+        """Restore files modified by a command outside write_globs from the pre-task snapshot."""
+        snapshot = store.read_json(self.folder / 'snapshot.json')
+        blobs = self.folder / 'blobs'
+        reverted, unbacked = [], []
+        for rel in rels:
+            p = self.ws.root / rel
+            if snapshot is None:
+                unbacked.append(rel)
+                continue
+            if rel in snapshot:
+                digest = snapshot[rel]
+                if digest is None:
+                    unbacked.append(rel)
+                    continue
+                blob = blobs / digest
+                if not blob.is_file():
+                    unbacked.append(rel)
+                    continue
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_bytes(zlib.decompress(blob.read_bytes()))
+                reverted.append(rel)
+            else:
+                if p.exists() or p.is_symlink():
+                    p.unlink()
+                reverted.append(rel)
+        return reverted, unbacked
 
     def _record_post_state(self):
         """Record SHA-256 of modified/touched files at task end so rollback skips later user edits."""
@@ -604,7 +650,7 @@ class Task:
                     max_repairs=self.max_repairs, max_seconds=self.max_seconds,
                     protocol='native tool calls' if self.native else 'JSON replies',
                     before=[{'command': c['command'], 'exit': c['exit']} for c in self.before], weak=weak,
-                    protected=sorted(self.ws.protected), restored=self.restored, touched=sorted(self.touched)[:40],
+                    protected=sorted(self.ws.protected), restored=self.restored, touched=sorted(self.touched),
                     syntax=self.syntax, changes=self.changes(),
                     tried=[f'{e["tool"]} {json.dumps(e["args"])[:90]} -> {e["result"][:90]}' for e in self.log[-4:]],
                     seconds=round(time.time() - data.get('started', self.t0), 1))
@@ -714,7 +760,7 @@ def rollback(job):
             return 'no journal for this job'
     root = Path(data['workspace'])
     blobs = folder / 'blobs'
-    done, skipped, left = [], [], []
+    done, skipped, unbacked, left = [], [], [], []
 
     def user_modified(rel, p):
         if rel not in post_state:
@@ -745,7 +791,11 @@ def rollback(job):
             left.append(rel)
             continue
         if rel in snapshot:
-            blob = blobs / snapshot[rel]
+            digest = snapshot[rel]
+            if digest is None:
+                unbacked.append(rel)
+                continue
+            blob = blobs / digest
             if not blob.is_file():
                 left.append(rel)
                 continue
@@ -762,6 +812,8 @@ def rollback(job):
     parts = ['restored: ' + (', '.join(done) or 'nothing')]
     if skipped:
         parts.append('skipped (modified after job ended): ' + ', '.join(skipped))
+    if unbacked:
+        parts.append('not undone (too large/skipped from snapshot): ' + ', '.join(unbacked))
     if left:
         parts.append('not undone (no snapshot for command changes): ' + ', '.join(left))
     return '\n'.join(parts)

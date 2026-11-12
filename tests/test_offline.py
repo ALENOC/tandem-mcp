@@ -226,4 +226,31 @@ ok(store.cache_get(key) == {'answer': 'x'} and store.cache_get(store.cache_key('
    store.cache_key('ab', '') != store.cache_key('a', 'b'), 'cache')
 res = store.cleanup(cache_keep=0, jobs_keep=200)
 ok(res['cache_removed'] >= 1 and store.cache_get(key) is None, 'retention cleanup trims cache')
+
+# fail-closed TANDEM_SANDBOX=require -----------------------------------------------------------------
+saved_jail = sandbox._jail
+saved_mode = os.environ.get('TANDEM_SANDBOX')
+try:
+    sandbox._jail = False
+    os.environ['TANDEM_SANDBOX'] = 'auto'
+    ok('TANDEM_SANDBOX=require' in sandbox.describe_jail(), 'describe_jail warns on auto fallback')
+    os.environ['TANDEM_SANDBOX'] = 'require'
+    ok(refused(sandbox.jail_available), 'TANDEM_SANDBOX=require fails closed in jail_available')
+    ok(refused(sandbox.run, 'echo hi', root, 5, True), 'TANDEM_SANDBOX=require fails closed in run(jail=True)')
+finally:
+    sandbox._jail = saved_jail
+    if saved_mode is None:
+        os.environ.pop('TANDEM_SANDBOX', None)
+    else:
+        os.environ['TANDEM_SANDBOX'] = saved_mode
+
+# store.cleanup() preserves pending-rollback jobs --------------------------------------------------
+pj, pfolder = store.new_job('delegate')
+store.write_job(pj, {'state': 'unverified', 'accepted': None, 'changes': [['a.py', 'changed', 1, 0]], 'touched': []})
+rj, rfolder = store.new_job('delegate')
+store.write_job(rj, {'state': 'rolled_back', 'accepted': None, 'changes': [['a.py', 'changed', 1, 0]], 'touched': []})
+store.cleanup(cache_keep=200, jobs_ttl_days=0, jobs_keep=0, preserve_pending=True)
+ok(pfolder.exists() and not rfolder.exists(), 'cleanup preserves pending-rollback jobs and removes rolled_back jobs')
+store.cleanup(cache_keep=200, jobs_ttl_days=0, jobs_keep=0, preserve_pending=False)
+ok(not pfolder.exists(), 'cleanup(preserve_pending=False) removes pending jobs')
 print(f'{checks} checks, 0 failures')

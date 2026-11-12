@@ -93,15 +93,15 @@ A receipt can also carry these notes:
 
 - `every check already passed before the job`: the checks do not discriminate, read the diff.
 - `the executor changed files of the checks through a command; they were put back`.
-- `changed by commands, outside the journal`: files a command wrote, which rollback does not undo.
+- `changed by commands, covered by workspace snapshot (job_rollback undoes them)` (or `outside the journal` if no snapshot exists).
 
 ## Limits of the executor
 
-- Paths are resolved (symbolic links included) and must stay inside the workspace; `.git` is never writable; `write_globs` narrows further.
-- The executor runs a command only if every part of it (between `;`, `&&`, `||`, `|`, `&` and line ends) matches `allow_run` and none matches the safety list (sudo, git push/commit/reset, recursive deletes of root or home, package installs, remote shells and others, see `tandem_mcp/sandbox.py`). Command substitution is refused. A redirection must point at a file the task may write.
-- Where [bubblewrap](https://github.com/containers/bubblewrap) is installed, commands of the executor run in a sandbox: the machine is read only, only the workspace is writable, `.git` stays read only, credential folders (`~/.ssh`, `~/.gnupg`, `~/.aws` and others) are hidden, there is no network. `executor_status` says which protection is active. `TANDEM_SANDBOX=require` refuses to run commands without it, `TANDEM_SANDBOX=off` disables it, `TANDEM_SANDBOX_NET=1` allows the network.
-- Without bubblewrap (macOS, Windows, restricted containers) only the checks on the command text apply. They are pattern checks, not a sandbox: allow only commands you would run yourself.
-- `verify_commands` and `digest_command` are written by the orchestrator and run as given, with its rights.
+- Paths are resolved (symbolic links included) and must stay inside the workspace; `.git` is never writable; `write_globs` narrows further, and `immutable` marks files or globs read-only even when `write_globs` would allow them.
+- The executor runs a command only if every part of it (between `;`, `&&`, `||`, `|`, `&` and line ends) matches `allow_run` and none matches the safety list (sudo, git push/commit/reset, recursive deletes of root or home, package installs, remote shells and others, see `tandem_mcp/sandbox.py`). Command substitution is refused. A redirection must point at a file the task may write, and any file modified outside `write_globs` by a shell command is reverted from the pre-task snapshot with an error.
+- Where [bubblewrap](https://github.com/containers/bubblewrap) is installed, commands of the executor and `verify_commands` run in a sandbox: the machine is read only, only the workspace is writable, `.git` stays read only, credential folders (`~/.ssh`, `~/.gnupg`, `~/.aws` and others) are hidden, secret environment variables are stripped, and there is no network. `executor_status` says which protection is active. `TANDEM_SANDBOX=require` fails closed when bubblewrap is unavailable, `TANDEM_SANDBOX=off` disables it, `TANDEM_SANDBOX_NET=1` allows the network.
+- Without bubblewrap (macOS, Windows, restricted containers) only the checks on the command text apply. They are pattern checks, not a sandbox: allow only commands you would run yourself, or set `TANDEM_SANDBOX=require` to fail closed.
+- `digest_command` is written by the orchestrator and run as given, with its rights. `verify_commands` run inside bubblewrap with secret env vars stripped and no network by default (`checks_network=True` allows network, `unjailed_checks=True` runs without bubblewrap when needed).
 - The material the executor reads is declared as data in every prompt, and the limits above hold whatever a file tells it to do.
 - The reasoning text of the model is never returned as an answer.
 
@@ -111,27 +111,35 @@ Read this before you point the server at a project you care about.
 
 **What runs commands**
 
-- `digest_command` and the `verify_commands` of a task are written by the orchestrator and run as given, with the rights of the user who started the server. They are not confined (`tandem_mcp/server.py`, `tandem_mcp/agent.py`: `sandbox.run` without `jail`).
-- Commands the local model chooses in a `delegate` task run only if they match `allow_run`, pass the safety list and the text checks, and they run inside bubblewrap when it is usable (`jail=True`).
-- The orchestrator decides `allow_run`, `write_globs` and `verify_commands`. Give a task the narrowest values that let it work.
+- `digest_command` is written by the orchestrator and run as given, with the rights of the user who started the server.
+- `verify_commands` run inside bubblewrap by default (`jail=True`, `allow_net=False`, `strip_env=True`), with secret environment variables stripped and network disabled. Pass `checks_network=True` or `unjailed_checks=True` on `delegate` only when a check requires network access or cannot run inside bubblewrap.
+- Commands the local model chooses in a `delegate` task run only if they match `allow_run`, pass the safety list and the text checks, and they run inside bubblewrap when it is usable (`jail=True`, `strip_env=True`).
+- The orchestrator decides `allow_run`, `write_globs`, `immutable`, and `verify_commands`. Give a task the narrowest values that let it work.
 
 **What the bubblewrap sandbox does** (`jail_command` in `tandem_mcp/sandbox.py`)
 
 - The whole machine is bound read only (`--ro-bind / /`): files stay readable, they cannot be changed. A fresh `/tmp`, `/dev` and `/proc` are mounted.
 - Only the workspace is writable. `.git` inside it is bound read only.
 - These folders and files under the home folder are hidden or emptied: `.ssh`, `.gnupg`, `.aws`, `.azure`, `.kube`, `.docker`, `.config/gh`, `.config/gcloud`, `.password-store`, `.netrc`, `.git-credentials`, `.npmrc`, `.pypirc`. Other secrets that the user can read are not hidden.
-- No network (`--unshare-net`) unless `TANDEM_SANDBOX_NET=1`. The process runs in its own PID namespace, ends with the server and has a new session.
+- Secret environment variables matching `SECRET_ENV` (e.g. `*_API_KEY`, `*_SECRET`, `*_TOKEN`, `*_PASSWORD`) are stripped from sandboxed commands.
+- No network (`--unshare-net`) unless `TANDEM_SANDBOX_NET=1` (or `checks_network=True` for `verify_commands`). The process runs in its own PID namespace, ends with the server and has a new session.
+
+**Snapshot, rollback, and user-edit protection**
+
+- When `allow_run` is non-empty, a pre-task snapshot (`snapshot.json` and compressed `blobs/`) captures workspace files up to 2 MB each (50 MB total). Pre-existing files larger than the cap are recorded as present without a backup so `job_rollback` leaves them untouched instead of deleting them.
+- `post_state.json` records SHA-256 hashes of all changed/touched files at task end; `job_rollback` skips any file modified by the user after the job ended.
+- `store.cleanup()` preserves jobs with pending un-rolled-back, un-accepted changes by default (`preserve_pending=True`).
 
 **What it does not do**
 
-- The environment of the server is passed on unchanged: variables such as `TANDEM_API_KEY` or cloud keys are visible to a sandboxed command.
+- Non-secret environment variables of the server are passed on to sandboxed commands.
 - It is not a container: no other namespaces are unshared, and a kernel or bubblewrap flaw is outside what this project can promise.
-- It does not protect the workspace itself: a command may change or delete any file there that the task is allowed to write. Use `write_globs`, and look at `job_diff` or use `job_rollback`.
+- It does not protect the workspace itself: a command may change or delete any file there that the task is allowed to write. Use `write_globs`, `immutable`, and look at `job_diff` or use `job_rollback`.
 
 **When bubblewrap is missing**
 
 - It is a Linux tool. On macOS, Windows or a container where it cannot create namespaces, `jail_available()` is false and the executor's commands run through a plain shell in the workspace, protected only by the checks on the command text. Those are pattern checks, not a sandbox.
-- `TANDEM_SANDBOX=require` refuses to run commands in that case, `auto` (the default) falls back silently, `off` never uses the sandbox. `describe_jail()` reports what is in force.
+- `TANDEM_SANDBOX=require` fails closed with `SandboxError` whenever bubblewrap is unavailable (`jail_available()` and `sandbox.run(..., jail=True)` never fall back to `shell=True`). `auto` (the default) falls back with a warning in `describe_jail()`, and `off` disables the sandbox.
 
 **Hostile text**
 

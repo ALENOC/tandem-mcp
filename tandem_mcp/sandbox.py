@@ -319,13 +319,16 @@ def clean_env(strip_secrets=True):
 
 
 def describe_jail():
+    mode = os.environ.get('TANDEM_SANDBOX', 'auto').lower()
+    if mode == 'off':
+        return 'WARNING: command text checks only (TANDEM_SANDBOX=off; bubblewrap disabled)'
     try:
         if jail_available():
             net = 'network allowed' if os.environ.get('TANDEM_SANDBOX_NET', '') == '1' else 'no network'
             return f'bubblewrap (machine read only, workspace writable, credentials hidden, env secrets stripped, {net})'
     except SandboxError as exc:
-        return str(exc)
-    return 'command text checks only (bubblewrap not available or TANDEM_SANDBOX=off)'
+        return f'ERROR: {exc}'
+    return 'WARNING: bubblewrap unavailable — falling back to unjailed command text checks only (set TANDEM_SANDBOX=require to fail closed)'
 
 
 def run(command, cwd, timeout=180, jail=False, allow_net=False, strip_env=None):
@@ -335,8 +338,12 @@ def run(command, cwd, timeout=180, jail=False, allow_net=False, strip_env=None):
     if strip_env is None:
         strip_env = bool(jail)
     env = clean_env(strip_secrets=strip_env)
+    mode = os.environ.get('TANDEM_SANDBOX', 'auto').lower()
+    use_jail = bool(jail and jail_available())
+    if jail and not use_jail and mode == 'require':
+        raise SandboxError('TANDEM_SANDBOX=require but bubblewrap is not usable on this machine')
     try:
-        if jail and jail_available():
+        if use_jail:
             done = subprocess.run(jail_command(command, cwd, allow_net=allow_net), capture_output=True, text=True,
                                   timeout=timeout, errors='replace', stdin=subprocess.DEVNULL, env=env)
         else:

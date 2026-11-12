@@ -206,7 +206,7 @@ def _trim_cache(ttl_days, keep):
     return removed
 
 
-def _trim_jobs(ttl_days, keep):
+def _trim_jobs(ttl_days, keep, preserve_pending=True):
     if not JOBS.exists():
         return 0
     removed = 0
@@ -223,6 +223,9 @@ def _trim_jobs(ttl_days, keep):
         # Never delete a job that is actively running recently.
         if data.get('state') == 'running' and now - mtime < 86400:
             continue
+        # Preserve jobs that still have un-rolled-back, un-accepted changes.
+        if preserve_pending and data.get('state') != 'rolled_back' and data.get('accepted') is None and (data.get('changes') or data.get('touched')):
+            continue
         if ttl_days > 0 and now - mtime > ttl_days * 86400:
             shutil.rmtree(folder, ignore_errors=True)
             removed += 1
@@ -236,10 +239,10 @@ def _trim_jobs(ttl_days, keep):
     return removed
 
 
-def cleanup(cache_ttl_days=None, cache_keep=None, jobs_ttl_days=None, jobs_keep=None):
+def cleanup(cache_ttl_days=None, cache_keep=None, jobs_ttl_days=None, jobs_keep=None, preserve_pending=True):
     """Apply retention policies to cached digest answers and persisted job folders."""
     c_ttl = CACHE_TTL_DAYS if cache_ttl_days is None else cache_ttl_days
     c_keep = CACHE_KEEP if cache_keep is None else cache_keep
     j_ttl = JOBS_TTL_DAYS if jobs_ttl_days is None else jobs_ttl_days
     j_keep = JOBS_KEEP if jobs_keep is None else jobs_keep
-    return {'cache_removed': _trim_cache(c_ttl, c_keep), 'jobs_removed': _trim_jobs(j_ttl, j_keep)}
+    return {'cache_removed': _trim_cache(c_ttl, c_keep), 'jobs_removed': _trim_jobs(j_ttl, j_keep, preserve_pending=preserve_pending)}
