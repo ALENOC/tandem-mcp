@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tandem-mcp"
+version = "3.0.0"
+description = "MCP server that pairs a cloud orchestrator model with any local executor model: contracts, checked evidence, rollback, supervised memory"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "ALENOC" }]
+keywords = ["mcp", "local-llm", "lm-studio", "ollama", "llama.cpp", "agents"]
+dependencies = ["mcp>=2.3", "openai>=1.40"]
+
+[project.urls]
+Repository = "https://github.com/ALENOC/tandem-mcp"
+
+[project.scripts]
+tandem-mcp = "tandem.server:main"
+
+[tool.setuptools]
+packages = ["tandem"]

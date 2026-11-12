@@ -1,0 +1,22 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ['3.11', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install .
+      - name: Limits, evidence, journal (no model)
+        run: python tests/test_offline.py
+      - name: Whole loop against a scripted server (no model)
+        run: python tests/test_protocol.py

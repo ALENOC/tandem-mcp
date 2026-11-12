@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 220" width="520" height="220" role="img" aria-labelledby="t">
+  <title id="t">Tandem MCP: two riders on one frame, a cloud orchestrator in front and a local executor behind</title>
+  <defs>
+    <linearGradient id="frame" gradientUnits="userSpaceOnUse" x1="96" y1="0" x2="424" y2="0">
+      <stop offset="0" stop-color="#14b8a6"/>
+      <stop offset="1" stop-color="#6366f1"/>
+    </linearGradient>
+  </defs>
+  <!-- wheels -->
+  <circle cx="96" cy="150" r="50" fill="none" stroke="#14b8a6" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="424" cy="150" r="50" fill="none" stroke="#6366f1" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="96" cy="150" r="6" fill="#14b8a6"/>
+  <circle cx="424" cy="150" r="6" fill="#6366f1"/>
+  <!-- frame: rear triangle, long top tube, two seat tubes, front fork -->
+  <path d="M96 150 L176 82 L352 82 L424 150" fill="none" stroke="url(#frame)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M96 150 L320 150" fill="none" stroke="url(#frame)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M176 82 L200 150 L300 82 L320 150 L352 82" fill="none" stroke="url(#frame)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- seat posts and saddles -->
+  <path d="M176 82 L170 62" fill="none" stroke="#14b8a6" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M300 82 L294 62" fill="none" stroke="#6366f1" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M152 60 L188 60" fill="none" stroke="#14b8a6" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M276 60 L312 60" fill="none" stroke="#6366f1" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- handlebars -->
+  <path d="M352 82 L346 54 L374 54" fill="none" stroke="#6366f1" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M236 82 L232 64 L252 64" fill="none" stroke="#14b8a6" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- cranks -->
+  <circle cx="200" cy="150" r="13" fill="none" stroke="#14b8a6" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="320" cy="150" r="13" fill="none" stroke="#6366f1" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- the check that travels from the executor to the orchestrator -->
+  <path d="M222 30 L236 44 L264 14" fill="none" stroke="#f59e0b" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
