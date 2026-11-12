@@ -16,6 +16,7 @@ import ast
 import difflib
 import hashlib
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -148,6 +149,35 @@ def syntax_of(path):
     return ''
 
 
+def _safe_workspace_path(root, rel):
+    """Return root / rel if it stays inside root without traversing or landing on a symlink, else None."""
+    rel_str = str(rel)
+    if not rel_str or os.path.isabs(rel_str) or Path(rel_str).is_absolute():
+        return None
+    root_path = Path(root)
+    try:
+        root_res = root_path.resolve()
+        cur = root_path
+        for part in Path(rel_str).parts:
+            if part in ('', '.'):
+                continue
+            cur = cur / part
+            if cur.is_symlink():
+                return None
+        candidate = root_path / rel_str
+        resolved = candidate.resolve()
+    except OSError:
+        return None
+    if resolved != root_res and root_res not in resolved.parents:
+        return None
+    return candidate
+
+
+def _is_binary(data):
+    """True when data contains a NUL byte in its first 4096 bytes."""
+    return data is not None and b'\x00' in data[:4096]
+
+
 class Task:
     def __init__(self, job, folder, goal, workspace, verify, max_steps=30, max_repairs=2, model='', context='',
                  baseline=True, max_seconds=0, checks_network=False, unjailed_checks=False):
@@ -156,6 +186,7 @@ class Task:
         self.context, self.baseline, self.max_seconds = context, baseline, max_seconds
         self.checks_network, self.unjailed_checks = bool(checks_network), bool(unjailed_checks)
         self.journal = {}                  # relative path -> original text, None when the file was created
+        self.journal_bin = {}              # relative path -> sha256 hex of original bytes, None when created
         self.guard = {}                    # protected path -> text the checks must keep seeing
         self.touched = set()               # files changed by commands, outside the journal
         self.restored = []                 # protected files a command changed and the server put back
@@ -180,8 +211,21 @@ class Task:
     def _remember(self, p):
         rel = self.ws.rel(p)
         if rel not in self.journal:
-            self.journal[rel] = p.read_text(errors='replace') if p.exists() else None
+            if p.exists() and not p.is_symlink():
+                raw = p.read_bytes()
+                self.journal[rel] = raw.decode('utf-8', errors='replace')
+                digest_hex = hashlib.sha256(raw).hexdigest()
+                blobs = self.folder / 'blobs'
+                blobs.mkdir(exist_ok=True)
+                blob = blobs / digest_hex
+                if not blob.exists():
+                    blob.write_bytes(zlib.compress(raw, level=3))
+                self.journal_bin[rel] = digest_hex
+            else:
+                self.journal[rel] = None
+                self.journal_bin[rel] = None
             store.write_json(self.folder / 'journal.json', self.journal)
+            store.write_json(self.folder / 'journal_bin.json', self.journal_bin)
 
     def call(self, name, args):
         missing = [k for k in REQUIRED.get(name, []) if k not in args]
@@ -206,8 +250,11 @@ class Task:
             rx = re.compile(str(args['pattern']))
             out = []
             for rel in sandbox.walk(self.ws.root, str(args.get('glob') or '*'), 2000):
+                p = _safe_workspace_path(self.ws.root, rel)
+                if p is None:
+                    continue
                 try:
-                    text = sandbox.read_text(self.ws.root / rel, 600_000)
+                    text = sandbox.read_text(p, 600_000)
                 except Exception:
                     continue
                 for n, line in enumerate(text.splitlines(), 1):
@@ -270,28 +317,94 @@ class Task:
         return f'ERROR: unknown tool {name}. The tools are: {", ".join(NAMES)}'
 
     # results ---------------------------------------------------------------------------------
+    def _before_bytes(self, rel, snapshot=None):
+        """Return (original_bytes_or_None, known_before) for a journalled or touched path."""
+        if rel in self.journal_bin:
+            digest = self.journal_bin[rel]
+            if digest is None:
+                return None, True
+            blob = self.folder / 'blobs' / digest
+            if blob.is_file():
+                try:
+                    return zlib.decompress(blob.read_bytes()), True
+                except OSError:
+                    pass
+        if rel in self.journal:
+            text = self.journal[rel]
+            return (None if text is None else text.encode('utf-8', errors='replace')), True
+        if rel in self.touched:
+            if snapshot is None:
+                snapshot = store.read_json(self.folder / 'snapshot.json')
+            if isinstance(snapshot, dict):
+                if rel not in snapshot:
+                    return None, True
+                digest = snapshot[rel]
+                if digest is None:
+                    return None, False
+                blob = self.folder / 'blobs' / digest
+                if blob.is_file():
+                    try:
+                        return zlib.decompress(blob.read_bytes()), True
+                    except OSError:
+                        pass
+            return None, False
+        return None, True
+
+    def _tracked_rels(self):
+        return sorted(set(self.journal) | set(self.journal_bin) | set(self.touched))
+
     def diff(self, only=''):
         out = []
-        for rel, before in sorted(self.journal.items()):
+        snapshot = store.read_json(self.folder / 'snapshot.json') if self.touched else None
+        for rel in self._tracked_rels():
             if only and rel != only:
                 continue
-            p = self.ws.root / rel
-            after = p.read_text(errors='replace') if p.exists() else ''
-            out += list(difflib.unified_diff((before or '').splitlines(), after.splitlines(),
-                                             f'a/{rel}' if before is not None else '/dev/null', f'b/{rel}', lineterm='', n=2))
+            p = _safe_workspace_path(self.ws.root, rel)
+            if p is None:
+                continue
+            try:
+                after_bytes = p.read_bytes() if p.is_file() else None
+            except OSError:
+                after_bytes = None
+            before_bytes, known = self._before_bytes(rel, snapshot)
+            if known and before_bytes == after_bytes:
+                continue
+            if _is_binary(before_bytes) or _is_binary(after_bytes):
+                out.append(f'[binary file changed: {rel}]')
+                continue
+            if not known:
+                out.append(f'[file changed (no snapshot backup): {rel}]')
+                continue
+            before_text = '' if before_bytes is None else before_bytes.decode('utf-8', errors='replace')
+            after_text = '' if after_bytes is None else after_bytes.decode('utf-8', errors='replace')
+            out += list(difflib.unified_diff(before_text.splitlines(), after_text.splitlines(),
+                                             f'a/{rel}' if before_bytes is not None else '/dev/null', f'b/{rel}', lineterm='', n=2))
         return '\n'.join(out)
 
     def changes(self):
         rows = []
-        for rel, before in sorted(self.journal.items()):
-            p = self.ws.root / rel
-            after = p.read_text(errors='replace') if p.exists() else ''
-            if before == after:
+        snapshot = store.read_json(self.folder / 'snapshot.json') if self.touched else None
+        for rel in self._tracked_rels():
+            p = _safe_workspace_path(self.ws.root, rel)
+            if p is None:
                 continue
-            sm = difflib.SequenceMatcher(None, (before or '').splitlines(), after.splitlines(), autojunk=False)
+            try:
+                after_bytes = p.read_bytes() if p.is_file() else None
+            except OSError:
+                after_bytes = None
+            before_bytes, known = self._before_bytes(rel, snapshot)
+            if known and before_bytes == after_bytes:
+                continue
+            if not known or _is_binary(before_bytes) or _is_binary(after_bytes):
+                kind = 'new' if (known and before_bytes is None) else 'changed'
+                rows.append((rel, kind, 0, 0))
+                continue
+            before_text = '' if before_bytes is None else before_bytes.decode('utf-8', errors='replace')
+            after_text = '' if after_bytes is None else after_bytes.decode('utf-8', errors='replace')
+            sm = difflib.SequenceMatcher(None, before_text.splitlines(), after_text.splitlines(), autojunk=False)
             add = sum(j2 - j1 for tag, _, _, j1, j2 in sm.get_opcodes() if tag in ('replace', 'insert'))
             rem = sum(i2 - i1 for tag, i1, i2, _, _ in sm.get_opcodes() if tag in ('replace', 'delete'))
-            rows.append((rel, 'new' if before is None else 'changed', add, rem))
+            rows.append((rel, 'new' if before_bytes is None else 'changed', add, rem))
         return rows
 
     def run_checks(self):
@@ -314,8 +427,8 @@ class Task:
         """Parse every changed file that has a checker. A file with none is reported as unchecked."""
         found = {'ok': [], 'bad': [], 'unchecked': []}
         for rel, _, _, _ in self.changes():
-            p = self.ws.root / rel
-            if not p.is_file():
+            p = _safe_workspace_path(self.ws.root, rel)
+            if p is None or not p.is_file():
                 continue
             verdict = syntax_of(p)
             if verdict is None:
@@ -350,8 +463,10 @@ class Task:
         blobs.mkdir(exist_ok=True)
         manifest = {}
         total_bytes = 0
-        for rel in sandbox.walk(self.ws.root, '*', 6000):
-            p = self.ws.root / rel
+        for rel in sandbox.walk(self.ws.root, '*', limit=None):
+            p = _safe_workspace_path(self.ws.root, rel)
+            if p is None:
+                continue
             try:
                 sz = p.stat().st_size
                 if sz > 2_000_000 or total_bytes + sz > 50_000_000:
@@ -375,7 +490,10 @@ class Task:
         blobs = self.folder / 'blobs'
         reverted, unbacked = [], []
         for rel in rels:
-            p = self.ws.root / rel
+            p = _safe_workspace_path(self.ws.root, rel)
+            if p is None:
+                unbacked.append(rel)
+                continue
             if snapshot is None:
                 unbacked.append(rel)
                 continue
@@ -392,32 +510,35 @@ class Task:
                 p.write_bytes(zlib.decompress(blob.read_bytes()))
                 reverted.append(rel)
             else:
-                if p.exists() or p.is_symlink():
+                if p.exists() and not p.is_symlink():
                     p.unlink()
                 reverted.append(rel)
         return reverted, unbacked
 
     def _record_post_state(self):
         """Record SHA-256 of modified/touched files at task end so rollback skips later user edits."""
-        tracked = set(self.journal) | set(self.touched)
+        tracked = set(self.journal) | set(self.journal_bin) | set(self.touched)
         if not tracked:
             return
         post = store.read_json(self.folder / 'post_state.json', {}) or {}
         for rel in tracked:
-            p = self.ws.root / rel
-            if p.is_file():
+            p = _safe_workspace_path(self.ws.root, rel)
+            if p is not None and p.is_file():
                 try:
                     post[rel] = hashlib.sha256(p.read_bytes()).hexdigest()
                 except OSError:
                     continue
-            else:
+            elif p is not None:
                 post[rel] = None
         store.write_json(self.folder / 'post_state.json', post)
 
     def take_guard(self):
         for rel in self._guard_files():
+            p = _safe_workspace_path(self.ws.root, rel)
+            if p is None:
+                continue
             try:
-                self.guard[rel] = (self.ws.root / rel).read_bytes()
+                self.guard[rel] = p.read_bytes()
             except OSError:
                 continue
 
@@ -425,7 +546,9 @@ class Task:
         """Put back the files of the checks that a command of the executor changed or removed."""
         back = []
         for rel, before in self.guard.items():
-            p = self.ws.root / rel
+            p = _safe_workspace_path(self.ws.root, rel)
+            if p is None:
+                continue
             try:
                 same = p.read_bytes() == before
             except OSError:
@@ -567,7 +690,7 @@ class Task:
                 state, summary = 'stuck', f'repeated the same {self.worst[0]} call five times with the same result'
                 break
             if finished is None:
-                if self.steps == half and not self.journal and calls:
+                if self.steps == half and not self.journal and not self.touched and calls:
                     messages.append({'role': 'user', 'content': 'Half of your steps are used and no file has changed. If the task '
                                      'needs a change, make it now. If it cannot be done, call finish with blocked true.'})
                 continue
@@ -639,9 +762,24 @@ class Task:
                 if m['role'] == 'assistant' and not m.get('tool_calls') and len(m['content']) > 300:
                     m['content'] = json.dumps({'note': 'older call dropped'})
 
+    def _backup_status(self):
+        """Compute backup coverage for files in self.touched."""
+        if not self.touched:
+            return 'fully_backed', []
+        snapshot = store.read_json(self.folder / 'snapshot.json')
+        if not isinstance(snapshot, dict):
+            return 'unbacked', sorted(self.touched)
+        unbacked = [rel for rel in sorted(self.touched) if rel in snapshot and snapshot[rel] is None]
+        if not unbacked:
+            return 'fully_backed', []
+        if len(unbacked) < len(self.touched):
+            return 'partially_backed', unbacked
+        return 'unbacked', unbacked
+
     def _save(self, state, summary, checks):
         data = store.read_job(self.job) or {}
         weak = bool(checks) and bool(self.before) and all(c['exit'] == 0 for c in self.before)
+        backup_status, unbacked_files = self._backup_status()
         data.update(state=state, summary=summary, checks=checks, repairs=self.repairs, steps=self.steps, tokens=self.tokens,
                     read_chars=self.read_chars, workspace=str(self.ws.root), goal=self.goal, context=self.context,
                     write_globs=self.ws.write_globs, allow_run=[r.pattern for r in self.ws.allow_run],
@@ -651,6 +789,7 @@ class Task:
                     protocol='native tool calls' if self.native else 'JSON replies',
                     before=[{'command': c['command'], 'exit': c['exit']} for c in self.before], weak=weak,
                     protected=sorted(self.ws.protected), restored=self.restored, touched=sorted(self.touched),
+                    backup_status=backup_status, unbacked_files=unbacked_files,
                     syntax=self.syntax, changes=self.changes(),
                     tried=[f'{e["tool"]} {json.dumps(e["args"])[:90]} -> {e["result"][:90]}' for e in self.log[-4:]],
                     seconds=round(time.time() - data.get('started', self.t0), 1))
@@ -712,6 +851,7 @@ def resume(job, hint, extra_steps=15):
                 data.get('model', ''), data.get('context', ''), False, data.get('max_seconds', 0),
                 checks_network=data.get('checks_network', False), unjailed_checks=data.get('unjailed_checks', False))
     task.journal = store.read_json(folder / 'journal.json', {}) or {}
+    task.journal_bin = store.read_json(folder / 'journal_bin.json', {}) or {}
     task.log = store.read_json(folder / 'log.json', []) or []
     task.steps, task.tokens, task.read_chars = data.get('steps', 0), data.get('tokens', 0), data.get('read_chars', 0)
     task.before = data.get('before', [])
@@ -731,7 +871,7 @@ def resume(job, hint, extra_steps=15):
 
 
 def _file_hash(path):
-    if not path.is_file():
+    if path.is_symlink() or not path.is_file():
         return None
     try:
         return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -752,11 +892,12 @@ def rollback(job):
     if not data:
         return 'no journal for this job'
     journal = store.read_json(folder / 'journal.json', {}) or {}
+    journal_bin = store.read_json(folder / 'journal_bin.json')
     snapshot = store.read_json(folder / 'snapshot.json')
     post_state = store.read_json(folder / 'post_state.json', {}) or {}
     touched = list(data.get('touched', []))
-    if not journal and not touched:
-        if not (folder / 'journal.json').exists() and snapshot is None:
+    if not journal and not journal_bin and not touched:
+        if not (folder / 'journal.json').exists() and not (folder / 'journal_bin.json').exists() and snapshot is None:
             return 'no journal for this job'
     root = Path(data['workspace'])
     blobs = folder / 'blobs'
@@ -767,23 +908,46 @@ def rollback(job):
             return False
         return _file_hash(p) != post_state[rel]
 
-    for rel, before in journal.items():
-        p = root / rel
+    entries = journal_bin if journal_bin is not None else journal
+    for rel, entry in entries.items():
+        p = _safe_workspace_path(root, rel)
+        if p is None:
+            skipped.append(rel)
+            continue
         if user_modified(rel, p):
             skipped.append(rel)
             continue
-        if before is None:
-            if p.exists():
-                p.unlink()
+        if journal_bin is not None:
+            if entry is None:
+                if p.exists() and not p.is_symlink():
+                    p.unlink()
+            else:
+                blob = blobs / entry
+                if blob.is_file():
+                    p.parent.mkdir(parents=True, exist_ok=True)
+                    p.write_bytes(zlib.decompress(blob.read_bytes()))
+                elif rel in journal and journal[rel] is not None:
+                    p.parent.mkdir(parents=True, exist_ok=True)
+                    p.write_text(journal[rel])
+                else:
+                    unbacked.append(rel)
+                    continue
         else:
-            p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_text(before)
+            if entry is None:
+                if p.exists() and not p.is_symlink():
+                    p.unlink()
+            else:
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text(entry)
         done.append(rel)
 
     for rel in touched:
-        if rel in journal:
+        if rel in entries:
             continue
-        p = root / rel
+        p = _safe_workspace_path(root, rel)
+        if p is None:
+            skipped.append(rel)
+            continue
         if user_modified(rel, p):
             skipped.append(rel)
             continue
@@ -803,7 +967,7 @@ def rollback(job):
             p.write_bytes(zlib.decompress(blob.read_bytes()))
             done.append(rel)
         else:
-            if p.exists():
+            if p.exists() and not p.is_symlink():
                 p.unlink()
             done.append(rel)
 

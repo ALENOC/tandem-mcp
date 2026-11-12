@@ -5,6 +5,7 @@ every part of a pipeline or a chain must match the allow list, none may match th
 command substitution is refused and a redirection must point at a writable file. The second,
 where bubblewrap is installed, is an operating system sandbox: the whole machine is read only,
 only the workspace is writable, credentials folders are hidden and there is no network."""
+import hashlib
 import os
 import re
 import shlex
@@ -215,12 +216,14 @@ class Workspace:
                     self.protected.add(r)
         if runner_used:
             for dirpath, dirnames, filenames in os.walk(self.root):
-                dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
+                dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS and not (Path(dirpath) / d).is_symlink()]
                 for d in list(dirnames):
                     if TEST_DIR.match(d):
                         self.protected.add(self.rel(Path(dirpath) / d))
                         dirnames.remove(d)
                 for name in filenames:
+                    if (Path(dirpath) / name).is_symlink():
+                        continue
                     if TEST_FILE.match(name):
                         self.protected.add(self.rel(Path(dirpath) / name))
         return sorted(self.protected)
@@ -376,30 +379,38 @@ def read_text(path, limit=4_000_000):
     return data.decode('utf-8', errors='replace')
 
 
-def walk(root, glob='**/*', limit=4000):
-    """Files under root that match the glob, generated folders skipped."""
+def walk(root, glob='**/*', limit=None):
+    """Files under root that match the glob, generated folders and symlinks skipped."""
     root = Path(root)
     out = []
     match_base = '/' not in glob.replace(os.sep, '/').lstrip('./')
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
+        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS and not (Path(dirpath) / d).is_symlink()]
         for name in filenames:
-            rel = str((Path(dirpath) / name).relative_to(root))
+            p = Path(dirpath) / name
+            if p.is_symlink():
+                continue
+            rel = str(p.relative_to(root))
             if glob_match(rel, glob, match_basename=match_base):
                 out.append(rel)
-                if len(out) >= limit:
+                if limit is not None and len(out) >= limit:
                     return sorted(out)
     return sorted(out)
 
 
-def stamp(root, limit=6000):
-    """Modification time and size of the files of a workspace, to see what a command touched."""
+def stamp(root, limit=None):
+    """Size and SHA-256 of the files of a workspace, to see what a command touched."""
     root = Path(root)
     out = {}
     for rel in walk(root, '*', limit):
+        p = root / rel
+        if p.is_symlink():
+            continue
         try:
-            st = (root / rel).stat()
+            st = p.stat()
+            with p.open('rb') as f:
+                digest_hex = hashlib.file_digest(f, 'sha256').hexdigest()
         except OSError:
             continue
-        out[rel] = (st.st_mtime_ns, st.st_size)
+        out[rel] = (st.st_size, digest_hex)
     return out

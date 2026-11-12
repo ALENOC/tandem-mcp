@@ -253,4 +253,71 @@ store.cleanup(cache_keep=200, jobs_ttl_days=0, jobs_keep=0, preserve_pending=Tru
 ok(pfolder.exists() and not rfolder.exists(), 'cleanup preserves pending-rollback jobs and removes rolled_back jobs')
 store.cleanup(cache_keep=200, jobs_ttl_days=0, jobs_keep=0, preserve_pending=False)
 ok(not pfolder.exists(), 'cleanup(preserve_pending=False) removes pending jobs')
+
+# adversarial security & rollback checks ----------------------------------------------------------
+# 1. >6,000 files: take_snapshot and stamp cover all 6,150 files, and modifying #6,120 outside write_globs is reverted
+big_root = Path(tempfile.mkdtemp(dir=Path.home() if os.environ.get('TANDEM_TEST_IN_HOME') else None))
+for idx in range(6150):
+    (big_root / f'f_{idx:04d}.txt').write_text(f'v{idx}\n')
+big_ws = sandbox.Workspace(big_root, ['allowed.txt'], [r'^python3\b'])
+big_job, big_folder = store.new_job('delegate')
+big_task = agent.Task(big_job, big_folder, 'goal', big_ws, [], 5, 0, '', '')
+big_task.take_snapshot()
+snap_6k = store.read_json(big_folder / 'snapshot.json')
+stamp_6k = sandbox.stamp(big_root)
+ok(len(snap_6k) == 6150 and 'f_6120.txt' in snap_6k and len(stamp_6k) == 6150 and 'f_6120.txt' in stamp_6k,
+   'snapshot and stamp cover >6,000 files')
+res_6k = big_task.call('run', {'command': 'python3 -c "open(\'f_6120.txt\', \'w\').write(\'tampered\')"'})
+ok('reverted' in res_6k and 'f_6120.txt' in res_6k and (big_root / 'f_6120.txt').read_text() == 'v6120\n',
+   'modifying file #6,120 outside write_globs is caught and reverted')
+
+# 2. content change with preserved st_size and st_mtime_ns is caught by stamp() and reverted
+utime_root = Path(tempfile.mkdtemp(dir=Path.home() if os.environ.get('TANDEM_TEST_IN_HOME') else None))
+target = utime_root / 'secret.txt'
+target.write_text('AAAA')
+st0 = target.stat()
+utime_ws = sandbox.Workspace(utime_root, ['allowed.txt'], [r'^python3\b'])
+utime_job, utime_folder = store.new_job('delegate')
+utime_task = agent.Task(utime_job, utime_folder, 'goal', utime_ws, [], 5, 0, '', '')
+cmd_utime = (f'python3 -c "import os; p=\'secret.txt\'; open(p,\'w\').write(\'BBBB\'); '
+             f'os.utime(p, ns=({st0.st_atime_ns}, {st0.st_mtime_ns}))"')
+res_utime = utime_task.call('run', {'command': cmd_utime})
+ok('reverted' in res_utime and 'secret.txt' in res_utime and target.read_text() == 'AAAA',
+   'content change with preserved st_size and st_mtime_ns is caught and reverted')
+
+# 3. external symlink inside workspace is skipped by walk, search, take_snapshot, and not followed on rollback
+ext_dir = Path(tempfile.mkdtemp())
+ext_file = ext_dir / 'outside.txt'
+ext_file.write_text('OUTSIDE_SECRET\n')
+sym_root = Path(tempfile.mkdtemp(dir=Path.home() if os.environ.get('TANDEM_TEST_IN_HOME') else None))
+(sym_root / 'normal.txt').write_text('NORMAL_TEXT\n')
+os.symlink(ext_file, sym_root / 'evil_link.txt')
+sym_ws = sandbox.Workspace(sym_root, [], [r'^echo\b'])
+sym_job, sym_folder = store.new_job('delegate')
+sym_task = agent.Task(sym_job, sym_folder, 'goal', sym_ws, [], 5, 0, '', '')
+sym_task.take_snapshot()
+sym_snap = store.read_json(sym_folder / 'snapshot.json')
+ok('evil_link.txt' not in sandbox.walk(sym_root) and 'evil_link.txt' not in sym_snap
+   and 'OUTSIDE_SECRET' not in sym_task.call('search', {'pattern': 'OUTSIDE_SECRET', 'glob': '*'}),
+   'external symlink skipped by walk, search, and take_snapshot')
+# Even if a job record lists the symlink in journal/touched, rollback must not touch the external target
+sym_task.journal['evil_link.txt'] = 'OVERWRITE_ATTEMPT'
+store.write_json(sym_folder / 'journal.json', sym_task.journal)
+sym_task._save('unverified', 'done', [])
+agent.rollback(sym_job)
+ok(ext_file.exists() and ext_file.read_text() == 'OUTSIDE_SECRET\n', 'rollback does not follow or unlink external symlink')
+
+# 4. binary file overwritten via write_file is restored byte-for-byte identically by rollback()
+bin_root = Path(tempfile.mkdtemp(dir=Path.home() if os.environ.get('TANDEM_TEST_IN_HOME') else None))
+orig_bytes = b'\x00\xff\xfe\x80data'
+(bin_root / 'blob.bin').write_bytes(orig_bytes)
+bin_ws = sandbox.Workspace(bin_root)
+bin_job, bin_folder = store.new_job('delegate')
+bin_task = agent.Task(bin_job, bin_folder, 'goal', bin_ws, [], 5, 0, '', '')
+bin_task.call('write_file', {'path': 'blob.bin', 'content': 'overwritten text\n'})
+ok('[binary file changed: blob.bin]' in bin_task.diff(), 'diff emits short binary notice')
+bin_task._save('unverified', 'done', [])
+agent.rollback(bin_job)
+ok((bin_root / 'blob.bin').read_bytes() == orig_bytes, 'binary file restored byte-for-byte identically by rollback')
+
 print(f'{checks} checks, 0 failures')

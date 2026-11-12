@@ -199,6 +199,29 @@ rb_big = server.job_rollback(job)
 ok((root / 'big.bin').exists() and 'not undone (too large/skipped from snapshot): big.bin' in rb_big,
    'rollback preserves pre-existing >2MB file without snapshot backup')
 
+# partially_backed status in receipt when >2 MB file and backed file are both in touched
+root = project()
+(root / 'big.bin').write_bytes(b'A' * 2_100_000)
+job, data = run('Touch big and small.', root, [], [
+    ('run', {'command': 'echo more >> big.bin; echo ok > small.txt'}),
+    ('finish', {'summary': 'Touched both.'}),
+], fake, allow_run=['^echo '])
+receipt_partial = server._receipt(job)
+ok(data['backup_status'] == 'partially_backed' and 'partially_backed' in receipt_partial and 'big.bin' in receipt_partial,
+   'partially_backed status and unbacked file shown in receipt')
+
+# shell-created .py file with syntax error is caught by check_syntax() and shown in job_diff
+root = project()
+job, data = run('Create broken py via shell.', root, [], [
+    ('run', {'command': f'{PY} -c "open(\'bad_gen.py\', \'w\').write(\'def broken(:\\n\')"'}),
+    ('finish', {'summary': 'Created.'}),
+    ('finish', {'summary': 'Still broken.'}),
+    ('finish', {'summary': 'Give up.'}),
+], fake, allow_run=[f'^{re.escape(PY)} '], max_repairs=1)
+diff_text = server.job_diff(job)
+ok(any(row[0] == 'bad_gen.py' for row in data['syntax']['bad']) and 'bad_gen.py' in diff_text and 'def broken(:' in diff_text,
+   'shell-created .py with syntax error is caught by check_syntax() and shown in job_diff')
+
 # >40 files modified/created by a command are all recorded and all undone by rollback
 root = project()
 job, data = run('Generate 50 files.', root, [], [

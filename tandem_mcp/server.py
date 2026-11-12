@@ -332,8 +332,17 @@ def _receipt(job):
     if data.get('restored'):
         lines.append('NOTE: the executor changed files of the checks through a command; they were put back: ' + ', '.join(data['restored']))
     if data.get('touched'):
-        has_snap = (store.JOBS / job / 'snapshot.json').exists()
-        note = 'covered by workspace snapshot (job_rollback undoes them)' if has_snap else 'outside the journal (job_rollback does not undo them)'
+        status = data.get('backup_status')
+        unbacked = data.get('unbacked_files') or []
+        if not status:
+            has_snap = (store.JOBS / job / 'snapshot.json').exists()
+            status = 'fully_backed' if has_snap else 'unbacked'
+        if status == 'fully_backed':
+            note = 'fully_backed, covered by workspace snapshot (job_rollback undoes them)'
+        elif status == 'partially_backed':
+            note = f'partially_backed (unbacked, not undone by rollback: {", ".join(unbacked[:12])})'
+        else:
+            note = 'unbacked (outside the journal, job_rollback does not undo them)'
         lines.append(f'NOTE: changed by commands, {note}: ' + ', '.join(data['touched'][:12]))
     if data['state'] not in ('verified', 'unverified', 'rolled_back') and data.get('tried'):
         lines.append('Last steps of the executor:')
