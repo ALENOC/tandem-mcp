@@ -170,12 +170,33 @@ ok(data['state'] == 'stuck' and data['steps'] == 4 and 'not a tool call' in data
 job, data = run('Fix it.', project(), TEST, [FIX[1], 'finish(summary="Fixed the exponent.")'], fake)
 ok(data['state'] == 'verified' and data['summary'] == 'Fixed the exponent.', 'a finish written as a function call is accepted')
 
-# 8. commands of the executor ---------------------------------------------------------------------
+# 8. commands of the executor & snapshot rollback --------------------------------------------------
 root = project()
+orig_calc = (root / 'calc.py').read_text()
 job, data = run('Run the generator.', root, [], [('run', {'command': 'echo made > out.txt; echo x >> calc.py'}),
                                                  ('finish', {'summary': 'Ran it.'})], fake, allow_run=['^echo '])
-ok(set(data['touched']) == {'calc.py', 'out.txt'}, 'files changed by a command are reported, since the journal does not hold them')
-ok('job_rollback does not undo them' in server._receipt(job), 'receipt says so')
+ok(set(data['touched']) == {'calc.py', 'out.txt'}, 'files changed by a command are reported')
+ok('covered by workspace snapshot' in server._receipt(job), 'receipt says snapshot covers command changes')
+rb_out = server.job_rollback(job)
+ok('calc.py' in rb_out and 'out.txt' in rb_out, 'snapshot rollback restores command changes')
+ok((root / 'calc.py').read_text() == orig_calc and not (root / 'out.txt').exists(), 'command-modified and created files undone')
+
+# rollback skips files modified by the user after the job ended
+root = project()
+job, data = run('Fix it.', root, TEST, FIX, fake)
+(root / 'calc.py').write_text('# user edit after job\n')
+rb_user = server.job_rollback(job)
+ok('skipped (modified after job ended): calc.py' in rb_user and '# user edit after job' in (root / 'calc.py').read_text(),
+   'rollback does not overwrite subsequent user edits')
+
+# verify checks run isolated with secret env vars stripped
+if sandbox.jail_available():
+    root = project()
+    os.environ['TANDEM_TEST_SECRET_KEY'] = 'leak-me-not'
+    check_cmd = f'{PY} -c "import os, sys; sys.exit(0 if os.environ.get(\'TANDEM_TEST_SECRET_KEY\') is None else 1)"'
+    job, data = run('Fix it.', root, [check_cmd], FIX, fake, baseline=False)
+    del os.environ['TANDEM_TEST_SECRET_KEY']
+    ok(data['state'] == 'verified', 'verify_commands run with secret env vars stripped')
 
 # 9. the context of a small model -----------------------------------------------------------------
 os.environ['TANDEM_CONTEXT'] = '2000'

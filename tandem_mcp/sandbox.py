@@ -5,7 +5,6 @@ every part of a pipeline or a chain must match the allow list, none may match th
 command substitution is refused and a redirection must point at a writable file. The second,
 where bubblewrap is installed, is an operating system sandbox: the whole machine is read only,
 only the workspace is writable, credentials folders are hidden and there is no network."""
-import fnmatch
 import os
 import re
 import shlex
@@ -23,7 +22,73 @@ DENY = [r'\bsudo\b', r'\bsu\b\s', r'\bdoas\b', r'\brm\s+(-\w*\s+)*-\w*r\w*\s+(/|
 SKIP_DIRS = {'.git', 'node_modules', '__pycache__', '.venv', 'venv', 'build', 'managed_components', '.history', 'dist', '.cache'}
 SECRETS = ['.ssh', '.gnupg', '.aws', '.azure', '.kube', '.docker', '.config/gh', '.config/gcloud', '.password-store',
            '.netrc', '.git-credentials', '.npmrc', '.pypirc']
-TEST_DIR = re.compile(r'^(tests?|specs?|__tests__)$', re.I)
+TEST_DIR = re.compile(r'^(tests?|specs?|__tests__|e2e|unit_tests|integration_tests)$', re.I)
+TEST_FILE = re.compile(r'^(?:test_.*\.py|.*_test\.(?:py|go|rs)|.*\.(?:test|spec)\.[jt]sx?|conftest\.py|pytest\.ini)$', re.I)
+TEST_RUNNERS = re.compile(
+    r'\b(?:pytest|py\.test|nosetests|tox|nox|vitest|jest|mocha|ava|tap|ctest|rspec|phpunit)\b'
+    r'|\bpython[23]?\s+-m\s+(?:pytest|unittest)\b'
+    r'|\b(?:npm|pnpm|yarn|bun|cargo|go|dotnet|mvn|gradle)\s+test\b'
+)
+SECRET_ENV = re.compile(
+    r'(?:^|_)(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|PWD|CREDENTIAL|CREDENTIALS|AUTH|COOKIE|PRIVATE|DSN|CONNECTION_STRING)(?:_|$)'
+    r'|^(?:AWS_|AZURE_|GCP_|GOOGLE_APPLICATION_|GITHUB_|GITLAB_|OPENAI_|ANTHROPIC_|GEMINI_|HF_|NPM_|PYPI_|DOCKER_)',
+    re.I,
+)
+
+
+def _glob_to_re(pattern):
+    """Translate a POSIX path glob to a regex where * never crosses '/' and ** does."""
+    pattern = pattern.replace(os.sep, '/').lstrip('./')
+    parts, i, n = ['^'], 0, len(pattern)
+    while i < n:
+        c = pattern[i]
+        if c == '*':
+            if i + 1 < n and pattern[i + 1] == '*':
+                if i + 2 < n and pattern[i + 2] == '/':
+                    parts.append('(?:.+/)?')
+                    i += 3
+                    continue
+                parts.append('.*')
+                i += 2
+                continue
+            parts.append('[^/]*')
+        elif c == '?':
+            parts.append('[^/]')
+        elif c == '[':
+            j = i + 1
+            if j < n and pattern[j] in '!^':
+                j += 1
+            if j < n and pattern[j] == ']':
+                j += 1
+            while j < n and pattern[j] != ']':
+                j += 1
+            if j < n:
+                body = pattern[i + 1:j]
+                if body.startswith('!'):
+                    body = '^' + body[1:]
+                parts.append(f'[{body}]')
+                i = j
+            else:
+                parts.append(r'\[')
+        else:
+            parts.append(re.escape(c))
+        i += 1
+    parts.append('$')
+    return re.compile(''.join(parts))
+
+
+def glob_match(rel, pattern, match_basename=False):
+    """Match a workspace-relative path against a glob without '*' crossing '/'."""
+    rel = rel.replace(os.sep, '/').lstrip('./')
+    pat = pattern.replace(os.sep, '/').lstrip('./')
+    if not pat:
+        return False
+    rx = _glob_to_re(pat)
+    if rx.match(rel):
+        return True
+    if match_basename and '/' not in pat:
+        return bool(rx.match(rel.rsplit('/', 1)[-1]))
+    return False
 
 
 class SandboxError(RuntimeError):
@@ -86,13 +151,14 @@ def split_command(command):
 
 
 class Workspace:
-    def __init__(self, root, write_globs=None, allow_run=None):
+    def __init__(self, root, write_globs=None, allow_run=None, immutable=None):
         self.root = Path(root).expanduser().resolve()
         if not self.root.is_dir():
             raise SandboxError(f'workspace is not a folder: {root}')
         if self.root == Path(self.root.anchor) or self.root == Path.home().resolve():
             raise SandboxError('workspace must be a project folder, not / or the home folder')
         self.write_globs = [g for g in (write_globs or []) if g.strip()]
+        self.immutable = [g for g in (immutable or []) if g.strip()]
         try:
             self.allow_run = [re.compile(r) for r in (allow_run or []) if r.strip()]
         except re.error as exc:
@@ -112,16 +178,24 @@ class Workspace:
         return str(Path(p).resolve().relative_to(self.root))
 
     def _in_globs(self, r):
-        return any(fnmatch.fnmatch(r, g) for g in self.write_globs)
+        return any(glob_match(r, g, match_basename=False) for g in self.write_globs)
+
+    def _is_immutable(self, r):
+        return any(glob_match(r, g, match_basename=False) for g in self.immutable)
 
     def is_protected(self, r):
         parts = Path(r).parts
-        return any(str(Path(*parts[:k])) in self.protected for k in range(1, len(parts) + 1))
+        if any(str(Path(*parts[:k])) in self.protected for k in range(1, len(parts) + 1)):
+            return True
+        return self._is_immutable(r)
 
     def protect(self, verify_commands):
-        """Files named by the acceptance checks (and test folders) become read only for the
-        executor, unless a write glob names them: a check must not be bent to pass."""
+        """Files named by the acceptance checks (and test folders/files when a test runner is
+        detected) become read only for the executor, unless a write glob names them."""
+        runner_used = False
         for command in verify_commands:
+            if TEST_RUNNERS.search(command):
+                runner_used = True
             try:
                 words = shlex.split(command)
             except ValueError:
@@ -139,6 +213,16 @@ class Workspace:
                 r = self.rel(p)
                 if p.is_file() or any(TEST_DIR.match(part) for part in Path(r).parts):
                     self.protected.add(r)
+        if runner_used:
+            for dirpath, dirnames, filenames in os.walk(self.root):
+                dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
+                for d in list(dirnames):
+                    if TEST_DIR.match(d):
+                        self.protected.add(self.rel(Path(dirpath) / d))
+                        dirnames.remove(d)
+                for name in filenames:
+                    if TEST_FILE.match(name):
+                        self.protected.add(self.rel(Path(dirpath) / name))
         return sorted(self.protected)
 
     def writable(self, rel):
@@ -148,6 +232,8 @@ class Workspace:
         r = self.rel(p)
         if '.git' in Path(r).parts:
             raise SandboxError('the .git folder is not writable')
+        if self._is_immutable(r):
+            raise SandboxError(f'{r} is declared immutable and is read only')
         if self.write_globs and not self._in_globs(r):
             raise SandboxError(f'{r} is outside the files this task may write ({", ".join(self.write_globs)})')
         if self.is_protected(r) and not self._in_globs(r):
@@ -202,7 +288,7 @@ def jail_available():
     return _jail
 
 
-def jail_command(command, root):
+def jail_command(command, root, allow_net=False):
     """The bubblewrap call that runs `command` with only `root` writable."""
     root = Path(root).resolve()
     home = Path.home().resolve()
@@ -218,30 +304,41 @@ def jail_command(command, root):
     args += ['--bind', str(root), str(root)]
     if (root / '.git').is_dir():
         args += ['--ro-bind', str(root / '.git'), str(root / '.git')]
-    if os.environ.get('TANDEM_SANDBOX_NET', '') != '1':
+    if not allow_net and os.environ.get('TANDEM_SANDBOX_NET', '') != '1':
         args += ['--unshare-net']
     return args + ['--unshare-pid', '--die-with-parent', '--new-session', '--chdir', str(root), '/bin/sh', '-c', command]
+
+
+def clean_env(strip_secrets=True):
+    """Build a subprocess environment, stripping API keys and credentials when strip_secrets is True."""
+    if not strip_secrets:
+        return {**os.environ, 'PYTHONDONTWRITEBYTECODE': '1'}
+    env = {k: v for k, v in os.environ.items() if not SECRET_ENV.search(k)}
+    env['PYTHONDONTWRITEBYTECODE'] = '1'
+    return env
 
 
 def describe_jail():
     try:
         if jail_available():
             net = 'network allowed' if os.environ.get('TANDEM_SANDBOX_NET', '') == '1' else 'no network'
-            return f'bubblewrap (machine read only, workspace writable, credentials hidden, {net})'
+            return f'bubblewrap (machine read only, workspace writable, credentials hidden, env secrets stripped, {net})'
     except SandboxError as exc:
         return str(exc)
     return 'command text checks only (bubblewrap not available or TANDEM_SANDBOX=off)'
 
 
-def run(command, cwd, timeout=180, jail=False):
+def run(command, cwd, timeout=180, jail=False, allow_net=False, strip_env=None):
     """Run a shell command, return (exit code, combined output). jail=True runs it inside the
     operating system sandbox when there is one."""
     # no bytecode files: a check run just before an edit must not leave a stale .pyc behind
-    env = {**os.environ, 'PYTHONDONTWRITEBYTECODE': '1'}
+    if strip_env is None:
+        strip_env = bool(jail)
+    env = clean_env(strip_secrets=strip_env)
     try:
         if jail and jail_available():
-            done = subprocess.run(jail_command(command, cwd), capture_output=True, text=True, timeout=timeout, errors='replace',
-                                  stdin=subprocess.DEVNULL, env=env)
+            done = subprocess.run(jail_command(command, cwd, allow_net=allow_net), capture_output=True, text=True,
+                                  timeout=timeout, errors='replace', stdin=subprocess.DEVNULL, env=env)
         else:
             done = subprocess.run(command, shell=True, cwd=str(cwd), capture_output=True, text=True, timeout=timeout,
                                   errors='replace', stdin=subprocess.DEVNULL, env=env)
@@ -276,11 +373,12 @@ def walk(root, glob='**/*', limit=4000):
     """Files under root that match the glob, generated folders skipped."""
     root = Path(root)
     out = []
+    match_base = '/' not in glob.replace(os.sep, '/').lstrip('./')
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
         for name in filenames:
             rel = str((Path(dirpath) / name).relative_to(root))
-            if fnmatch.fnmatch(rel, glob) or fnmatch.fnmatch(name, glob):
+            if glob_match(rel, glob, match_basename=match_base):
                 out.append(rel)
                 if len(out) >= limit:
                     return sorted(out)

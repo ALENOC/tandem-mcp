@@ -181,25 +181,33 @@ def _estimate(messages):
     return sum(len(str(m.get('content') or '')) for m in messages) // 4
 
 
-def _create(model, messages, max_tokens, temperature, tools=None, schema=None):
+def _create(model, messages, max_tokens, temperature, tools=None, schema=None, timeout=None):
     kwargs = {'model': model, 'messages': messages, 'temperature': temperature, 'max_tokens': max_tokens}
     if tools:
         kwargs['tools'] = tools
     if schema:
         kwargs['response_format'] = {'type': 'json_schema', 'json_schema': {'name': 'answer', 'schema': schema}}
+    if timeout is not None:
+        kwargs['timeout'] = max(0.5, float(timeout))
     return connect()['client'].chat.completions.create(**kwargs)
 
 
-def chat(messages, tool='chat', model='', max_tokens=2048, temperature=0.1, tools=None, schema=None):
+def chat(messages, tool='chat', model='', max_tokens=2048, temperature=0.1, tools=None, schema=None, timeout=None):
     """One completion. Returns (Reply, usage). Reasoning is never returned as the answer: when
     it eats the whole budget the call is repeated once with a larger one."""
     model = model or default_model()
     budget = max_tokens
     total = {'prompt': 0, 'completion': 0}
+    deadline = (time.time() + float(timeout)) if timeout is not None else None
     for attempt in range(2):
         start = time.time()
+        rem = None
+        if deadline is not None:
+            rem = deadline - start
+            if rem <= 0:
+                raise ExecutorError('time limit reached before calling the local model')
         try:
-            response = _create(model, messages, budget, temperature, tools, schema)
+            response = _create(model, messages, budget, temperature, tools, schema, timeout=rem)
         except Exception as exc:
             raise ExecutorError(f'call to the local model failed ({connect()["name"]}, {model}): {exc}') from exc
         if not getattr(response, 'choices', None):
@@ -248,21 +256,86 @@ def parse_json(text, want=(dict, list)):
     return None
 
 
-def problem(data, schema):
-    """Why `data` does not follow `schema` (top level and one level of items), or ''."""
-    kinds = {'object': dict, 'array': list, 'string': str, 'boolean': bool, 'integer': int, 'number': (int, float)}
+_JSON_KINDS = {'object': dict, 'array': list, 'string': str, 'boolean': bool, 'integer': int, 'number': (int, float), 'null': type(None)}
+
+
+def _matches_kind(value, kind):
+    if kind not in _JSON_KINDS:
+        return True
+    if kind in ('integer', 'number') and isinstance(value, bool):
+        return False
+    return isinstance(value, _JSON_KINDS[kind])
+
+
+def problem(data, schema, path=''):
+    """Why `data` does not follow `schema`, or ''."""
+    if not isinstance(schema, dict):
+        return ''
+    prefix = f'{path}: ' if path else ''
     want = schema.get('type')
-    if isinstance(want, str) and want in kinds and not isinstance(data, kinds[want]):
-        return f'the top level must be of type {want}'
+    if isinstance(want, str) and want in _JSON_KINDS and not _matches_kind(data, want):
+        return f'{prefix}the top level must be of type {want}' if not path else f'"{path}" must be of type {want}'
+    if isinstance(want, list) and not any(_matches_kind(data, k) for k in want if isinstance(k, str)):
+        return f'{prefix}must be of type {" or ".join(str(k) for k in want)}'
+    if 'const' in schema and data != schema['const']:
+        return f'{prefix}must equal {schema["const"]!r}'
+    if 'enum' in schema and data not in schema['enum']:
+        return f'{prefix}must be one of {schema["enum"]!r}'
+    for key in ('allOf',):
+        if isinstance(schema.get(key), list):
+            for sub in schema[key]:
+                err = problem(data, sub, path)
+                if err:
+                    return err
+    if isinstance(schema.get('anyOf'), list):
+        if not any(not problem(data, sub, path) for sub in schema['anyOf']):
+            return f'{prefix}does not match any allowed schema'
+    if isinstance(schema.get('oneOf'), list):
+        hits = sum(1 for sub in schema['oneOf'] if not problem(data, sub, path))
+        if hits != 1:
+            return f'{prefix}must match exactly one allowed schema'
+    if isinstance(data, str):
+        if 'minLength' in schema and len(data) < schema['minLength']:
+            return f'{prefix}must be at least {schema["minLength"]} characters'
+        if 'maxLength' in schema and len(data) > schema['maxLength']:
+            return f'{prefix}must be at most {schema["maxLength"]} characters'
+        if 'pattern' in schema and not re.search(schema['pattern'], data):
+            return f'{prefix}does not match pattern {schema["pattern"]}'
+    if isinstance(data, (int, float)) and not isinstance(data, bool):
+        if 'minimum' in schema and data < schema['minimum']:
+            return f'{prefix}must be >= {schema["minimum"]}'
+        if 'maximum' in schema and data > schema['maximum']:
+            return f'{prefix}must be <= {schema["maximum"]}'
+        if 'exclusiveMinimum' in schema and data <= schema['exclusiveMinimum']:
+            return f'{prefix}must be > {schema["exclusiveMinimum"]}'
+        if 'exclusiveMaximum' in schema and data >= schema['exclusiveMaximum']:
+            return f'{prefix}must be < {schema["exclusiveMaximum"]}'
     if isinstance(data, dict):
         missing = [k for k in schema.get('required', []) if k not in data]
         if missing:
-            return 'missing keys: ' + ', '.join(missing)
-        for key, sub in (schema.get('properties') or {}).items():
-            kind = sub.get('type') if isinstance(sub, dict) else None
-            if key in data and data[key] is not None and isinstance(kind, str) and kind in kinds:
-                if not isinstance(data[key], kinds[kind]) or (kind in ('integer', 'number') and isinstance(data[key], bool)):
-                    return f'"{key}" must be of type {kind}'
+            return f'{prefix}missing keys: ' + ', '.join(missing)
+        props = schema.get('properties') or {}
+        if schema.get('additionalProperties') is False:
+            extra = [k for k in data if k not in props]
+            if extra:
+                return f'{prefix}unexpected keys: ' + ', '.join(extra)
+        for key, sub in props.items():
+            if key in data and isinstance(sub, dict):
+                sub_path = f'{path}.{key}' if path else key
+                err = problem(data[key], sub, sub_path)
+                if err:
+                    return err
+    if isinstance(data, list):
+        if 'minItems' in schema and len(data) < schema['minItems']:
+            return f'{prefix}must have at least {schema["minItems"]} items'
+        if 'maxItems' in schema and len(data) > schema['maxItems']:
+            return f'{prefix}must have at most {schema["maxItems"]} items'
+        items = schema.get('items')
+        if isinstance(items, dict):
+            for idx, item in enumerate(data):
+                err = problem(item, items, f'{path}[{idx}]' if path else f'[{idx}]')
+                if err:
+                    return err
     return ''
 
 

@@ -332,7 +332,9 @@ def _receipt(job):
     if data.get('restored'):
         lines.append('NOTE: the executor changed files of the checks through a command; they were put back: ' + ', '.join(data['restored']))
     if data.get('touched'):
-        lines.append('NOTE: changed by commands, outside the journal (job_rollback does not undo them): ' + ', '.join(data['touched'][:12]))
+        has_snap = (store.JOBS / job / 'snapshot.json').exists()
+        note = 'covered by workspace snapshot (job_rollback undoes them)' if has_snap else 'outside the journal (job_rollback does not undo them)'
+        lines.append(f'NOTE: changed by commands, {note}: ' + ', '.join(data['touched'][:12]))
     if data['state'] not in ('verified', 'unverified', 'rolled_back') and data.get('tried'):
         lines.append('Last steps of the executor:')
         lines += ['  ' + t for t in data['tried']]
@@ -348,34 +350,40 @@ def _wait(job, seconds):
 
 @mcp.tool()
 def delegate(goal: str, workspace: str, verify_commands: list[str] = [], write_globs: list[str] = [],
-             allow_run: list[str] = [], context: str = '', max_steps: int = 30, max_repairs: int = 2,
-             wait_seconds: int = 240, model: str = '', baseline: bool = True, max_seconds: int = 0) -> str:
+             allow_run: list[str] = [], immutable: list[str] = [], context: str = '', max_steps: int = 30,
+             max_repairs: int = 2, wait_seconds: int = 240, model: str = '', baseline: bool = True,
+             max_seconds: int = 0, checks_network: bool = False, unjailed_checks: bool = False) -> str:
     """Give the local executor a bounded task in a project and get a receipt.
 
     goal: what to do, precise and self-contained (files, names, expected behaviour).
     workspace: absolute path of the project folder; the executor cannot leave it.
     verify_commands: shell commands that must exit 0 for the work to be accepted (tests, build,
-      a grep that must find or not find something). They run after the executor finishes; their
-      failures go back to it for up to max_repairs attempts. Give at least one whenever you can.
-      The files they name (and test folders) are read only for the executor unless write_globs
-      names them, so a check cannot be bent to pass.
+      a grep that must find or not find something). They run after the executor finishes in an
+      isolated sandbox with secret env vars stripped; their failures go back to it for up to
+      max_repairs attempts. Give at least one whenever you can. The files they name (and test
+      folders) are read only for the executor unless write_globs names them.
     write_globs: files it may write, as globs relative to the workspace (empty: any file).
     allow_run: regular expressions of commands the executor itself may run (empty: none). Every
       part of a pipeline or chain must match one.
+    immutable: files or globs relative to the workspace that are always read only.
     context: facts it needs and cannot find in the files.
     wait_seconds: how long this call waits; a longer task keeps running, poll it with job_status.
     baseline: run the checks once before the work. The executor starts from their failures, and
       the receipt says when a check already passed, which means it proves nothing about this work.
     max_seconds: time limit of the job (0: none).
+    checks_network: allow network access inside the sandbox when running verify_commands.
+    unjailed_checks: run verify_commands outside bubblewrap (for checks needing host resources).
 
-    Every file the executor changes is journalled: job_diff shows the change, job_rollback undoes it.
+    Every file the executor changes is journalled (and command changes are snapshotted): job_diff
+    shows the change, job_rollback undoes it without overwriting later user edits.
     The syntax of every changed file is checked before the checks run.
     Good tasks: mechanical edits across files, a function plus its test, docs brought in line
     with a change, renames. Poor tasks: design choices, anything without a check."""
     try:
-        ws = sandbox.Workspace(workspace, write_globs, allow_run)
+        ws = sandbox.Workspace(workspace, write_globs, allow_run, immutable)
         job = agent.start(goal, ws, list(verify_commands), max(3, min(max_steps, 80)), max(0, min(max_repairs, 5)), model,
-                          context, baseline, max(0, int(max_seconds)))
+                          context, baseline, max(0, int(max_seconds)),
+                          checks_network=checks_network, unjailed_checks=unjailed_checks)
         _wait(job, wait_seconds)
         return _saved('delegate', 0, _receipt(job))
     except Exception as exc:
@@ -383,8 +391,10 @@ def delegate(goal: str, workspace: str, verify_commands: list[str] = [], write_g
 
 
 @mcp.tool()
-def delegate_many(tasks: list[dict], workspace: str, allow_run: list[str] = [], context: str = '', workers: int = 1,
-                  max_steps: int = 30, max_repairs: int = 2, wait_seconds: int = 240, model: str = '') -> str:
+def delegate_many(tasks: list[dict], workspace: str, allow_run: list[str] = [], immutable: list[str] = [],
+                  context: str = '', workers: int = 1, max_steps: int = 30, max_repairs: int = 2,
+                  wait_seconds: int = 240, model: str = '', checks_network: bool = False,
+                  unjailed_checks: bool = False) -> str:
     """Give the executor several tasks with an order, each one a contract of its own.
 
     tasks: a list of objects with
@@ -394,6 +404,7 @@ def delegate_many(tasks: list[dict], workspace: str, allow_run: list[str] = [], 
       write_globs      files this task may write (list of globs)
       after            names of the tasks that must succeed first (list)
       context          facts for this task (optional)
+      immutable        read-only files or globs for this task (optional)
     workers: tasks run side by side, for a server with several request slots (default 1).
 
     A task starts when the tasks it comes after are verified. A task whose prerequisite failed
@@ -407,11 +418,15 @@ def delegate_many(tasks: list[dict], workspace: str, allow_run: list[str] = [], 
                 return _fail(f'task {n + 1} has no goal')
             specs.append({'name': str(t.get('name') or f'task{n + 1}'), 'goal': str(t['goal']),
                           'verify_commands': list(t.get('verify_commands') or []), 'write_globs': list(t.get('write_globs') or []),
+                          'immutable': list(t.get('immutable') or []),
+                          'checks_network': bool(t.get('checks_network', checks_network)),
+                          'unjailed_checks': bool(t.get('unjailed_checks', unjailed_checks)),
                           'after': [str(a) for a in (t.get('after') or [])], 'context': str(t.get('context') or '')})
         if not specs or len(specs) > 16:
             return _fail('a batch holds 1 to 16 tasks')
         job = agent.start_batch(specs, workspace, allow_run, max(1, min(int(workers), 8)), max(3, min(max_steps, 80)),
-                                max(0, min(max_repairs, 5)), model, context)
+                                max(0, min(max_repairs, 5)), model, context,
+                                checks_network=checks_network, unjailed_checks=unjailed_checks, immutable=immutable)
         _wait(job, wait_seconds)
         return _saved('delegate', 0, _receipt(job))
     except Exception as exc:

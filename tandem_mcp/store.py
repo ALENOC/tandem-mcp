@@ -2,6 +2,7 @@
 import hashlib
 import json
 import os
+import shutil
 import threading
 import time
 from pathlib import Path
@@ -13,12 +14,21 @@ LEDGER = DATA / 'ledger.jsonl'
 LESSONS = DATA / 'lessons.jsonl'
 MODELS = DATA / 'models.json'
 CHARS_PER_TOKEN = 3.6          # rough size of a token of the orchestrator, for the savings estimate
-CACHE_KEEP = 400               # digest answers kept on disk
+CACHE_KEEP = int(os.environ.get('TANDEM_CACHE_KEEP', 400))               # digest answers kept on disk
+CACHE_TTL_DAYS = float(os.environ.get('TANDEM_CACHE_TTL_DAYS', 14))
+JOBS_KEEP = int(os.environ.get('TANDEM_JOBS_KEEP', 200))
+JOBS_TTL_DAYS = float(os.environ.get('TANDEM_JOBS_TTL_DAYS', 30))
 _lock = threading.Lock()
+_last_cleanup = 0.0
 
 
 def init():
+    global _last_cleanup
     JOBS.mkdir(parents=True, exist_ok=True)
+    now = time.time()
+    if now - _last_cleanup > 3600:
+        _last_cleanup = now
+        cleanup()
 
 
 def scope_of(path):
@@ -153,12 +163,83 @@ def cache_key(*parts):
 
 
 def cache_get(key):
-    return read_json(CACHE / f'{key}.json')
+    p = CACHE / f'{key}.json'
+    if not p.exists():
+        return None
+    if CACHE_TTL_DAYS > 0:
+        try:
+            if time.time() - p.stat().st_mtime > CACHE_TTL_DAYS * 86400:
+                p.unlink(missing_ok=True)
+                return None
+        except OSError:
+            return None
+    return read_json(p)
 
 
 def cache_put(key, data):
     CACHE.mkdir(parents=True, exist_ok=True)
     write_json(CACHE / f'{key}.json', data)
-    files = sorted(CACHE.glob('*.json'), key=lambda p: p.stat().st_mtime)
-    for old in files[:-CACHE_KEEP]:
-        old.unlink(missing_ok=True)
+    _trim_cache(CACHE_TTL_DAYS, CACHE_KEEP)
+
+
+def _trim_cache(ttl_days, keep):
+    if not CACHE.exists():
+        return 0
+    removed = 0
+    now = time.time()
+    kept = []
+    for p in CACHE.glob('*.json'):
+        try:
+            mtime = p.stat().st_mtime
+        except OSError:
+            continue
+        if ttl_days > 0 and now - mtime > ttl_days * 86400:
+            p.unlink(missing_ok=True)
+            removed += 1
+        else:
+            kept.append((mtime, p))
+    if keep >= 0 and len(kept) > keep:
+        kept.sort(key=lambda item: item[0])
+        for _, old in kept[:-keep] if keep > 0 else kept:
+            old.unlink(missing_ok=True)
+            removed += 1
+    return removed
+
+
+def _trim_jobs(ttl_days, keep):
+    if not JOBS.exists():
+        return 0
+    removed = 0
+    now = time.time()
+    kept = []
+    for folder in JOBS.iterdir():
+        if not folder.is_dir():
+            continue
+        try:
+            mtime = folder.stat().st_mtime
+        except OSError:
+            continue
+        data = read_json(folder / 'job.json', {}) or {}
+        # Never delete a job that is actively running recently.
+        if data.get('state') == 'running' and now - mtime < 86400:
+            continue
+        if ttl_days > 0 and now - mtime > ttl_days * 86400:
+            shutil.rmtree(folder, ignore_errors=True)
+            removed += 1
+        else:
+            kept.append((mtime, folder))
+    if keep >= 0 and len(kept) > keep:
+        kept.sort(key=lambda item: item[0])
+        for _, old in kept[:-keep] if keep > 0 else kept:
+            shutil.rmtree(old, ignore_errors=True)
+            removed += 1
+    return removed
+
+
+def cleanup(cache_ttl_days=None, cache_keep=None, jobs_ttl_days=None, jobs_keep=None):
+    """Apply retention policies to cached digest answers and persisted job folders."""
+    c_ttl = CACHE_TTL_DAYS if cache_ttl_days is None else cache_ttl_days
+    c_keep = CACHE_KEEP if cache_keep is None else cache_keep
+    j_ttl = JOBS_TTL_DAYS if jobs_ttl_days is None else jobs_ttl_days
+    j_keep = JOBS_KEEP if jobs_keep is None else jobs_keep
+    return {'cache_removed': _trim_cache(c_ttl, c_keep), 'jobs_removed': _trim_jobs(j_ttl, j_keep)}
