@@ -18,26 +18,26 @@ The usual "ask a local model" tool only moves text generation. Most of the cost 
 
 ## What it does that the others do not
 
-Compared in November 2026, from the documentation of each project, with the MCP servers [houtini-lm](https://github.com/houtini-ai/lm) and [local-vibes](https://github.com/OpenSourceWTF/local-vibes) and with the Fusion mode of [Atomic Agent](https://github.com/AtomicBot-ai/atomic-agent) (a full agent, not an MCP server). "no" means the documentation does not describe it.
+Compared in November 2026, from the README of each project (not from running them), with the MCP servers [houtini-lm](https://github.com/houtini-ai/lm) and [local-vibes](https://github.com/OpenSourceWTF/local-vibes) and with the Fusion mode of [Atomic Agent](https://github.com/AtomicBot-ai/atomic-agent) (a full agent, not an MCP server). "no" means the README does not describe it; it is not a claim that the feature cannot exist there. Corrections are welcome.
 
 | | Tandem | houtini-lm | local-vibes | Atomic Agent Fusion |
 | --- | --- | --- | --- | --- |
 | Local model edits files in a tool loop | yes | no (text only) | yes | yes |
-| Acceptance checks run by the server, failures sent back for repair | yes | no | no | yes (`verify.run`) |
-| Checks run before the work, so a check that already passes is reported as proving nothing | **yes** | no | no | no |
+| Acceptance checks run by the server, failures sent back for repair | yes | no | no (the task can ask the model to run a test) | `verify.run` runs checks (repair loop not confirmed) |
+| Checks run before the work, so a check that already passes is reported as proving nothing | **yes** | no | no | no (`verify.run` runs on a throwaway copy of the working directory) |
 | Files of the checks are read only, and put back if a command changes them | **yes** | no | no | no |
-| Journal of every change: diff and rollback per task, without git | **yes** | no | diff stat only | no (opt-in git worktrees) |
+| Journal of every change: diff and rollback per task, without git | **yes** | no | diff stat only | not described (opt-in git worktrees, run checkpoints) |
 | Quotes of an answer looked up in the source, invented ones dropped and reported | **yes** | no | no | no |
 | Numbers of an answer and extracted values looked up in the source | **yes** | no | no | no |
 | Agreement score over repeated runs | **yes** | no | no | no |
-| Verdict of the orchestrator becomes a lesson for the next tasks of the project | **yes** | no | no | no |
-| A stopped task goes on in the same conversation with a hint | **yes** | no | no | re-delegated from scratch |
+| Verdict of the orchestrator becomes a lesson for the next tasks of the project | **yes** | no | no | no (lessons come from reflection on episodes and votes) |
+| A stopped task goes on in the same conversation with a hint | **yes** | no | no | partly (a hint from an escalation model; a run cut off by a crash resumes) |
 | Models without native tool calling do delegated work | yes (JSON replies, schema forced where the server can) | not applicable | no | yes (grammar, own llama.cpp) |
-| Capabilities of each model measured, not assumed | yes (probe) | profiles per family | no | per provider kind |
-| Command allow list checked on every part of a pipeline | **yes** | not applicable | no | directories per approval |
-| Operating system sandbox for the commands of the local model | yes (bubblewrap: no network, machine read only) | not applicable | no | no |
-| Tasks with dependencies, file ownership between parallel tasks | yes | no | no | yes (waves, optional worktrees) |
-| Accounting of what delegation saved | yes, with quote failure rate and acceptance per model | yes | no | tokens and cost |
+| Capabilities of each model measured, not assumed | yes (probe) | profiles per family, speed measured per model | no | not confirmed |
+| Command allow list checked on every part of a pipeline | **yes** | not applicable | no (shell on or off) | approval ladder, detail not confirmed |
+| Operating system sandbox for the commands of the local model | yes (bubblewrap: no network, machine read only) | not applicable | no (path confinement only) | no (approval ladder, secrets removed from the command environment) |
+| Tasks with dependencies, file ownership between parallel tasks | yes | no | no (parallel calls, separate directories advised) | yes (waves, optional worktrees) |
+| Accounting of what delegation saved | yes, with quote failure rate and acceptance per model | yes | no | tokens and cost per worker |
 
 Where the others are ahead: houtini-lm reaches cloud providers too and keeps richer per-model performance statistics; Atomic Agent is a complete agent with its own model manager, a user interface and parallel workers across several cloud providers. Tandem is only the part between an orchestrator you already use and a model you already run.
 
