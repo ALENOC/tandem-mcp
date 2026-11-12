@@ -320,4 +320,88 @@ bin_task._save('unverified', 'done', [])
 agent.rollback(bin_job)
 ok((bin_root / 'blob.bin').read_bytes() == orig_bytes, 'binary file restored byte-for-byte identically by rollback')
 
+# 5. _guard_files() guards >200 protected test files without a 200-file cap
+guard_root = Path(tempfile.mkdtemp(dir=Path.home() if os.environ.get('TANDEM_TEST_IN_HOME') else None))
+(guard_root / 'tests').mkdir()
+for idx in range(220):
+    (guard_root / 'tests' / f'test_{idx:03d}.py').write_text(f'def test_{idx}():\n    assert True\n')
+guard_ws = sandbox.Workspace(guard_root, ['src/*.py'], [r'^python3\b'])
+guard_ws.protect(['pytest'])
+guard_job, guard_folder = store.new_job('delegate')
+guard_task = agent.Task(guard_job, guard_folder, 'goal', guard_ws, ['pytest'], 5, 0, '', '')
+guard_task.take_guard()
+ok(len(guard_task.guard) == 220 and 'tests/test_219.py' in guard_task.guard,
+   '_guard_files() guards all 220 test files (>200)')
+(guard_root / 'tests' / 'test_219.py').write_text('TAMPERED\n')
+restored_guard = guard_task.restore_guard()
+ok('tests/test_219.py' in restored_guard
+   and (guard_root / 'tests' / 'test_219.py').read_text() == 'def test_219():\n    assert True\n',
+   'restore_guard() restores guarded test file #219')
+
+# 6. SKIP_DIRS are read-only in jail_command() and refused by Workspace.writable()
+skip_root = Path(tempfile.mkdtemp(dir=Path.home() if os.environ.get('TANDEM_TEST_IN_HOME') else None))
+(skip_root / '.venv').mkdir()
+(skip_root / '.venv' / 'keep.txt').write_text('keep')
+(skip_root / 'node_modules').mkdir()
+(skip_root / 'node_modules' / 'pkg.js').write_text('module.exports = 1;')
+jcmd = sandbox.jail_command('true', skip_root)
+jcmd_pairs = list(zip(jcmd, jcmd[1:]))
+ok(('--ro-bind', str((skip_root / '.venv').resolve())) in jcmd_pairs
+   and ('--ro-bind', str((skip_root / 'node_modules').resolve())) in jcmd_pairs,
+   'jail_command() bind-mounts .venv and node_modules read-only')
+skip_ws = sandbox.Workspace(skip_root)
+try:
+    skip_ws.writable('.venv/x')
+    ok(False, 'writable() must refuse .venv')
+except sandbox.SandboxError:
+    ok(True, 'writable() refuses SKIP_DIRS when not in write_globs')
+if sandbox.jail_available():
+    jcode, _ = sandbox.run('touch .venv/x', skip_root, jail=True)
+    ok(jcode != 0 and not (skip_root / '.venv' / 'x').exists(),
+       'writing to .venv inside bwrap jail fails')
+
+# 7. parallel run() claims & run_lock: second task modifying file claimed by first is reverted and refused
+claim_root = Path(tempfile.mkdtemp(dir=Path.home() if os.environ.get('TANDEM_TEST_IN_HOME') else None))
+(claim_root / 'shared.txt').write_text('init\n')
+shared_claims = {}
+shared_run_lock = __import__('threading').Lock()
+ws_a = sandbox.Workspace(claim_root, ['shared.txt'], [r'^python3\b'])
+ws_a.claims, ws_a.name, ws_a.run_lock = shared_claims, 'task-a', shared_run_lock
+ws_b = sandbox.Workspace(claim_root, ['shared.txt'], [r'^python3\b'])
+ws_b.claims, ws_b.name, ws_b.run_lock = shared_claims, 'task-b', shared_run_lock
+ja, fa = store.new_job('delegate')
+jb, fb = store.new_job('delegate')
+ta = agent.Task(ja, fa, 'goal', ws_a, [], 5, 0, '', '')
+tb = agent.Task(jb, fb, 'goal', ws_b, [], 5, 0, '', '')
+res_a = ta.call('run', {'command': 'python3 -c "open(\'shared.txt\', \'w\').write(\'from-a\\n\')"'})
+ok(not res_a.startswith('ERROR') and shared_claims.get('shared.txt') == 'task-a',
+   'task A claims shared.txt via run()')
+res_b = tb.call('run', {'command': 'python3 -c "open(\'shared.txt\', \'w\').write(\'from-b\\n\')"'})
+ok('owned by another task' in res_b and (claim_root / 'shared.txt').read_text() == 'from-a\n',
+   'task B run() modifying file claimed by task A is reverted and refused')
+
+# 8. _launch() records post_state.json on exception, and rollback() is cautious if post_state.json is missing on error
+crash_root = Path(tempfile.mkdtemp(dir=Path.home() if os.environ.get('TANDEM_TEST_IN_HOME') else None))
+(crash_root / 'a.txt').write_text('before\n')
+crash_ws = sandbox.Workspace(crash_root)
+crash_job, crash_folder = store.new_job('delegate')
+crash_task = agent.Task(crash_job, crash_folder, 'goal', crash_ws, [], 5, 0, '', '')
+crash_task._save('running', '', [])
+
+
+def _boom():
+    crash_task.call('write_file', {'path': 'a.txt', 'content': 'during\n'})
+    raise RuntimeError('simulated crash')
+
+
+th = agent._launch(crash_task, _boom)
+th.join(5)
+ok((crash_folder / 'post_state.json').exists() and store.read_job(crash_job)['state'] == 'error',
+   '_launch() records post_state.json on exception')
+(crash_folder / 'post_state.json').unlink()
+(crash_root / 'a.txt').write_text('user_edit\n')
+rb_crash = agent.rollback(crash_job)
+ok('skipped (no post-crash state recorded): a.txt' in rb_crash and (crash_root / 'a.txt').read_text() == 'user_edit\n',
+   'rollback() cautiously skips modified file when error job has no post_state.json')
+
 print(f'{checks} checks, 0 failures')

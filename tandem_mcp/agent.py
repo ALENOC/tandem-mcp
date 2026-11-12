@@ -13,6 +13,7 @@ What keeps a small model honest here:
 - a call repeated with the same result is noticed and the task stops instead of burning steps;
 - a model without native tool calling gets the same tools through a JSON reply protocol."""
 import ast
+import contextlib
 import difflib
 import hashlib
 import json
@@ -289,31 +290,66 @@ class Task:
         if name == 'run':
             command = str(args['command'])
             self.ws.check_command(command)
-            self.take_snapshot()
-            before = sandbox.stamp(self.ws.root)
-            rem = self._remaining_seconds()
-            run_timeout = 180 if rem is None else max(1.0, min(180.0, rem))
-            code, out = sandbox.run(command, self.ws.root, timeout=run_timeout, jail=True)
-            after = sandbox.stamp(self.ws.root)
-            changed = [rel for rel in sorted(set(before) | set(after))
-                       if before.get(rel) != after.get(rel)]
-            outside = [rel for rel in changed
-                       if self.ws.write_globs and not self.ws._in_globs(rel) and rel not in self.guard]
-            if outside:
-                reverted, unbacked = self._revert_from_snapshot(outside)
-                self.touched |= {rel for rel in changed if rel not in self.journal and rel not in reverted}
+            run_ctx = self.ws.run_lock if self.ws.run_lock is not None else contextlib.nullcontext()
+            with run_ctx:
+                self.take_snapshot()
+                pre_run_claimed = {}
+                if self.ws.claims:
+                    for crel in list(self.ws.claims):
+                        cp = _safe_workspace_path(self.ws.root, crel)
+                        if cp is not None and cp.is_file():
+                            try:
+                                pre_run_claimed[crel] = cp.read_bytes()
+                            except OSError:
+                                pass
+                before = sandbox.stamp(self.ws.root)
+                rem = self._remaining_seconds()
+                run_timeout = 180 if rem is None else max(1.0, min(180.0, rem))
+                code, out = sandbox.run(command, self.ws.root, timeout=run_timeout, jail=True)
+                after = sandbox.stamp(self.ws.root)
+                changed = [rel for rel in sorted(set(before) | set(after))
+                           if before.get(rel) != after.get(rel)]
+                outside = [rel for rel in changed
+                           if self.ws.write_globs and not self.ws._in_globs(rel) and rel not in self.guard]
+                claimed_by_other = []
+                if self.ws.claims is not None:
+                    for rel in changed:
+                        if rel in outside or rel in self.guard:
+                            continue
+                        owner = self.ws.claims.setdefault(rel, self.ws.name)
+                        if owner != self.ws.name:
+                            claimed_by_other.append(rel)
+                if outside or claimed_by_other:
+                    reverted, unbacked = self._revert_from_snapshot(outside) if outside else ([], [])
+                    claim_rev, claim_unb = [], []
+                    for rel in claimed_by_other:
+                        p = _safe_workspace_path(self.ws.root, rel)
+                        if p is not None and rel in pre_run_claimed:
+                            p.parent.mkdir(parents=True, exist_ok=True)
+                            p.write_bytes(pre_run_claimed[rel])
+                            claim_rev.append(rel)
+                        else:
+                            cr, cu = self._revert_from_snapshot([rel])
+                            claim_rev.extend(cr)
+                            claim_unb.extend(cu)
+                    all_reverted = set(reverted) | set(claim_rev)
+                    self.touched |= {rel for rel in changed if rel not in self.journal and rel not in all_reverted}
+                    cap = max(1500, min(OUT_CAP, self.budget // 4))
+                    tail = out[-cap:] if len(out) > cap else out
+                    parts = []
+                    if reverted:
+                        parts.append(f'ERROR: command modified file(s) outside write_globs (reverted): {", ".join(reverted)}')
+                    if unbacked:
+                        parts.append('ERROR: command modified pre-existing file(s) outside write_globs without snapshot backup '
+                                     f'(could not revert): {", ".join(unbacked)}')
+                    if claim_rev:
+                        parts.append(f'ERROR: {", ".join(claim_rev)} is owned by another task (reverted)')
+                    if claim_unb:
+                        parts.append(f'ERROR: {", ".join(claim_unb)} is owned by another task (could not revert)')
+                    return '\n'.join(parts) + f'\nexit {code}\n{tail}'
+                self.touched |= {rel for rel in changed if rel not in self.journal}
                 cap = max(1500, min(OUT_CAP, self.budget // 4))
-                tail = out[-cap:] if len(out) > cap else out
-                parts = []
-                if reverted:
-                    parts.append(f'ERROR: command modified file(s) outside write_globs (reverted): {", ".join(reverted)}')
-                if unbacked:
-                    parts.append('ERROR: command modified pre-existing file(s) outside write_globs without snapshot backup '
-                                 f'(could not revert): {", ".join(unbacked)}')
-                return '\n'.join(parts) + f'\nexit {code}\n{tail}'
-            self.touched |= {rel for rel in changed if rel not in self.journal}
-            cap = max(1500, min(OUT_CAP, self.budget // 4))
-            return f'exit {code}\n' + (out[-cap:] if len(out) > cap else out)
+                return f'exit {code}\n' + (out[-cap:] if len(out) > cap else out)
         return f'ERROR: unknown tool {name}. The tools are: {", ".join(NAMES)}'
 
     # results ---------------------------------------------------------------------------------
@@ -447,7 +483,7 @@ class Task:
             if p.is_file():
                 files.add(rel)
             elif p.is_dir():
-                files.update(f'{rel}/{sub}' for sub in sandbox.walk(p, '*', 200))
+                files.update(f'{rel}/{sub}' for sub in sandbox.walk(p, '*', limit=None))
         if self.ws.immutable:
             for rel in sandbox.walk(self.ws.root, '*', 2000):
                 if self.ws._is_immutable(rel):
@@ -808,6 +844,10 @@ def _launch(task, body_of, release=None):
                 task.restore_guard()
             except Exception:
                 pass
+            try:
+                task._record_post_state()
+            except Exception:
+                pass
             task._save('error', f'{type(exc).__name__}: {exc}', [])
             state = 'error'
         diff = task.diff()
@@ -894,14 +934,17 @@ def rollback(job):
     journal = store.read_json(folder / 'journal.json', {}) or {}
     journal_bin = store.read_json(folder / 'journal_bin.json')
     snapshot = store.read_json(folder / 'snapshot.json')
-    post_state = store.read_json(folder / 'post_state.json', {}) or {}
+    post_state_path = folder / 'post_state.json'
+    post_state_exists = post_state_path.exists()
+    post_state = store.read_json(post_state_path, {}) or {}
+    cautious_crash = (data.get('state') == 'error' and not post_state_exists)
     touched = list(data.get('touched', []))
     if not journal and not journal_bin and not touched:
         if not (folder / 'journal.json').exists() and not (folder / 'journal_bin.json').exists() and snapshot is None:
             return 'no journal for this job'
     root = Path(data['workspace'])
     blobs = folder / 'blobs'
-    done, skipped, unbacked, left = [], [], [], []
+    done, skipped, no_post_state, unbacked, left = [], [], [], [], []
 
     def user_modified(rel, p):
         if rel not in post_state:
@@ -917,6 +960,15 @@ def rollback(job):
         if user_modified(rel, p):
             skipped.append(rel)
             continue
+        if cautious_crash and p.exists() and not p.is_symlink():
+            if entry is None:
+                no_post_state.append(rel)
+                continue
+            expected_hash = (entry if journal_bin is not None
+                             else hashlib.sha256(entry.encode('utf-8', errors='replace')).hexdigest())
+            if _file_hash(p) != expected_hash:
+                no_post_state.append(rel)
+                continue
         if journal_bin is not None:
             if entry is None:
                 if p.exists() and not p.is_symlink():
@@ -954,6 +1006,11 @@ def rollback(job):
         if snapshot is None:
             left.append(rel)
             continue
+        if cautious_crash and p.exists() and not p.is_symlink():
+            expected_hash = snapshot.get(rel)
+            if expected_hash is None or _file_hash(p) != expected_hash:
+                no_post_state.append(rel)
+                continue
         if rel in snapshot:
             digest = snapshot[rel]
             if digest is None:
@@ -976,6 +1033,8 @@ def rollback(job):
     parts = ['restored: ' + (', '.join(done) or 'nothing')]
     if skipped:
         parts.append('skipped (modified after job ended): ' + ', '.join(skipped))
+    if no_post_state:
+        parts.append('skipped (no post-crash state recorded): ' + ', '.join(no_post_state))
     if unbacked:
         parts.append('not undone (too large/skipped from snapshot): ' + ', '.join(unbacked))
     if left:
@@ -1013,6 +1072,7 @@ def start_batch(tasks, workspace, allow_run, workers=1, max_steps=30, max_repair
     batch, folder = store.new_job('batch')
     rows = [{'name': t['name'], 'after': t['after'], 'state': 'waiting', 'job': ''} for t in tasks]
     claims, lock = {}, threading.Lock()
+    run_lock = threading.Lock() if workers > 1 else None
 
     def save(state):
         data = store.read_job(batch) or {}
@@ -1044,7 +1104,7 @@ def start_batch(tasks, workspace, allow_run, workers=1, max_steps=30, max_repair
                     if sum(1 for r in rows if r['state'] == 'running') >= workers:
                         continue
                     ws = sandbox.Workspace(root, spec.get('write_globs'), allow_run, spec.get('immutable') or immutable)
-                    ws.claims, ws.name = claims, row['name']
+                    ws.claims, ws.name, ws.run_lock = claims, row['name'], run_lock
                     row['job'] = start(spec['goal'], ws, spec.get('verify_commands', []), max_steps, max_repairs, model,
                                        spec.get('context') or context, baseline,
                                        checks_network=spec.get('checks_network', checks_network),

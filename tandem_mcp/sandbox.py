@@ -166,6 +166,7 @@ class Workspace:
             raise SandboxError(f'allow_run holds a bad regular expression: {exc}') from exc
         self.protected = set()             # files and folders the acceptance checks rely on
         self.claims = None                 # shared {path: task name} when tasks run side by side
+        self.run_lock = None               # shared lock serializing parallel shell commands
         self.name = ''
 
     def path(self, rel):
@@ -233,8 +234,12 @@ class Workspace:
         if p == self.root:
             raise SandboxError('that is the workspace folder, not a file')
         r = self.rel(p)
-        if '.git' in Path(r).parts:
+        parts = Path(r).parts
+        if '.git' in parts:
             raise SandboxError('the .git folder is not writable')
+        skip_hit = next((part for part in parts if part in SKIP_DIRS), None)
+        if skip_hit and not self._in_globs(r):
+            raise SandboxError(f'{r} is inside {skip_hit} and is read only')
         if self._is_immutable(r):
             raise SandboxError(f'{r} is declared immutable and is read only')
         if self.write_globs and not self._in_globs(r):
@@ -307,6 +312,12 @@ def jail_command(command, root, allow_net=False):
     args += ['--bind', str(root), str(root)]
     if (root / '.git').is_dir():
         args += ['--ro-bind', str(root / '.git'), str(root / '.git')]
+    for d in sorted(SKIP_DIRS):
+        if d == '.git':
+            continue
+        p = root / d
+        if p.is_dir() and not p.is_symlink():
+            args += ['--ro-bind', str(p), str(p)]
     if not allow_net and os.environ.get('TANDEM_SANDBOX_NET', '') != '1':
         args += ['--unshare-net']
     return args + ['--unshare-pid', '--die-with-parent', '--new-session', '--chdir', str(root), '/bin/sh', '-c', command]
@@ -399,18 +410,35 @@ def walk(root, glob='**/*', limit=None):
 
 
 def stamp(root, limit=None):
-    """Size and SHA-256 of the files of a workspace, to see what a command touched."""
-    root = Path(root)
+    """Size and SHA-256 of the files of a workspace, to see what a command touched.
+
+    Uses os.scandir to avoid redundant stat/Path/glob work while still reading every
+    non-skipped file with hashlib.file_digest (intentionally not trusting mtime_ns/size
+    to prevent mtime-spoofing by commands).
+    """
     out = {}
-    for rel in walk(root, '*', limit):
-        p = root / rel
-        if p.is_symlink():
-            continue
+    stack = [(os.fspath(root), '')]
+    while stack:
+        dirpath, prefix = stack.pop()
         try:
-            st = p.stat()
-            with p.open('rb') as f:
-                digest_hex = hashlib.file_digest(f, 'sha256').hexdigest()
+            with os.scandir(dirpath) as it:
+                entries = list(it)
         except OSError:
             continue
-        out[rel] = (st.st_size, digest_hex)
+        for entry in entries:
+            try:
+                if entry.is_symlink():
+                    continue
+                if entry.is_dir(follow_symlinks=False):
+                    if entry.name not in SKIP_DIRS:
+                        stack.append((entry.path, f'{prefix}{entry.name}/'))
+                elif entry.is_file(follow_symlinks=False):
+                    st = entry.stat(follow_symlinks=False)
+                    with open(entry.path, 'rb') as f:
+                        digest_hex = hashlib.file_digest(f, 'sha256').hexdigest()
+                    out[f'{prefix}{entry.name}'] = (st.st_size, digest_hex)
+                    if limit is not None and len(out) >= limit:
+                        return out
+            except OSError:
+                continue
     return out

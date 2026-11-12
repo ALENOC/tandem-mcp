@@ -303,6 +303,35 @@ ok('a: restored: a.txt' in server.job_rollback(batch) and not any((root / f'{n}.
 out = server.delegate_many([T('bad'), T('b', 'bad'), T('c')], str(root), wait_seconds=60, workers=2)
 ok('PARTIAL' in out and 'b: CANCELLED  not started: bad did not succeed' in out and 'c: VERIFIED' in out, out)
 ok(server.delegate_many([T('a', 'b'), T('b', 'a')], str(root)).startswith('ERROR'), 'a circle is refused before anything runs')
+
+# parallel batch run() conflict: task 'a' claims shared.txt, task 'b' tries to overwrite it via run()
+conflict_root = project()
+(conflict_root / 'shared.txt').write_text('orig\n')
+
+
+def conflict_worker(body):
+    import time
+    text = '\n'.join(str(m.get('content', '')) for m in body['messages'])
+    tail = text.split('Task:')[1]
+    task = tail.split('\n')[0]
+    if 'TaskA' in task:
+        if 'exit 0' in tail:
+            time.sleep(0.8)
+            return ('finish', {'summary': 'a done'})
+        return ('run', {'command': 'python3 -c "open(\'shared.txt\', \'w\').write(\'owned-by-a\\n\')"'})
+    if 'owned by another task' in tail:
+        return ('finish', {'summary': 'b blocked on claim', 'blocked': True})
+    time.sleep(0.2)
+    return ('run', {'command': 'python3 -c "open(\'shared.txt\', \'w\').write(\'clobber-b\\n\')"'})
+
+
+fake.policy = conflict_worker
+out = server.delegate_many([
+    {'name': 'a', 'goal': 'TaskA', 'verify_commands': [], 'write_globs': ['shared.txt'], 'after': []},
+    {'name': 'b', 'goal': 'TaskB', 'verify_commands': [], 'write_globs': ['shared.txt'], 'after': []},
+], str(conflict_root), allow_run=[r'^python3\b'], workers=2, wait_seconds=60)
+ok((conflict_root / 'shared.txt').read_text() == 'owned-by-a\n' and 'BLOCKED' in out,
+   f'parallel delegate_many run() conflict: shared={ (conflict_root / "shared.txt").read_text()!r } out={out!r}')
 fake.policy = None
 
 # 12. reading with checked evidence ---------------------------------------------------------------
