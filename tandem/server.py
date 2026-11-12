@@ -30,7 +30,9 @@ GUIDE = '''Local executor (a model on this machine, free to use). Prefer it for 
   then job_feedback (accepted or not, with a lesson), job_continue (a hint, same conversation) or job_rollback.
 - delegate_many: several tasks with an order, each with its own checks and its own rollback.
 - ask: a text task; samples > 1 gives an agreement score, low agreement means do it yourself.
-Keep design decisions, irreversible actions and anything without an automatic check for yourself.'''
+Keep design decisions, irreversible actions and anything without an automatic check for yourself.
+The executor is slow. If a call runs past the client timeout and moves to the background, do not cancel it
+or redo its work with the cloud model on your own: ask the user whether to keep waiting or to stop it.'''
 mcp = MCPServer('tandem', version=__version__, instructions=GUIDE)
 logging.getLogger('httpx').setLevel(logging.WARNING)
 logging.getLogger('openai').setLevel(logging.WARNING)
