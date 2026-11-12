@@ -1,0 +1,97 @@
+{
+  "date": "2026-11-13 00:49:48",
+  "platform": "Linux x86_64 / Python 3.13.17",
+  "server": "LM Studio",
+  "model": "qwen3.8-27b@iq3_s",
+  "context": 65536,
+  "caps": {
+    "tools": true,
+    "schema": true,
+    "thinking": true,
+    "tps": 11.1,
+    "probed": 1794526814.2060153
+  },
+  "sandbox": "bubblewrap (machine read only, workspace writable, credentials hidden, env secrets stripped, no network)",
+  "digest": [
+    {
+      "scenario": "Full-file doc QA (`README.md`)",
+      "tool": "digest_file",
+      "in_chars": 20822,
+      "out_chars": 403,
+      "cloud_in_est": 5784,
+      "cloud_out_est": 112,
+      "saved_tok_est": 5672,
+      "saved_pct": 98.1,
+      "local_tokens": 6732,
+      "seconds": 23.97,
+      "quotes_ok": 0,
+      "quotes_bad": 3,
+      "claim_status": "unsupported",
+      "read_lines": "226/226"
+    },
+    {
+      "scenario": "Targeted grep QA (`agent.py`)",
+      "tool": "digest_file (grep)",
+      "in_chars": 52912,
+      "out_chars": 682,
+      "cloud_in_est": 14698,
+      "cloud_out_est": 189,
+      "saved_tok_est": 14508,
+      "saved_pct": 98.7,
+      "local_tokens": 532,
+      "seconds": 16.05,
+      "quotes_ok": 2,
+      "quotes_bad": 0,
+      "claim_status": "contested",
+      "read_lines": "7/1065"
+    },
+    {
+      "scenario": "Multi-file package survey (`tandem_mcp/*.py`)",
+      "tool": "digest_many (8 files)",
+      "in_chars": 149656,
+      "out_chars": 1616,
+      "cloud_in_est": 41571,
+      "cloud_out_est": 449,
+      "saved_tok_est": 41122,
+      "saved_pct": 98.9,
+      "local_tokens": 58535,
+      "seconds": 473.84,
+      "quotes_ok": 13,
+      "quotes_bad": 0,
+      "claim_status": "checked",
+      "read_lines": "8 files"
+    }
+  ],
+  "delegate": [
+    {
+      "scenario": "Micro bugfix (1 tiny file, 6 lines)",
+      "tool": "delegate",
+      "in_chars": 1047,
+      "out_chars": 422,
+      "cloud_in_est": 291,
+      "cloud_out_est": 117,
+      "saved_tok_est": 174,
+      "saved_pct": 59.7,
+      "local_tokens": 4058,
+      "seconds": 19.07,
+      "state": "verified",
+      "steps": 3,
+      "repairs": 0
+    },
+    {
+      "scenario": "Multi-file bugfix (`config_loader.py` + 3 other files)",
+      "tool": "delegate",
+      "in_chars": 6094,
+      "out_chars": 469,
+      "cloud_in_est": 1693,
+      "cloud_out_est": 130,
+      "saved_tok_est": 1562,
+      "saved_pct": 92.3,
+      "local_tokens": 7414,
+      "seconds": 34.18,
+      "state": "verified",
+      "steps": 4,
+      "repairs": 0
+    }
+  ]
+}

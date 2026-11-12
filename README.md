@@ -212,6 +212,17 @@ The last row is the honest limit of a 5B model: in the two failed runs it wrote 
 
 No quote was dropped in these runs. This is a small sample: `ledger_report` gives the figure for your own model and material.
 
+## Benchmarks
+
+A reproducible live benchmark measuring cloud token compression (`~3.6` chars/token), local tokens, wall-clock latency, and evidence verification is in [benchmarks/run_benchmark.py](benchmarks/run_benchmark.py) with full measured output in [benchmarks/RESULTS.md](benchmarks/RESULTS.md).
+
+Summary on `qwen3.8-27b@iq3_s` (LM Studio, ~11.1 tok/s, cache disabled):
+
+- `digest_file` (`README.md`, 20.8 KB): **98.1%** cloud input reduction (`~5,672` est. tokens saved, `24.0 s`) — note: non-verbatim quotes were caught and flagged as `unsupported`.
+- `digest_file` with `grep` (`agent.py`, 52.9 KB → 7 lines read): **98.7%** reduction (`~14,508` est. tokens saved, `16.1 s`).
+- `digest_many` (`tandem_mcp/*.py`, 8 files, 149.7 KB): **98.9%** reduction (`~41,122` est. tokens saved, `473.8 s` sequential).
+- `delegate` (multi-file bugfix, 6.1 KB): **92.3%** reduction (`~1,562` est. tokens saved, `34.2 s`, `VERIFIED`); micro 6-line 1-file fix saved only `~174` est. tokens in `19.1 s`.
+
 ## Layout
 
 - `tandem_mcp/server.py`: the MCP tools and the receipts.
