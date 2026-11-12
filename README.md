@@ -231,6 +231,24 @@ Summary on `qwen3.8-27b@iq3_s` (LM Studio, ~11.1 tok/s, cache disabled):
 - `tandem_mcp/agent.py`: the executor loop, both protocols, journal, checks, guard, hints, batches, rollback.
 - `tandem_mcp/sandbox.py`: workspace and command limits, the bubblewrap sandbox.
 - `tandem_mcp/store.py`: ledger, lessons, model capabilities, cache, jobs.
+- `scripts/install.py`: one-command installer/uninstaller for Claude Code, Codex, and Antigravity.
+- `benchmarks/`: reproducible live benchmark script and results.
+
+## Quick install for MCP clients
+
+After creating `.venv` and installing dependencies, register `tandem-mcp` in Claude Code, Codex, and Antigravity with one command:
+
+```sh
+.venv/bin/python scripts/install.py
+```
+
+Useful options:
+
+- `--clients claude,codex,antigravity`: select specific clients (default: all three).
+- `--replace-legacy`: remove any old `lmstudio` MCP entries while installing `tandem-mcp`.
+- `--env TANDEM_SANDBOX=require`: pass environment variables to the registered MCP server (repeatable).
+- `--dry-run`: print the actions without modifying any configuration.
+- `--uninstall`: remove `tandem-mcp` from the selected clients.
 
 ## License
 

@@ -404,4 +404,24 @@ rb_crash = agent.rollback(crash_job)
 ok('skipped (no post-crash state recorded): a.txt' in rb_crash and (crash_root / 'a.txt').read_text() == 'user_edit\n',
    'rollback() cautiously skips modified file when error job has no post_state.json')
 
+# MCP client installer script ---------------------------------------------------------------------
+from scripts import install as mcp_install  # noqa: E402
+import json as _json  # noqa: E402
+
+fake_home = Path(tempfile.mkdtemp())
+(fake_home / '.gemini/config').mkdir(parents=True)
+cfg_file = fake_home / '.gemini/config/mcp_config.json'
+cfg_file.write_text(_json.dumps({'mcpServers': {'lmstudio': {'command': 'old'}, 'other': {'command': 'keep'}}}))
+res_inst = mcp_install.install_antigravity('tandem-mcp', '/usr/bin/python3', '/app/main.py',
+                                           {'TANDEM_SANDBOX': 'require'}, replace_legacy=True, home=fake_home)
+cfg_data = _json.loads(cfg_file.read_text())
+ok('installed' in res_inst and 'lmstudio' not in cfg_data['mcpServers'] and 'other' in cfg_data['mcpServers']
+   and cfg_data['mcpServers']['tandem-mcp']['env'] == {'TANDEM_SANDBOX': 'require'},
+   'install_antigravity replaces legacy and preserves other servers')
+res_un = mcp_install.uninstall_antigravity('tandem-mcp', home=fake_home)
+cfg_data = _json.loads(cfg_file.read_text())
+ok('removed' in res_un and 'tandem-mcp' not in cfg_data['mcpServers'] and 'other' in cfg_data['mcpServers'],
+   'uninstall_antigravity removes tandem-mcp only')
+ok(mcp_install.parse_env_pairs(['A=1', 'B=x=y']) == {'A': '1', 'B': 'x=y'}, 'parse_env_pairs handles = in values')
+
 print(f'{checks} checks, 0 failures')
