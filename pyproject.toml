@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tandem-mcp"
-version = "3.0.0"
+version = "3.0.1"
 description = "MCP server that pairs a cloud orchestrator model with any local executor model: contracts, checked evidence, rollback, supervised memory"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -17,7 +17,7 @@ dependencies = ["mcp>=2.3", "openai>=1.40"]
 Repository = "https://github.com/ALENOC/tandem-mcp"
 
 [project.scripts]
-tandem-mcp = "tandem.server:main"
+tandem-mcp = "tandem_mcp.server:main"
 
 [tool.setuptools]
-packages = ["tandem"]
+packages = ["tandem_mcp"]

@@ -16,7 +16,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 os.environ['TANDEM_HOME'] = tempfile.mkdtemp()
-from tandem import engine, server, store  # noqa: E402
+from tandem_mcp import engine, server, store  # noqa: E402
 
 logging.disable(logging.INFO)
 PY = sys.executable

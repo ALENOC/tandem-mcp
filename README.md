@@ -98,7 +98,7 @@ A receipt can also carry these notes:
 ## Limits of the executor
 
 - Paths are resolved (symbolic links included) and must stay inside the workspace; `.git` is never writable; `write_globs` narrows further.
-- The executor runs a command only if every part of it (between `;`, `&&`, `||`, `|`, `&` and line ends) matches `allow_run` and none matches the safety list (sudo, git push/commit/reset, recursive deletes of root or home, package installs, remote shells and others, see `tandem/sandbox.py`). Command substitution is refused. A redirection must point at a file the task may write.
+- The executor runs a command only if every part of it (between `;`, `&&`, `||`, `|`, `&` and line ends) matches `allow_run` and none matches the safety list (sudo, git push/commit/reset, recursive deletes of root or home, package installs, remote shells and others, see `tandem_mcp/sandbox.py`). Command substitution is refused. A redirection must point at a file the task may write.
 - Where [bubblewrap](https://github.com/containers/bubblewrap) is installed, commands of the executor run in a sandbox: the machine is read only, only the workspace is writable, `.git` stays read only, credential folders (`~/.ssh`, `~/.gnupg`, `~/.aws` and others) are hidden, there is no network. `executor_status` says which protection is active. `TANDEM_SANDBOX=require` refuses to run commands without it, `TANDEM_SANDBOX=off` disables it, `TANDEM_SANDBOX_NET=1` allows the network.
 - Without bubblewrap (macOS, Windows, restricted containers) only the checks on the command text apply. They are pattern checks, not a sandbox: allow only commands you would run yourself.
 - `verify_commands` and `digest_command` are written by the orchestrator and run as given, with its rights.
@@ -111,11 +111,11 @@ Read this before you point the server at a project you care about.
 
 **What runs commands**
 
-- `digest_command` and the `verify_commands` of a task are written by the orchestrator and run as given, with the rights of the user who started the server. They are not confined (`tandem/server.py`, `tandem/agent.py`: `sandbox.run` without `jail`).
+- `digest_command` and the `verify_commands` of a task are written by the orchestrator and run as given, with the rights of the user who started the server. They are not confined (`tandem_mcp/server.py`, `tandem_mcp/agent.py`: `sandbox.run` without `jail`).
 - Commands the local model chooses in a `delegate` task run only if they match `allow_run`, pass the safety list and the text checks, and they run inside bubblewrap when it is usable (`jail=True`).
 - The orchestrator decides `allow_run`, `write_globs` and `verify_commands`. Give a task the narrowest values that let it work.
 
-**What the bubblewrap sandbox does** (`jail_command` in `tandem/sandbox.py`)
+**What the bubblewrap sandbox does** (`jail_command` in `tandem_mcp/sandbox.py`)
 
 - The whole machine is bound read only (`--ro-bind / /`): files stay readable, they cannot be changed. A fresh `/tmp`, `/dev` and `/proc` are mounted.
 - Only the workspace is writable. `.git` inside it is bound read only.
@@ -135,7 +135,7 @@ Read this before you point the server at a project you care about.
 
 **Hostile text**
 
-- Files, logs and command output that the local model reads can contain instructions aimed at it. The prompts tell the model that this text is data and not to follow it (`SYSTEM` in `tandem/digest.py` and `tandem/agent.py`), which lowers the risk and does not remove it. The limits above hold whatever the model decides.
+- Files, logs and command output that the local model reads can contain instructions aimed at it. The prompts tell the model that this text is data and not to follow it (`SYSTEM` in `tandem_mcp/digest.py` and `tandem_mcp/agent.py`), which lowers the risk and does not remove it. The limits above hold whatever the model decides.
 - A small local model can also simply be wrong. Read the receipt, check `job_diff` when the change matters, and close every job with `job_feedback` or `job_rollback` before you rely on it.
 
 To report a vulnerability, see [SECURITY.md](SECURITY.md).
@@ -155,7 +155,9 @@ MCP client configuration (stdio):
 {"command": "/path/to/tandem-mcp/.venv/bin/tandem-mcp"}
 ```
 
-`python main.py` and `python -m tandem` start the same server. Python 3.11 or newer.
+`python main.py` and `python -m tandem_mcp` start the same server. Python 3.11 or newer.
+
+The distribution is `tandem-mcp` and the Python package is `tandem_mcp`. Version 3.0.0 imported as `tandem`, a name that the unrelated PyPI project `tandem` also installs; a client that started the server with `python -m tandem` must use `python -m tandem_mcp` (or `python main.py`, or the `tandem-mcp` command, which did not change).
 
 Start a local model server and load a model. With no configuration Tandem tries the usual ports in this order: LM Studio (1234), Ollama (11434), llama.cpp (8080), vLLM (8000), Jan (1337), KoboldCpp (5001), text-generation-webui (5000), LocalAI (8081).
 
@@ -204,12 +206,12 @@ No quote was dropped in these runs. This is a small sample: `ledger_report` give
 
 ## Layout
 
-- `tandem/server.py`: the MCP tools and the receipts.
-- `tandem/engine.py`: discovery of the server, capability probe, completions, JSON with repair, accounting.
-- `tandem/digest.py`: reading in parts, evidence and number checks, extraction, agreement.
-- `tandem/agent.py`: the executor loop, both protocols, journal, checks, guard, hints, batches, rollback.
-- `tandem/sandbox.py`: workspace and command limits, the bubblewrap sandbox.
-- `tandem/store.py`: ledger, lessons, model capabilities, cache, jobs.
+- `tandem_mcp/server.py`: the MCP tools and the receipts.
+- `tandem_mcp/engine.py`: discovery of the server, capability probe, completions, JSON with repair, accounting.
+- `tandem_mcp/digest.py`: reading in parts, evidence and number checks, extraction, agreement.
+- `tandem_mcp/agent.py`: the executor loop, both protocols, journal, checks, guard, hints, batches, rollback.
+- `tandem_mcp/sandbox.py`: workspace and command limits, the bubblewrap sandbox.
+- `tandem_mcp/store.py`: ledger, lessons, model capabilities, cache, jobs.
 
 ## License
 

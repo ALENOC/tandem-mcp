@@ -14,7 +14,7 @@ os.environ['TANDEM_HOME'] = tempfile.mkdtemp()
 for name in ('TANDEM_BASE_URL', 'LM_STUDIO_BASE_URL', 'TANDEM_MODEL', 'TANDEM_CONTEXT'):
     os.environ.pop(name, None)
 from fake_server import Fake  # noqa: E402
-from tandem import agent, digest, engine, sandbox, server, store  # noqa: E402
+from tandem_mcp import agent, digest, engine, sandbox, server, store  # noqa: E402
 
 logging.disable(logging.INFO)
 checks = 0
