@@ -105,6 +105,41 @@ A receipt can also carry these notes:
 - The material the executor reads is declared as data in every prompt, and the limits above hold whatever a file tells it to do.
 - The reasoning text of the model is never returned as an answer.
 
+## Security
+
+Read this before you point the server at a project you care about.
+
+**What runs commands**
+
+- `digest_command` and the `verify_commands` of a task are written by the orchestrator and run as given, with the rights of the user who started the server. They are not confined (`tandem/server.py`, `tandem/agent.py`: `sandbox.run` without `jail`).
+- Commands the local model chooses in a `delegate` task run only if they match `allow_run`, pass the safety list and the text checks, and they run inside bubblewrap when it is usable (`jail=True`).
+- The orchestrator decides `allow_run`, `write_globs` and `verify_commands`. Give a task the narrowest values that let it work.
+
+**What the bubblewrap sandbox does** (`jail_command` in `tandem/sandbox.py`)
+
+- The whole machine is bound read only (`--ro-bind / /`): files stay readable, they cannot be changed. A fresh `/tmp`, `/dev` and `/proc` are mounted.
+- Only the workspace is writable. `.git` inside it is bound read only.
+- These folders and files under the home folder are hidden or emptied: `.ssh`, `.gnupg`, `.aws`, `.azure`, `.kube`, `.docker`, `.config/gh`, `.config/gcloud`, `.password-store`, `.netrc`, `.git-credentials`, `.npmrc`, `.pypirc`. Other secrets that the user can read are not hidden.
+- No network (`--unshare-net`) unless `TANDEM_SANDBOX_NET=1`. The process runs in its own PID namespace, ends with the server and has a new session.
+
+**What it does not do**
+
+- The environment of the server is passed on unchanged: variables such as `TANDEM_API_KEY` or cloud keys are visible to a sandboxed command.
+- It is not a container: no other namespaces are unshared, and a kernel or bubblewrap flaw is outside what this project can promise.
+- It does not protect the workspace itself: a command may change or delete any file there that the task is allowed to write. Use `write_globs`, and look at `job_diff` or use `job_rollback`.
+
+**When bubblewrap is missing**
+
+- It is a Linux tool. On macOS, Windows or a container where it cannot create namespaces, `jail_available()` is false and the executor's commands run through a plain shell in the workspace, protected only by the checks on the command text. Those are pattern checks, not a sandbox.
+- `TANDEM_SANDBOX=require` refuses to run commands in that case, `auto` (the default) falls back silently, `off` never uses the sandbox. `describe_jail()` reports what is in force.
+
+**Hostile text**
+
+- Files, logs and command output that the local model reads can contain instructions aimed at it. The prompts tell the model that this text is data and not to follow it (`SYSTEM` in `tandem/digest.py` and `tandem/agent.py`), which lowers the risk and does not remove it. The limits above hold whatever the model decides.
+- A small local model can also simply be wrong. Read the receipt, check `job_diff` when the change matters, and close every job with `job_feedback` or `job_rollback` before you rely on it.
+
+To report a vulnerability, see [SECURITY.md](SECURITY.md).
+
 ## Install
 
 ```sh
