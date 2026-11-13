@@ -94,12 +94,6 @@ def executor_probe(model: str = '', force: bool = False) -> str:
         return _fail(exc)
 
 
-@mcp.tool()
-def check_lmstudio_status() -> str:
-    """Same as executor_status (name of version 1, kept)."""
-    return executor_status()
-
-
 # plain text tasks ------------------------------------------------------------------------------
 @mcp.tool()
 def ask(prompt: str, system_prompt: str = '', json_schema: str = '', samples: int = 1, max_tokens: int = 3000,
@@ -128,41 +122,6 @@ def ask(prompt: str, system_prompt: str = '', json_schema: str = '', samples: in
         share, best = digest.agreement(answers)
         text = best if isinstance(best, str) else json.dumps(best, indent=1)
         return _saved('ask', 0, f'[agreement {share:.2f} over {len(answers)} runs]\n{text}', agreement=share)
-    except Exception as exc:
-        return _fail(exc)
-
-
-@mcp.tool()
-def ask_local_qwen(prompt: str, system_prompt: str = '', model: str = '', max_tokens: int = 4096,
-                   temperature: float = 0.2) -> str:
-    """A text task for the local executor (name of version 1, kept: prefer `ask`)."""
-    try:
-        messages = ([{'role': 'system', 'content': system_prompt}] if system_prompt.strip() else []) + \
-                   [{'role': 'user', 'content': prompt}]
-        reply, _ = engine.chat(messages, tool='ask', model=model, max_tokens=max_tokens, temperature=temperature)
-        return _saved('ask', 0, reply.content)
-    except Exception as exc:
-        return _fail(exc)
-
-
-@mcp.tool()
-def generate_code_with_qwen(task_description: str, language: str = 'python', context_code: str = '') -> str:
-    """Code written by the local executor from a precise description (name of version 1, kept).
-    For a change inside a project prefer `delegate`, which edits the files and runs the checks."""
-    try:
-        prompt = f'Task: {task_description}\n'
-        if context_code.strip():
-            prompt += f'\nExisting code for context:\n{context_code}\n'
-        prompt += '\nReturn only the code, no fences, no explanation.'
-        reply, _ = engine.chat(
-            [{'role': 'system', 'content': f'You are a senior {language} programmer. Write complete, correct code. '
-                                           'Comments in English, no em dashes.'},
-             {'role': 'user', 'content': prompt}], tool='code', max_tokens=6000)
-        text = reply.content
-        if text.startswith('```'):
-            text = text.split('\n', 1)[1] if '\n' in text else ''
-            text = text.rsplit('```', 1)[0].rstrip()
-        return _saved('code', len(context_code), text)
     except Exception as exc:
         return _fail(exc)
 

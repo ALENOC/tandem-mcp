@@ -168,7 +168,6 @@ Compared in November 2026 from each project's README (not from running them). `"
 | `job_continue` | Resume a stopped job with a hint in the same conversation |
 | `job_feedback`, `lesson_add`, `lessons` | Record verdicts and manage standing project/global rules |
 | `ledger_report` | Calls, tokens, estimated cloud savings, and per-model quality stats |
-| `ask_local_qwen`, `generate_code_with_qwen`, `check_lmstudio_status` | Legacy v1 aliases |
 
 <details>
 <summary>Example delegated task &amp; receipt states</summary>

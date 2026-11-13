@@ -536,7 +536,7 @@ try:
     tools = {t['name']: t for t in rpc('tools/list', ident=2)['result']['tools']}
     want = {'executor_status', 'executor_probe', 'ask', 'digest_file', 'digest_command', 'digest_many', 'extract_from_file', 'delegate',
             'delegate_many', 'job_status', 'job_continue', 'job_diff', 'job_rollback', 'job_feedback', 'lesson_add', 'lessons',
-            'ledger_report', 'ask_local_qwen', 'generate_code_with_qwen', 'check_lmstudio_status'}
+            'ledger_report'}
     ok(set(tools) == want, f'MCP tools: {sorted(set(tools) ^ want)}')
     ok(all(t.get('description') for t in tools.values()) and 'verify_commands' in tools['delegate']['inputSchema']['properties'], 'tool schemas')
     called = rpc('tools/call', {'name': 'lessons', 'arguments': {'project_path': '*'}}, 3)
