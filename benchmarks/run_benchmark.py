@@ -96,16 +96,56 @@ def bench_digest_many(label, folder, glob, question, max_files=10, max_words_eac
     }
 
 
+def _ledger_rows(tool, since):
+    rows = [r for r in store.ledger(1) if r.get('tool') == tool and r.get('ts', 0) >= since]
+    llm = [r for r in rows if r.get('kind') == 'llm']
+    result = [r for r in rows if r.get('kind') == 'result']
+    return sum(r.get('prompt_tokens', 0) + r.get('completion_tokens', 0) for r in llm), (result[-1] if result else {})
+
+
+def bench_tool(label, tool, ledger_tool, call):
+    """One call of a server tool, measured from the ledger: material read, text returned, executor tokens."""
+    since = time.time()
+    t0 = time.perf_counter()
+    rendered = call()
+    dt = time.perf_counter() - t0
+    local_tok, result = _ledger_rows(ledger_tool, since)
+    in_chars, out_chars = result.get('bytes_in', 0), len(rendered)
+    pct = 100.0 * (in_chars - out_chars) / in_chars if in_chars else 0.0
+    return {
+        'scenario': label,
+        'tool': tool,
+        'in_chars': in_chars,
+        'out_chars': out_chars,
+        'cloud_in_est': est_tokens(in_chars),
+        'cloud_out_est': est_tokens(out_chars),
+        'saved_tok_est': max(0, est_tokens(in_chars - out_chars)),
+        'saved_pct': round(pct, 1),
+        'local_tokens': local_tok,
+        'seconds': round(dt, 2),
+        'quotes_ok': result.get('quotes_ok'),
+        'quotes_bad': result.get('quotes_bad'),
+        'values_loose': result.get('values_loose'),
+        'failed': rendered.startswith('ERROR'),
+    }
+
+
+MANIFEST_SCHEMA = {'type': 'object', 'required': ['name', 'requires_python', 'dependencies', 'script'], 'properties': {
+    'name': {'type': 'string'}, 'requires_python': {'type': 'string'},
+    'dependencies': {'type': 'array', 'items': {'type': 'string'}}, 'script': {'type': 'string'}}}
+
+
 def bench_delegate(label, setup_fn, goal, write_globs, verify_commands, max_steps=12):
     ws_dir = Path(tempfile.mkdtemp(prefix='tandem-bench-ws-'))
     in_chars = setup_fn(ws_dir)
-    ws = sandbox.Workspace(ws_dir, write_globs=write_globs)
     t0 = time.perf_counter()
-    job = agent.start(goal, ws, verify_commands, max_steps=max_steps, max_repairs=1)
-    agent.RUNNING[job][0].join(240)
+    receipt = server.delegate(goal, str(ws_dir), verify_commands=verify_commands, write_globs=write_globs,
+                              max_steps=max_steps, max_repairs=1, wait_seconds=600)
     dt = time.perf_counter() - t0
+    if receipt.startswith('ERROR'):
+        raise SystemExit(f'{label}: {receipt}')
+    job = receipt.split()[1].rstrip(':')
     data = store.read_job(job) or {}
-    receipt = server._receipt(job)
     out_chars = len(receipt)
     # Without Tandem, the cloud model reads the workspace files + failing test output (~600 chars)
     baseline_chars = in_chars + 600
@@ -194,6 +234,7 @@ def main():
     caps = engine.probe(model)
     ctx = engine.context_tokens(model)
     jail = sandbox.describe_jail()
+    sys.stdout.reconfigure(line_buffering=True)
     print(f'Server: {srv["name"]} ({srv["url"]}) | Model: {model} | Context: {ctx} | Caps: {caps}')
     print(f'Sandbox: {jail}\n')
 
@@ -203,7 +244,7 @@ def main():
         ROOT / 'README.md',
         'What environment variables configure the sandbox mode and network access?',
     ))
-    print('Done 1/5:', digest_rows[-1])
+    print('Done 1/7:', digest_rows[-1])
 
     digest_rows.append(bench_digest_file(
         'Targeted grep QA (`agent.py`)',
@@ -211,7 +252,7 @@ def main():
         'What does rollback do when a pre-existing file has None in snapshot.json?',
         grep='too large',
     ))
-    print('Done 2/5:', digest_rows[-1])
+    print('Done 2/7:', digest_rows[-1])
 
     digest_rows.append(bench_digest_many(
         'Multi-file package survey (`tandem_mcp/*.py`)',
@@ -221,17 +262,33 @@ def main():
         max_files=10,
         max_words_each=25,
     ))
-    print('Done 3/5:', digest_rows[-1])
+    print('Done 3/7:', digest_rows[-1])
+
+    tool_rows = []
+    tool_rows.append(bench_tool(
+        'Recent git history (`git log -n 30 --stat`)', 'digest_command', 'digest_command',
+        lambda: server.digest_command('git log -n 30 --stat', str(ROOT),
+                                      'Which files were changed most often in these commits, and what were the commits about?'),
+    ))
+    print('Done 4/7:', tool_rows[-1])
+
+    tool_rows.append(bench_tool(
+        'Project manifest (`pyproject.toml`)', 'extract_from_file', 'extract',
+        lambda: server.extract_from_file(str(ROOT / 'pyproject.toml'), json.dumps(MANIFEST_SCHEMA),
+                                         'Extract the project name, the required Python version, the dependencies '
+                                         'and the name of the console script.'),
+    ))
+    print('Done 5/7:', tool_rows[-1])
 
     del_rows = []
     del_rows.append(bench_delegate(
         'Micro bugfix (1 tiny file, 6 lines)',
         setup_micro,
-        'Fix clamp() in math_utils.py so values below low return low instead of high.',
+        'Fix clamp() in math_utils.py so that values below low return low instead of high.',
         ['math_utils.py'],
         ['python3 -m unittest test_math_utils.py'],
     ))
-    print('Done 4/5:', del_rows[-1])
+    print('Done 6/7:', del_rows[-1])
 
     del_rows.append(bench_delegate(
         'Multi-file bugfix (`config_loader.py` + 3 other files)',
@@ -240,7 +297,7 @@ def main():
         ['config_loader.py'],
         ['python3 -m unittest test_config.py'],
     ))
-    print('Done 5/5:', del_rows[-1])
+    print('Done 7/7:', del_rows[-1])
 
     report = {
         'date': time.strftime('%Y-%m-%d %H:%M:%S'),
@@ -250,7 +307,10 @@ def main():
         'context': ctx,
         'caps': caps,
         'sandbox': jail,
+        'strict_contract': server.strict(),
+        'version': __import__('tandem_mcp').__version__,
         'digest': digest_rows,
+        'tools': tool_rows,
         'delegate': del_rows,
     }
     out_json = ROOT / 'benchmarks/latest.json'

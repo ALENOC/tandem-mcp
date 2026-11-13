@@ -1,0 +1,142 @@
+{
+ "workspace": "benchmarks/scene3d_with_tandem",
+ "max_steps": 26,
+ "max_repairs": 3,
+ "wait_seconds": 0,
+ "workers": 1,
+ "tasks": [
+  {
+   "name": "html_css",
+   "write_globs": [
+    "index.html"
+   ],
+   "constraints": [
+    "index.html has a full-viewport <canvas id=\"c\"> and no inline JavaScript",
+    "the body background is radial-gradient(ellipse at 50% 42%, #0d1633 0%, #050814 55%, #020309 100%)",
+    "the scripts load at the end of body in this order: scene.js, engine3d.js, app.js",
+    "the HUD is a div with class \"hud\", position fixed, top 14px, left 14px, width 268px",
+    "the HUD background is rgba(20, 30, 60, 0.38) with backdrop-filter blur(14px)",
+    "the HUD border is 1px solid rgba(120, 220, 255, 0.22) with border-radius 12px",
+    "the HUD title reads NEON PORTAL 3D on one line, bold, letter-spaced, next to a small badge TANDEM MCP",
+    "three stat cells in a 3-column grid hold <b id=\"fps\">, <b id=\"polys\">, <b id=\"parts\"> over the labels FPS, POLYS, PARTS",
+    "three buttons in one flex row have ids btnPause (Pause), btnOrbit (Orbit ON), btnReset (Reset)",
+    "buttons use background rgba(0, 200, 255, 0.12) and border 1px solid rgba(0, 220, 255, 0.3)",
+    "the slider is <input type=\"range\" id=\"speed\" min=\"0.2\" max=\"3.0\" step=\"0.1\" value=\"1.0\"> with accent-color #ff4fd8",
+    "the slider readout is <b id=\"spdVal\">1.0x</b>"
+   ],
+   "goal": "Create index.html, the page shell of a 3D neon portal demo: a full-viewport canvas id=\"c\" and a compact glassmorphism HUD, exactly as the constraints state.",
+   "verify_commands": [
+    "for i in c fps polys parts btnPause btnOrbit btnReset speed spdVal; do grep -q \"id=\\\"$i\\\"\" index.html || exit 1; done",
+    "grep -q 'src=\"engine3d.js\"' index.html",
+    "grep -q backdrop-filter index.html"
+   ]
+  },
+  {
+   "name": "scene_data",
+   "write_globs": [
+    "scene.js"
+   ],
+   "constraints": [
+    "scene.js sets window.Scene = { build } and uses no import or export",
+    "build() returns a new object { faces, crystals, stars, particles } on every call",
+    "faces holds 36 quads, the 6 faces of 6 axis-aligned boxes",
+    "each face is { pts: four [x, y, z] corners in loop order, color: [r, g, b], glow: number }",
+    "lower platform tier box: center (0, -1.45, 0), size (5.6, 0.4, 3.6)",
+    "upper platform tier box: center (0, -1.05, 0), size (4.2, 0.4, 2.4)",
+    "left pillar box: center (-1.25, 0.42, 0), size (0.5, 2.55, 0.5)",
+    "right pillar box: center (1.25, 0.42, 0), size (0.5, 2.55, 0.5)",
+    "lintel box: center (0, 1.95, 0), size (3.4, 0.5, 0.7)",
+    "crown cap box: center (0, 2.32, 0), size (2.2, 0.24, 0.5), glow 0.3",
+    "box colors are dark obsidian blue with every channel between 20 and 95 and glow 0.05 to 0.15",
+    "crystals holds 6 items { angle: i * Math.PI / 3, color, spin, phase: i * 1.7 }",
+    "crystal colors alternate cyan [40, 225, 255] and magenta [255, 70, 215]",
+    "crystal spin is between 0.9 and 1.6",
+    "stars holds 180 items { p: [x, y, z], size, rate, phase } on a sphere of radius 42 with y >= -4",
+    "star size is 0.5 to 1.7, rate 0.7 to 3.1, phase 0 to 2 * Math.PI",
+    "particles holds 110 items { x, y, z, v, sway, hue, size } with (x, z) inside a disc of radius 3.4",
+    "particle y is -1.9 to 3.5, v 0.35 to 1.1, hue 188 or 312, size 0.02 to 0.055"
+   ],
+   "goal": "Create scene.js, a plain browser script that sets window.Scene = { build }: the data of a neon portal gate (36 box faces, 6 crystals, 180 stars, 110 particles), y axis up, exactly as the constraints state.",
+   "verify_commands": [
+    "node --check scene.js",
+    "node -e \"global.window=global;require('./scene.js');const s=window.Scene.build();const n=[s.faces.length,s.crystals.length,s.stars.length,s.particles.length].join();if(n!=='36,6,180,110'){console.error('counts',n,'expected 36,6,180,110');process.exit(1)}if(s.faces.some(f=>f.pts.length!==4||f.color.length!==3)){console.error('each face needs 4 pts and an rgb color');process.exit(1)}\""
+   ]
+  },
+  {
+   "name": "engine3d",
+   "write_globs": [
+    "engine3d.js"
+   ],
+   "after": [
+    "scene_data"
+   ],
+   "immutable": [
+    "scene.js",
+    "check_engine.js"
+   ],
+   "constraints": [
+    "window.Engine3D exposes init, setSpeed, togglePause, toggleOrbit, reset, getStats",
+    "init(canvas) sizes the canvas to innerWidth x innerHeight times devicePixelRatio, again on window resize",
+    "init calls window.Scene.build() once and starts a requestAnimationFrame loop",
+    "dragging with the pointer changes yaw and pitch",
+    "camera defaults are yaw 0.55, pitch 0.34, dist 9.6, fov 580, target [0, 0.35, 0]",
+    "projection, after subtracting the target: x1 = x*cos(yaw) - z*sin(yaw) and z1 = x*sin(yaw) + z*cos(yaw)",
+    "projection: y2 = y*cos(pitch) + z1*sin(pitch) and z2 = -y*sin(pitch) + z1*cos(pitch)",
+    "depth = z2 + dist, and a point with depth < 0.2 is skipped",
+    "s = fov * view / depth with view = Math.min(W / 1180, H / 720)",
+    "screen x = W / 2 + x1 * s and screen y = H / 2 - y2 * s, in CSS pixels",
+    "time advances by dt * speed unless paused, with dt capped at 0.05",
+    "yaw grows by 0.22 * dt * speed while orbit is on",
+    "the canvas is cleared with clearRect every frame and never filled with a background color",
+    "stars are drawn as small squares whose alpha twinkles with sin(time * rate + phase)",
+    "the grid floor is at y = -2.0 with lines every 1 unit from -12 to 12 on x and on z",
+    "every 4th grid line is a brighter cyan than the others",
+    "each crystal is an octahedron of 8 triangles with half height 0.42 and half width 0.24",
+    "crystal center is x = 2.45*cos(a), z = 2.45*sin(a) with a = crystal.angle + 0.35*time",
+    "crystal height is y = 0.5 + 0.28*sin(1.4*time + crystal.phase)",
+    "crystals rotate around the Y axis by time * crystal.spin",
+    "polygon brightness = 0.42 + 0.95 * max(0, normal . light) + glow with light = normalize(0.45, 0.8, -0.4)",
+    "polygons are filled with rgb(color * brightness) and stroked with a thin cyan outline, white for crystals",
+    "polygons are sorted by mean depth and drawn far to near",
+    "the portal is drawn inside that same depth order at [0, 0.55, 0], not always on top",
+    "the portal core is a radial gradient white, cyan, magenta, transparent of radius 1.05 units drawn with \"lighter\"",
+    "the portal core radius pulses slowly with a sine of time",
+    "two tilted rings are 3D polylines of radius 1.0 (cyan) and 0.78 (magenta) that rotate in opposite directions",
+    "particles are drawn last as additive dots colored with hsl from particle.hue",
+    "each particle rises by v * dt and returns to y = -1.9 when it passes y = 3.6",
+    "togglePause() and toggleOrbit() return the new boolean state",
+    "reset() restores the default camera values and time 0",
+    "getStats() returns { fps, polys, parts } with polys = polygons filled in the last frame (84) and parts = 110"
+   ],
+   "goal": "Create engine3d.js, a plain browser script (no import/export) that sets window.Engine3D: a software 3D renderer on the 2D canvas context that draws the object returned by window.Scene.build() (read scene.js for its shape), exactly as the constraints state.",
+   "verify_commands": [
+    "node --check engine3d.js",
+    "node check_engine.js"
+   ]
+  },
+  {
+   "name": "app_loop",
+   "write_globs": [
+    "app.js"
+   ],
+   "after": [
+    "html_css"
+   ],
+   "constraints": [
+    "app.js calls window.Engine3D.init(document.getElementById(\"c\"))",
+    "#btnPause reads \"Play\" when togglePause() returns true, else \"Pause\"",
+    "#btnOrbit reads \"Orbit ON\" when toggleOrbit() returns true, else \"Orbit OFF\"",
+    "#btnReset calls reset()",
+    "the input event of #speed calls setSpeed(parseFloat(value))",
+    "#spdVal shows the speed with one decimal followed by x",
+    "every 500 ms getStats() is written into #fps (rounded), #polys and #parts"
+   ],
+   "goal": "Create app.js, a plain browser script that starts window.Engine3D on the canvas id=\"c\" and wires the HUD controls of index.html, exactly as the constraints state.",
+   "verify_commands": [
+    "node --check app.js",
+    "grep -q Engine3D.init app.js",
+    "grep -q getStats app.js"
+   ]
+  }
+ ]
+}

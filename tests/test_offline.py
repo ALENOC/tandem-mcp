@@ -7,6 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 os.environ['TANDEM_HOME'] = tempfile.mkdtemp()
+os.environ['TANDEM_STRICT'] = '0'             # the loose contract; the strict one is checked in its own section
 from tandem_mcp import agent, digest, engine, sandbox, store  # noqa: E402
 
 checks = 0
@@ -865,5 +866,59 @@ import tandem_mcp as _pkg  # noqa: E402
 _project = _tomllib.loads((Path(__file__).resolve().parents[1] / 'pyproject.toml').read_text())
 ok('version' in _project['project']['dynamic'] and _project['tool']['setuptools']['dynamic']['version']['attr'] == 'tandem_mcp.__version__'
    and _pkg.__version__.count('.') == 2, 'the version lives in one place')
+
+# the strict contract --------------------------------------------------------------------------------
+os.environ['TANDEM_STRICT'] = '1'
+GOAL = 'Fix clamp() in math_utils.py so that values below low return low instead of high.'
+
+
+def contract_error(goal=GOAL, constraints=None, verify=('python3 -m unittest test_math_utils.py',), globs=('math_utils.py',)):
+    try:
+        _server._validate_contract(goal, constraints, list(verify), list(globs))
+    except ValueError as exc:
+        return str(exc)
+    return ''
+
+
+ok(contract_error() == '', 'a contract with a precise goal, named files and a real check is accepted')
+ok('write_globs is required' in contract_error(globs=()), 'strict: no write_globs, no task')
+ok(all('matches every file' in contract_error(globs=(g,)) for g in ('*', '**', '**/*', './*', '*.*')), 'strict: catch-all write_globs are refused')
+ok(contract_error(globs=('src/**',)) == '' and contract_error(globs=('*.py',)) == '', 'strict: a folder or a file type is a named target')
+ok('verify_commands is required' in contract_error(verify=()), 'strict: no check, no task')
+ok(all('cannot fail' in contract_error(verify=(v,)) for v in ('true', 'echo done', ': ; exit 0')), 'strict: a check that cannot fail is refused')
+ok('goal must name its targets' in contract_error(goal='Make the page look nicer and more modern please ok'), 'strict: a goal without targets is refused')
+ok('constraints are required' in contract_error(verify=('grep -q clamp math_utils.py', 'test -f math_utils.py')),
+   'strict: checks that only look for text need constraints')
+ok('constraints are required' in contract_error(verify=('for f in a.py b.py; do grep -q x "$f" || exit 1; done',)),
+   'strict: a loop of greps is still a presence check')
+ok(contract_error(verify=('grep -q clamp math_utils.py',), constraints=['clamp(-3, 0, 10) returns 0 in math_utils.py']) == '',
+   'strict: presence checks with constraints are accepted')
+ok(contract_error(verify=('grep -q clamp math_utils.py', 'node --check app.js')) == '', 'strict: a check that runs a tool is not a presence check')
+ok('write_globs is required' in _server.delegate(GOAL, str(root), verify_commands=['python3 -m unittest test_math_utils.py'])
+   and 'verify_commands is required' in _server.delegate_many([{'name': 'a', 'goal': GOAL, 'write_globs': ['math_utils.py']}], str(root)),
+   'strict: delegate and delegate_many refuse before the executor is called')
+sjob2, sfolder2 = store.new_job('delegate')
+store.write_job(sjob2, {'id': sjob2, 'kind': 'delegate', 'state': 'verified', 'workspace': str(root),
+                        'changes': [['a.py', 'changed', 1, 1]], 'checks': [], 'before': []})
+(sfolder2 / 'changes.diff').write_text('--- a/a.py\n+++ b/a.py\n@@ -1 +1 @@\n-x\n+y')
+ok('inspection required' in _server.job_feedback(sjob2, True) and bool(_server.job_diff(sjob2)) and _server.job_feedback(sjob2, True) == 'recorded',
+   'strict: even a small verified change is accepted only after its diff was read')
+ok('look no command can prove' in contract_error(goal='Create index.html with a full-viewport canvas id="c" and a HUD panel.',
+                                                    verify=('node check_page.js',), globs=('index.html',))
+   and contract_error(goal='Create index.html with a full-viewport canvas id="c" and a HUD panel.', verify=('node check_page.js',),
+                      globs=('index.html',), constraints=['the .hud panel is fixed at top: 14px']) == '',
+   'strict: a task that writes visual files needs the design written as constraints')
+vjob, vfolder = store.new_job('delegate')
+store.write_job(vjob, {'id': vjob, 'kind': 'delegate', 'state': 'verified', 'workspace': str(root), 'constraints': ['the .hud panel is fixed'],
+                       'changes': [['index.html', 'new', 10, 0]], 'checks': [], 'before': []})
+ok('render the result and compare it with each constraint' in _server._receipt(vjob), 'the receipt of a visual job asks for a render check')
+ok(all('one requirement per constraint' in contract_error(constraints=[c]) for c in (
+        'clamp(-3, 0, 10) returns 0 in math_utils.py; clamp(15, 0, 10) returns 10',
+        'clamp(-3, 0, 10) returns 0 in math_utils.py. Values above high return high',
+        'clamp in math_utils.py ' + 'returns low for values below low and ' * 5))
+   and contract_error(constraints=['clamp(-3, 0, 10) returns 0 in math_utils.py', 'clamp(15, 0, 10) returns 10.5 at most']) == '',
+   'strict: a constraint holds one requirement')
+os.environ['TANDEM_STRICT'] = '0'
+ok(_server.strict() is False and contract_error(globs=(), verify=()) == '', 'TANDEM_STRICT=0 brings the loose contract back')
 
 print(f'{checks} checks, 0 failures')

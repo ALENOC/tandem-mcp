@@ -39,7 +39,7 @@
 <body>
   <header>
     <div>
-      <h1>Orbital Particle Simulation: Gemini Hydrogen (Cloud Direct) vs. Tandem MCP (Gemini Hydrogen + Local qwen3.8-27b@iq3_s)</h1>
+      <h1>Orbital Particle Simulation: Fable 5.2 (direct) vs. Tandem MCP (Fable 5.2 orchestrator + local qwen3.8-27b@iq3_s)</h1>
       <p>Identical specification, zero external dependencies, both verified with HTML/DOM checks and <code>node --check</code>.</p>
     </div>
     <p><a href="RESULTS.md" style="color:#60a5fa;text-decoration:none;">View full benchmark results &rarr;</a></p>
@@ -47,15 +47,15 @@
   <main class="grid">
     <section class="pane">
       <div class="bar">
-        <span class="tag cloud">Without Tandem (Cloud Direct: Gemini Hydrogen)</span>
-        <span class="meta">10,343 B · 272 lines · ~2,873 cloud output tokens · 5 planets, 3 moons</span>
+        <span class="tag cloud">Without Tandem (Fable 5.2 direct)</span>
+        <span class="meta">11,956 B &middot; 272 lines &middot; ~3,321 cloud output tokens</span>
       </div>
       <iframe src="animation_without_tandem/index.html" title="Without Tandem"></iframe>
     </section>
     <section class="pane">
       <div class="bar">
-        <span class="tag tandem">With Tandem MCP (Gemini Hydrogen orchestrator + Local qwen3.8-27b@iq3_s)</span>
-        <span class="meta">10,970 B · 364 lines · 17,449 local tokens · 322.7 s · VERIFIED (2 steps, 0 repairs)</span>
+        <span class="tag tandem">With Tandem MCP (Fable 5.2 + qwen3.8-27b@iq3_s)</span>
+        <span class="meta">12,499 B &middot; 459 lines &middot; ~2,343 cloud output tokens (29.4% saved) &middot; 104,087 local tokens &middot; 1121 s &middot; VERIFIED, 0 repairs</span>
       </div>
       <iframe src="animation_with_tandem/index.html" title="With Tandem"></iframe>
     </section>

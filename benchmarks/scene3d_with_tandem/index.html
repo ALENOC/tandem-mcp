@@ -6,112 +6,148 @@
 <title>Neon Portal 3D</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body { width: 100%; height: 100%; overflow: hidden; background: radial-gradient(ellipse at center, #0d1633, #050814, #020309); }
-  #c { display: block; width: 100vw; height: 100vh; }
+  html, body { width: 100%; height: 100%; overflow: hidden; }
+  body {
+    background: radial-gradient(ellipse at 50% 42%, #0d1633 0%, #050814 55%, #020309 100%);
+    font-family: "Segoe UI", system-ui, sans-serif;
+    color: #cfe9ff;
+  }
+  #c {
+    display: block;
+    width: 100vw;
+    height: 100vh;
+  }
   .hud {
     position: fixed;
     top: 14px;
     left: 14px;
-    min-width: 220px;
-    padding: 8px 10px;
-    font-size: 11px;
-    border-radius: 10px;
-    background: rgba(255, 255, 255, 0.06);
+    width: 268px;
+    background: rgba(20, 30, 60, 0.38);
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
-    font-family: system-ui, sans-serif;
-    color: #c8d0e0;
+    border: 1px solid rgba(120, 220, 255, 0.22);
+    border-radius: 12px;
+    padding: 14px 16px;
   }
-  .hud-header {
+  .hud-title {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 6px;
+    gap: 8px;
+    margin-bottom: 12px;
   }
-  .hud-title {
+  .hud-title h1 {
+    font-size: 15px;
     font-weight: 700;
-    font-size: 12px;
-    letter-spacing: 0.5px;
-    color: #fff;
+    letter-spacing: 2px;
+    white-space: nowrap;
+    color: #eaf6ff;
   }
-  .hud-badge {
+  .badge {
     font-size: 9px;
-    padding: 2px 6px;
-    border-radius: 4px;
-    background: rgba(100, 140, 255, 0.2);
-    border: 1px solid rgba(100, 140, 255, 0.3);
-    color: #8ab4ff;
+    font-weight: 700;
+    letter-spacing: 1px;
+    padding: 3px 7px;
+    border-radius: 6px;
+    background: rgba(255, 79, 216, 0.16);
+    border: 1px solid rgba(255, 79, 216, 0.4);
+    color: #ffb3ec;
+    white-space: nowrap;
   }
-  .stat-grid {
+  .stats {
     display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
-    gap: 4px;
-    margin-bottom: 6px;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-bottom: 12px;
   }
-  .stat-grid span {
+  .stat {
     text-align: center;
-    font-variant-numeric: tabular-nums;
-    color: #a0b8e0;
+    padding: 8px 4px;
+    border-radius: 8px;
+    background: rgba(0, 220, 255, 0.06);
+    border: 1px solid rgba(0, 220, 255, 0.12);
   }
-  .btn-row {
+  .stat b {
+    display: block;
+    font-size: 17px;
+    font-weight: 700;
+    color: #7fe9ff;
+  }
+  .stat span {
+    display: block;
+    font-size: 9px;
+    letter-spacing: 1px;
+    color: #6f9fc4;
+    margin-top: 2px;
+  }
+  .row {
     display: flex;
-    gap: 6px;
-    margin-bottom: 6px;
+    gap: 8px;
+    margin-bottom: 12px;
   }
-  .btn-row button {
+  .row button {
     flex: 1;
-    padding: 4px 6px;
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    border-radius: 5px;
-    background: rgba(255, 255, 255, 0.08);
-    color: #c8d0e0;
+    background: rgba(0, 200, 255, 0.12);
+    border: 1px solid rgba(0, 220, 255, 0.3);
+    border-radius: 8px;
+    color: #bfeeff;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 8px 4px;
     cursor: pointer;
-    font-size: 10px;
-    transition: background 0.2s;
   }
-  .btn-row button:hover { background: rgba(255, 255, 255, 0.15); }
-  .speed-row {
+  .row button:hover {
+    background: rgba(0, 200, 255, 0.22);
+  }
+  .slider-row {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 10px;
   }
-  .speed-row input[type="range"] {
+  .slider-row label {
+    font-size: 10px;
+    letter-spacing: 1px;
+    color: #6f9fc4;
+  }
+  .slider-row input[type="range"] {
     flex: 1;
-    accent-color: #6e8efb;
+    accent-color: #ff4fd8;
   }
-  #spdVal {
-    min-width: 32px;
+  .slider-row b {
+    font-size: 12px;
+    color: #ffb3ec;
+    min-width: 34px;
     text-align: right;
-    font-variant-numeric: tabular-nums;
-    color: #a0b8e0;
   }
 </style>
 </head>
 <body>
-<canvas id="c"></canvas>
-<div class="hud">
-  <div class="hud-header">
-    <span class="hud-title">NEON PORTAL 3D</span>
-    <span class="hud-badge">TANDEM MCP</span>
+  <canvas id="c"></canvas>
+
+  <div class="hud">
+    <div class="hud-title">
+      <h1>NEON PORTAL 3D</h1>
+      <span class="badge">TANDEM MCP</span>
+    </div>
+    <div class="stats">
+      <div class="stat"><b id="fps">0</b><span>FPS</span></div>
+      <div class="stat"><b id="polys">0</b><span>POLYS</span></div>
+      <div class="stat"><b id="parts">0</b><span>PARTS</span></div>
+    </div>
+    <div class="row">
+      <button id="btnPause">Pause</button>
+      <button id="btnOrbit">Orbit ON</button>
+      <button id="btnReset">Reset</button>
+    </div>
+    <div class="slider-row">
+      <label for="speed">SPEED</label>
+      <input type="range" id="speed" min="0.2" max="3.0" step="0.1" value="1.0">
+      <b id="spdVal">1.0x</b>
+    </div>
   </div>
-  <div class="stat-grid">
-    <span id="fps">0</span>
-    <span id="polys">0</span>
-    <span id="parts">0</span>
-  </div>
-  <div class="btn-row">
-    <button id="btnPause">Pause</button>
-    <button id="btnOrbit">Orbit</button>
-    <button id="btnReset">Reset</button>
-  </div>
-  <div class="speed-row">
-    <input type="range" id="speed" min="0.2" max="3.0" step="0.1" value="1.0">
-    <span id="spdVal">1.0x</span>
-  </div>
-</div>
-<script src="engine3d.js"></script>
-<script src="app.js"></script>
+
+  <script src="scene.js"></script>
+  <script src="engine3d.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>

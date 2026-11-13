@@ -1,272 +1,272 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Orbital Particle Simulation — Without Tandem (Cloud)</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body {
-      width: 100%; height: 100%; overflow: hidden;
-      background: #060913; color: #e2e8f0;
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-    }
-    canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
-    .hud {
-      position: fixed; top: 14px; left: 14px; z-index: 10;
-      background: rgba(10, 16, 34, 0.78); backdrop-filter: blur(8px);
-      border: 1px solid rgba(148, 163, 184, 0.22); border-radius: 10px;
-      padding: 12px 14px; min-width: 250px;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
-    }
-    .hud h1 { font-size: 13px; font-weight: 600; letter-spacing: 0.04em; color: #93c5fd; margin-bottom: 8px; }
-    .stats { font-size: 12px; color: #cbd5e1; margin-bottom: 10px; display: flex; gap: 12px; }
-    .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-    button {
-      background: #1e293b; color: #f8fafc; border: 1px solid #334155;
-      border-radius: 6px; padding: 5px 10px; font-size: 12px; cursor: pointer;
-    }
-    button:hover { background: #334155; }
-    label { font-size: 12px; color: #cbd5e1; display: flex; align-items: center; gap: 6px; }
-    input[type="range"] { width: 90px; accent-color: #60a5fa; }
-    .hint { margin-top: 8px; font-size: 11px; color: #94a3b8; }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Orbital Particle Simulation</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #060913; }
+  body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #dbe7ff; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; }
+  .hud {
+    position: fixed; top: 16px; left: 16px; width: 248px; padding: 14px 16px;
+    background: rgba(18, 28, 54, 0.42); border: 1px solid rgba(140, 180, 255, 0.22);
+    border-radius: 14px; backdrop-filter: blur(14px) saturate(140%); -webkit-backdrop-filter: blur(14px) saturate(140%);
+    box-shadow: 0 10px 34px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    user-select: none;
+  }
+  .hud h1 { font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; color: #8fb8ff; margin-bottom: 10px; }
+  .row { display: flex; gap: 6px; margin-bottom: 10px; }
+  button {
+    flex: 1; padding: 7px 0; font: inherit; font-size: 12px; color: #e6efff; cursor: pointer;
+    background: rgba(90, 130, 220, 0.18); border: 1px solid rgba(140, 180, 255, 0.3); border-radius: 8px;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  button:hover { background: rgba(110, 155, 255, 0.32); border-color: rgba(170, 205, 255, 0.6); }
+  button.off { color: #8996b3; background: rgba(60, 70, 100, 0.2); }
+  label { display: flex; justify-content: space-between; font-size: 12px; color: #a9bbdf; margin-bottom: 4px; }
+  input[type=range] { width: 100%; accent-color: #6ea8ff; margin-bottom: 10px; }
+  .stats { display: grid; grid-template-columns: 1fr auto; row-gap: 3px; font-size: 12px; color: #a9bbdf; }
+  .stats b { color: #f2f6ff; font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
+  .hint { margin-top: 9px; font-size: 11px; color: #7385a8; }
+</style>
 </head>
 <body>
-  <canvas id="scene"></canvas>
-  <div class="hud">
-    <h1>Orbital Simulation (Cloud Direct)</h1>
-    <div class="stats">
-      <span id="fps">FPS: 0</span>
-      <span id="simTime">Time: 0.0s</span>
-      <span id="burstCount">Bursts: 0</span>
-    </div>
-    <div class="controls">
-      <button id="toggleBtn" type="button">Pause</button>
-      <button id="trailsBtn" type="button">Trails: ON</button>
-      <button id="resetBtn" type="button">Reset</button>
-      <label>Speed <input id="speedRange" type="range" min="0.2" max="3.0" step="0.1" value="1.0" /><span id="speedVal">1.0x</span></label>
-    </div>
-    <div class="hint">Click anywhere on space to spawn a particle burst.</div>
+<canvas id="sky"></canvas>
+<div class="hud">
+  <h1>Orbital Simulation</h1>
+  <div class="row">
+    <button id="btnPlay">Pause</button>
+    <button id="btnTrails">Trails ON</button>
+    <button id="btnReset">Reset</button>
   </div>
-  <script>
-    (() => {
-      const canvas = document.getElementById('scene');
-      const ctx = canvas.getContext('2d');
-      const fpsEl = document.getElementById('fps');
-      const timeEl = document.getElementById('simTime');
-      const burstEl = document.getElementById('burstCount');
-      const toggleBtn = document.getElementById('toggleBtn');
-      const trailsBtn = document.getElementById('trailsBtn');
-      const resetBtn = document.getElementById('resetBtn');
-      const speedRange = document.getElementById('speedRange');
-      const speedVal = document.getElementById('speedVal');
+  <label for="speed">Speed <span id="speedVal">1.0x</span></label>
+  <input type="range" id="speed" min="0.2" max="3.0" step="0.1" value="1.0">
+  <div class="stats">
+    <span>FPS</span><b id="fps">0</b>
+    <span>Simulation time</span><b id="simTime">0.0 s</b>
+    <span>Burst particles</span><b id="bursts">0</b>
+  </div>
+  <div class="hint">Click anywhere to spawn a particle burst.</div>
+</div>
+<script>
+(function () {
+  'use strict';
+  const canvas = document.getElementById('sky');
+  const ctx = canvas.getContext('2d');
+  const TAU = Math.PI * 2;
+  let W = 0, H = 0, dpr = 1, cx = 0, cy = 0, scale = 1;
 
-      let width = 0, height = 0, dpr = 1;
-      let running = true, showTrails = true, speed = 1.0, simTime = 0;
-      let lastTs = performance.now(), fpsFrames = 0, fpsLast = performance.now(), currentFps = 60;
-      const stars = [], bursts = [];
+  const PLANETS = [
+    { name: 'Ember',  r: 62,  period: 4.2,  size: 4.5,  color: '#ff9b6b', moons: [] },
+    { name: 'Verda',  r: 98,  period: 7.0,  size: 6.5,  color: '#7be0a4', moons: [{ r: 13, period: 1.1, size: 1.8, color: '#d8e6d0' }] },
+    { name: 'Azure',  r: 140, period: 10.5, size: 7.5,  color: '#5fb4ff', moons: [{ r: 15, period: 1.4, size: 2.0, color: '#cfd8e8' }] },
+    { name: 'Rust',   r: 186, period: 15.0, size: 5.5,  color: '#e2674e', moons: [{ r: 11, period: 0.9, size: 1.5, color: '#bfa79c' }, { r: 17, period: 1.9, size: 1.3, color: '#9c8f8a' }] },
+    { name: 'Titan',  r: 246, period: 24.0, size: 13.0, color: '#e6c288', ring: true, moons: [{ r: 24, period: 1.6, size: 2.2, color: '#f0e3c8' }, { r: 32, period: 2.8, size: 1.8, color: '#c9d6e6' }] },
+    { name: 'Glacia', r: 304, period: 36.0, size: 9.0,  color: '#a58bff', moons: [{ r: 18, period: 2.2, size: 1.9, color: '#dcd2ff' }] }
+  ];
+  const TRAIL_MAX = 90;
+  const state = { running: true, trails: true, speed: 1, time: 0, stars: [], bodies: [], particles: [] };
 
-      const planetDefs = [
-        { orbit: 68, radius: 5, speed: 1.65, color: '#38bdf8', angle: 0.3, moon: null },
-        { orbit: 108, radius: 8, speed: 1.15, color: '#fbbf24', angle: 1.8, moon: { orbit: 16, radius: 2.2, speed: 4.5, color: '#e2e8f0' } },
-        { orbit: 156, radius: 10, speed: 0.82, color: '#34d399', angle: 3.1, moon: { orbit: 20, radius: 2.6, speed: 3.6, color: '#cbd5e1' } },
-        { orbit: 212, radius: 13, speed: 0.56, color: '#f472b6', angle: 4.7, moon: { orbit: 24, radius: 3.0, speed: 2.9, color: '#fde68a' } },
-        { orbit: 274, radius: 9, speed: 0.39, color: '#a78bfa', angle: 0.9, moon: null }
-      ];
-      let planets = [];
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth; H = window.innerHeight;
+    canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    cx = W / 2; cy = H / 2;
+    scale = Math.min(W, H) / 700;
+    seedStars();
+  }
 
-      function initStars() {
-        stars.length = 0;
-        for (let i = 0; i < 180; i++) {
-          stars.push({
-            x: Math.random(), y: Math.random(),
-            r: 0.6 + Math.random() * 1.5,
-            phase: Math.random() * Math.PI * 2,
-            freq: 0.8 + Math.random() * 2.2
-          });
-        }
-      }
-
-      function resetSim() {
-        simTime = 0;
-        bursts.length = 0;
-        planets = planetDefs.map(d => ({
-          ...d,
-          curAngle: d.angle,
-          moonAngle: 0,
-          trail: []
-        }));
-      }
-
-      function resize() {
-        dpr = Math.min(window.devicePixelRatio || 1, 2);
-        width = window.innerWidth;
-        height = window.innerHeight;
-        canvas.width = Math.floor(width * dpr);
-        canvas.height = Math.floor(height * dpr);
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      }
-
-      function spawnBurst(x, y) {
-        const colors = ['#60a5fa', '#f472b6', '#fbbf24', '#34d399', '#c084fc'];
-        for (let i = 0; i < 28; i++) {
-          const a = (Math.PI * 2 * i) / 28 + Math.random() * 0.25;
-          const v = 35 + Math.random() * 110;
-          bursts.push({
-            x, y,
-            vx: Math.cos(a) * v,
-            vy: Math.sin(a) * v,
-            life: 1.0,
-            decay: 0.45 + Math.random() * 0.55,
-            r: 1.5 + Math.random() * 2.4,
-            color: colors[i % colors.length]
-          });
-        }
-      }
-
-      toggleBtn.addEventListener('click', () => {
-        running = !running;
-        toggleBtn.textContent = running ? 'Pause' : 'Play';
+  function seedStars() {
+    state.stars = [];
+    for (let i = 0; i < 180; i++) {
+      state.stars.push({
+        x: Math.random() * W, y: Math.random() * H, size: Math.random() * 1.3 + 0.3,
+        base: Math.random() * 0.5 + 0.25, rate: Math.random() * 2.2 + 0.6, phase: Math.random() * TAU,
+        tint: Math.random() < 0.2 ? '255, 214, 170' : (Math.random() < 0.3 ? '170, 205, 255' : '255, 255, 255')
       });
-      trailsBtn.addEventListener('click', () => {
-        showTrails = !showTrails;
-        trailsBtn.textContent = showTrails ? 'Trails: ON' : 'Trails: OFF';
-        if (!showTrails) planets.forEach(p => { p.trail.length = 0; });
+    }
+  }
+
+  function reset() {
+    state.time = 0;
+    state.particles = [];
+    state.bodies = PLANETS.map(function (p, i) {
+      return { def: p, phase: i * 1.37 + 0.4, trail: [], moonPhase: p.moons.map(function (_, k) { return k * 2.1 + i; }) };
+    });
+  }
+
+  function spawnBurst(x, y) {
+    const hue = Math.floor(Math.random() * 360);
+    const count = 46 + Math.floor(Math.random() * 18);
+    for (let i = 0; i < count; i++) {
+      const angle = (i / count) * TAU + Math.random() * 0.25;
+      const speed = 70 + Math.random() * 210;
+      state.particles.push({
+        x: x, y: y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+        life: 1, decay: 0.45 + Math.random() * 0.55, size: 1.2 + Math.random() * 2.2,
+        hue: (hue + Math.random() * 50 - 25 + 360) % 360
       });
-      resetBtn.addEventListener('click', resetSim);
-      speedRange.addEventListener('input', () => {
-        speed = parseFloat(speedRange.value);
-        speedVal.textContent = speed.toFixed(1) + 'x';
-      });
-      canvas.addEventListener('click', (e) => spawnBurst(e.clientX, e.clientY));
-      window.addEventListener('resize', resize);
+    }
+  }
 
-      function step(dt) {
-        simTime += dt;
-        const cx = width / 2, cy = height / 2;
-        const scale = Math.min(width, height) / 680;
-        for (const p of planets) {
-          p.curAngle += p.speed * dt;
-          if (p.moon) p.moonAngle += p.moon.speed * dt;
-          const px = cx + Math.cos(p.curAngle) * p.orbit * scale;
-          const py = cy + Math.sin(p.curAngle) * p.orbit * scale;
-          if (showTrails) {
-            p.trail.push({ x: px, y: py });
-            if (p.trail.length > 70) p.trail.shift();
-          }
-        }
-        for (let i = bursts.length - 1; i >= 0; i--) {
-          const b = bursts[i];
-          b.x += b.vx * dt;
-          b.y += b.vy * dt;
-          b.vx *= 0.985;
-          b.vy *= 0.985;
-          b.life -= b.decay * dt;
-          if (b.life <= 0) bursts.splice(i, 1);
-        }
-      }
+  function update(dt) {
+    state.time += dt;
+    for (const body of state.bodies) {
+      const def = body.def;
+      const angle = body.phase + (state.time / def.period) * TAU;
+      body.x = cx + Math.cos(angle) * def.r * scale;
+      body.y = cy + Math.sin(angle) * def.r * scale * 0.62;
+      body.trail.push(body.x, body.y);
+      if (body.trail.length > TRAIL_MAX * 2) body.trail.splice(0, 2);
+    }
+    const damping = Math.pow(0.12, dt);
+    for (let i = state.particles.length - 1; i >= 0; i--) {
+      const p = state.particles[i];
+      p.vx *= damping; p.vy *= damping;
+      p.x += p.vx * dt; p.y += p.vy * dt;
+      p.life -= p.decay * dt;
+      if (p.life <= 0) state.particles.splice(i, 1);
+    }
+  }
 
-      function draw(now) {
-        ctx.fillStyle = '#060913';
-        ctx.fillRect(0, 0, width, height);
+  function drawBackground(now) {
+    ctx.fillStyle = '#060913';
+    ctx.fillRect(0, 0, W, H);
+    for (const s of state.stars) {
+      const alpha = s.base + Math.sin(now * s.rate + s.phase) * 0.28;
+      ctx.fillStyle = 'rgba(' + s.tint + ', ' + Math.max(0.05, alpha).toFixed(3) + ')';
+      ctx.beginPath(); ctx.arc(s.x, s.y, s.size, 0, TAU); ctx.fill();
+    }
+  }
 
-        for (const s of stars) {
-          const alpha = 0.25 + 0.65 * (0.5 + 0.5 * Math.sin(now * 0.001 * s.freq + s.phase));
-          ctx.fillStyle = `rgba(226, 232, 240, ${alpha.toFixed(2)})`;
-          ctx.beginPath();
-          ctx.arc(s.x * width, s.y * height, s.r, 0, Math.PI * 2);
-          ctx.fill();
-        }
+  function drawStar(now) {
+    const pulse = 1 + Math.sin(now * 1.7) * 0.07 + Math.sin(now * 4.3) * 0.02;
+    const core = 24 * scale;
+    const corona = ctx.createRadialGradient(cx, cy, core * 0.4, cx, cy, core * 5.2 * pulse);
+    corona.addColorStop(0, 'rgba(255, 214, 130, 0.55)');
+    corona.addColorStop(0.35, 'rgba(255, 150, 70, 0.16)');
+    corona.addColorStop(1, 'rgba(255, 120, 40, 0)');
+    ctx.fillStyle = corona;
+    ctx.beginPath(); ctx.arc(cx, cy, core * 5.2 * pulse, 0, TAU); ctx.fill();
+    const body = ctx.createRadialGradient(cx - core * 0.25, cy - core * 0.25, 0, cx, cy, core);
+    body.addColorStop(0, '#fffbe6'); body.addColorStop(0.45, '#ffd76a'); body.addColorStop(1, '#ff8a2b');
+    ctx.fillStyle = body;
+    ctx.beginPath(); ctx.arc(cx, cy, core * (1 + (pulse - 1) * 0.4), 0, TAU); ctx.fill();
+  }
 
-        const cx = width / 2, cy = height / 2;
-        const scale = Math.min(width, height) / 680;
-        const pulse = 1 + 0.06 * Math.sin(now * 0.003);
+  function drawOrbits() {
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(130, 160, 220, 0.11)';
+    for (const p of PLANETS) {
+      ctx.beginPath(); ctx.ellipse(cx, cy, p.r * scale, p.r * scale * 0.62, 0, 0, TAU); ctx.stroke();
+    }
+  }
 
-        const corona = ctx.createRadialGradient(cx, cy, 4, cx, cy, 68 * scale * pulse);
-        corona.addColorStop(0, 'rgba(254, 240, 138, 1)');
-        corona.addColorStop(0.35, 'rgba(251, 146, 60, 0.7)');
-        corona.addColorStop(1, 'rgba(251, 146, 60, 0)');
-        ctx.fillStyle = corona;
+  function drawBody(body) {
+    const def = body.def;
+    if (state.trails) {
+      const n = body.trail.length / 2;
+      ctx.lineCap = 'round';
+      for (let i = 1; i < n; i++) {
+        ctx.globalAlpha = (i / n) * 0.55;
+        ctx.strokeStyle = def.color;
+        ctx.lineWidth = Math.max(0.6, def.size * scale * 0.42 * (i / n));
         ctx.beginPath();
-        ctx.arc(cx, cy, 68 * scale * pulse, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.fillStyle = '#fef08a';
-        ctx.beginPath();
-        ctx.arc(cx, cy, 20 * scale, 0, Math.PI * 2);
-        ctx.fill();
-
-        for (const p of planets) {
-          ctx.strokeStyle = 'rgba(148, 163, 184, 0.14)';
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.arc(cx, cy, p.orbit * scale, 0, Math.PI * 2);
-          ctx.stroke();
-
-          if (showTrails && p.trail.length > 1) {
-            for (let i = 1; i < p.trail.length; i++) {
-              const a = (i / p.trail.length) * 0.55;
-              ctx.strokeStyle = p.color;
-              ctx.globalAlpha = a;
-              ctx.lineWidth = 2;
-              ctx.beginPath();
-              ctx.moveTo(p.trail[i - 1].x, p.trail[i - 1].y);
-              ctx.lineTo(p.trail[i].x, p.trail[i].y);
-              ctx.stroke();
-            }
-            ctx.globalAlpha = 1;
-          }
-
-          const px = cx + Math.cos(p.curAngle) * p.orbit * scale;
-          const py = cy + Math.sin(p.curAngle) * p.orbit * scale;
-          ctx.fillStyle = p.color;
-          ctx.beginPath();
-          ctx.arc(px, py, p.radius * Math.max(0.6, scale), 0, Math.PI * 2);
-          ctx.fill();
-
-          if (p.moon) {
-            const mx = px + Math.cos(p.moonAngle) * p.moon.orbit * scale;
-            const my = py + Math.sin(p.moonAngle) * p.moon.orbit * scale;
-            ctx.fillStyle = p.moon.color;
-            ctx.beginPath();
-            ctx.arc(mx, my, p.moon.radius * Math.max(0.6, scale), 0, Math.PI * 2);
-            ctx.fill();
-          }
-        }
-
-        for (const b of bursts) {
-          ctx.globalAlpha = Math.max(0, b.life);
-          ctx.fillStyle = b.color;
-          ctx.beginPath();
-          ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
-          ctx.fill();
-        }
-        ctx.globalAlpha = 1;
+        ctx.moveTo(body.trail[(i - 1) * 2], body.trail[(i - 1) * 2 + 1]);
+        ctx.lineTo(body.trail[i * 2], body.trail[i * 2 + 1]);
+        ctx.stroke();
       }
+      ctx.globalAlpha = 1;
+    }
+    const radius = def.size * scale;
+    const glow = ctx.createRadialGradient(body.x, body.y, 0, body.x, body.y, radius * 3);
+    glow.addColorStop(0, def.color + '55'); glow.addColorStop(1, def.color + '00');
+    ctx.fillStyle = glow;
+    ctx.beginPath(); ctx.arc(body.x, body.y, radius * 3, 0, TAU); ctx.fill();
+    if (def.ring) {
+      ctx.strokeStyle = 'rgba(240, 220, 170, 0.55)'; ctx.lineWidth = 2 * scale;
+      ctx.beginPath(); ctx.ellipse(body.x, body.y, radius * 1.9, radius * 0.6, -0.35, 0, TAU); ctx.stroke();
+    }
+    const shade = ctx.createRadialGradient(body.x - radius * 0.35, body.y - radius * 0.35, radius * 0.1, body.x, body.y, radius);
+    shade.addColorStop(0, '#ffffff'); shade.addColorStop(0.25, def.color); shade.addColorStop(1, '#0a0f1f');
+    ctx.fillStyle = shade;
+    ctx.beginPath(); ctx.arc(body.x, body.y, radius, 0, TAU); ctx.fill();
+    def.moons.forEach(function (m, k) {
+      const a = body.moonPhase[k] + (state.time / m.period) * TAU;
+      const mx = body.x + Math.cos(a) * (radius + m.r * scale);
+      const my = body.y + Math.sin(a) * (radius + m.r * scale) * 0.7;
+      ctx.fillStyle = m.color;
+      ctx.beginPath(); ctx.arc(mx, my, Math.max(0.8, m.size * scale), 0, TAU); ctx.fill();
+    });
+  }
 
-      function frame(now) {
-        const dt = Math.min(0.05, (now - lastTs) / 1000);
-        lastTs = now;
-        if (running) step(dt * speed);
-        draw(now);
-        fpsFrames++;
-        if (now - fpsLast >= 500) {
-          currentFps = Math.round((fpsFrames * 1000) / (now - fpsLast));
-          fpsFrames = 0;
-          fpsLast = now;
-          fpsEl.textContent = 'FPS: ' + currentFps;
-        }
-        timeEl.textContent = 'Time: ' + simTime.toFixed(1) + 's';
-        burstEl.textContent = 'Bursts: ' + bursts.length;
-        requestAnimationFrame(frame);
-      }
+  function drawParticles() {
+    ctx.globalCompositeOperation = 'lighter';
+    for (const p of state.particles) {
+      const alpha = Math.max(0, p.life);
+      const radius = p.size * (0.6 + alpha);
+      const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, radius * 3);
+      g.addColorStop(0, 'hsla(' + p.hue + ', 100%, 75%, ' + alpha.toFixed(3) + ')');
+      g.addColorStop(1, 'hsla(' + p.hue + ', 100%, 55%, 0)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(p.x, p.y, radius * 3, 0, TAU); ctx.fill();
+    }
+    ctx.globalCompositeOperation = 'source-over';
+  }
 
-      initStars();
-      resize();
-      resetSim();
-      requestAnimationFrame(frame);
-    })();
-  </script>
+  const ui = {
+    play: document.getElementById('btnPlay'), trails: document.getElementById('btnTrails'),
+    reset: document.getElementById('btnReset'), speed: document.getElementById('speed'),
+    speedVal: document.getElementById('speedVal'), fps: document.getElementById('fps'),
+    time: document.getElementById('simTime'), bursts: document.getElementById('bursts')
+  };
+  ui.play.addEventListener('click', function () {
+    state.running = !state.running;
+    ui.play.textContent = state.running ? 'Pause' : 'Play';
+    ui.play.classList.toggle('off', !state.running);
+  });
+  ui.trails.addEventListener('click', function () {
+    state.trails = !state.trails;
+    ui.trails.textContent = state.trails ? 'Trails ON' : 'Trails OFF';
+    ui.trails.classList.toggle('off', !state.trails);
+  });
+  ui.reset.addEventListener('click', reset);
+  ui.speed.addEventListener('input', function () {
+    state.speed = parseFloat(ui.speed.value);
+    ui.speedVal.textContent = state.speed.toFixed(1) + 'x';
+  });
+  canvas.addEventListener('click', function (e) { spawnBurst(e.clientX, e.clientY); });
+  window.addEventListener('resize', resize);
+
+  let last = performance.now(), frames = 0, fpsClock = 0;
+  function frame(nowMs) {
+    const real = Math.min(0.05, (nowMs - last) / 1000);
+    last = nowMs;
+    if (state.running) update(real * state.speed);
+    const now = nowMs / 1000;
+    drawBackground(now);
+    drawOrbits();
+    drawStar(now);
+    for (const body of state.bodies) drawBody(body);
+    drawParticles();
+    frames++; fpsClock += real;
+    if (fpsClock >= 0.5) {
+      ui.fps.textContent = Math.round(frames / fpsClock);
+      frames = 0; fpsClock = 0;
+    }
+    ui.time.textContent = state.time.toFixed(1) + ' s';
+    ui.bursts.textContent = state.particles.length;
+    requestAnimationFrame(frame);
+  }
+
+  resize();
+  reset();
+  update(0);
+  requestAnimationFrame(frame);
+})();
+</script>
 </body>
 </html>

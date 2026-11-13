@@ -1,0 +1,110 @@
+{
+ "convention": "1 cloud token = 3.6 characters",
+ "orchestrator": "Fable 5.2",
+ "executor": "qwen3.8-27b@iq3_s",
+ "post_generation_fixes": 0,
+ "animation": {
+  "direct": {
+   "bytes": 11956,
+   "lines": 272,
+   "cloud_output_tokens": 3321
+  },
+  "tandem": {
+   "bytes": 12499,
+   "lines": 459,
+   "constraints": 46,
+   "state": "verified",
+   "steps": 9,
+   "repairs": 0,
+   "seconds": 1120.6,
+   "local_tokens": 104087,
+   "contract_chars": 4450,
+   "harness_chars": 3986,
+   "cloud_output_tokens": 2343,
+   "receipt_chars": 8457,
+   "evidence_view_chars": 6661,
+   "cloud_input_tokens": 4199,
+   "constraints_met_on_inspection": "46 of 46"
+  },
+  "output_tokens_saved_pct": 29.4
+ },
+ "scene3d": {
+  "direct": {
+   "bytes": 15122,
+   "lines": 327,
+   "cloud_output_tokens": 4201
+  },
+  "tandem": {
+   "files": {
+    "index.html": {
+     "bytes": 3529,
+     "lines": 153
+    },
+    "scene.js": {
+     "bytes": 3157,
+     "lines": 88
+    },
+    "engine3d.js": {
+     "bytes": 10342,
+     "lines": 335
+    },
+    "app.js": {
+     "bytes": 1215,
+     "lines": 40
+    }
+   },
+   "bytes": 18243,
+   "lines": 616,
+   "constraints": 69,
+   "state": "verified",
+   "seconds": 1889.8,
+   "local_tokens": 199182,
+   "tasks": [
+    {
+     "name": "html_css",
+     "state": "verified",
+     "steps": 4,
+     "repairs": 0,
+     "seconds": 184.6,
+     "local_tokens": 17009,
+     "constraints": 12
+    },
+    {
+     "name": "scene_data",
+     "state": "verified",
+     "steps": 3,
+     "repairs": 0,
+     "seconds": 265.2,
+     "local_tokens": 19521,
+     "constraints": 18
+    },
+    {
+     "name": "engine3d",
+     "state": "verified",
+     "steps": 11,
+     "repairs": 0,
+     "seconds": 1254.6,
+     "local_tokens": 133153,
+     "constraints": 32
+    },
+    {
+     "name": "app_loop",
+     "state": "verified",
+     "steps": 4,
+     "repairs": 0,
+     "seconds": 184.2,
+     "local_tokens": 29499,
+     "constraints": 7
+    }
+   ],
+   "contract_chars": 6874,
+   "harness_chars": 1753,
+   "cloud_output_tokens": 2396,
+   "receipt_chars": 17360,
+   "evidence_view_chars": 10772,
+   "cloud_input_tokens": 7814,
+   "constraints_met_on_inspection": "67 of 69 (engine3d: depth sort key is the distance from the scene origin, not the camera depth)"
+  },
+  "output_tokens_saved_pct": 43.0
+ }
+}

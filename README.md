@@ -76,6 +76,7 @@ Manual stdio configuration (any MCP client):
 | `TANDEM_API_KEY` | API key if required by server | `local` |
 | `TANDEM_TIMEOUT` | Per-completion timeout (seconds) | `900` |
 | `TANDEM_SANDBOX` | `auto`, `require`, or `off` | `auto` |
+| `TANDEM_STRICT` | `0` relaxes the strict delegation contract | `1` |
 | `TANDEM_SANDBOX_NET` | `1` allows network inside sandbox | off |
 | `TANDEM_HOME` | Ledger, lessons, caps, cache, and jobs folder | `~/.local/share/tandem-mcp` |
 | `TANDEM_MAX_PARTS` | Most parts one `digest_*` answer may read (one executor call each) | `60` |
@@ -121,7 +122,7 @@ When `tandem-mcp` is available:
 
 ## Why Tandem
 
-- **Contracts (`delegate`)**: bounded workspace, `write_globs`, `immutable` files, `allow_run` regexes, and server-run `verify_commands`.
+- **Strict contracts (`delegate`)**: bounded workspace, required `write_globs` and server-run `verify_commands`, `constraints`, `immutable` files, `allow_run` regexes. A task without limits is refused before the local model is called.
 - **Meaningful checks**: baseline runs before work (pre-passing checks are flagged as `weak`); test files/folders are auto-protected (`read-only`) and restored if touched; changed files are syntax-checked.
 - **Checked evidence (`digest_*`, `extract_from_file`)**: every quote is verified lexically against the source, `quote_found` is separated from `claim_supported`, ungrounded numbers are listed, and >2000-char line truncation is signaled.
 - **Supervised memory**: `job_feedback` stores project lessons; `job_continue` resumes stopped jobs in the same conversation; `ledger_report` tracks savings and quote failure rates.
@@ -167,7 +168,7 @@ Compared in November 2026 from each project's README (not from running them). `"
 | `extract_from_file` | Structured JSON extraction with ungrounded values flagged |
 | `delegate` | Bounded coding task with `verify_commands`, `write_globs`, `immutable`, `allow_run` |
 | `delegate_many` | Dependency-ordered batch (`after`) with parallel file ownership and rollback |
-| `job_status`, `job_diff`, `job_rollback` | Inspect status, unified diff, and undo changes per job or batch |
+| `job_status`, `job_evidence`, `job_diff`, `job_rollback` | Inspect status, the lines cited for each constraint, the unified diff, and undo changes per job or batch |
 | `job_continue` | Resume a stopped job with a hint in the same conversation |
 | `job_feedback`, `lesson_add`, `lessons` | Record verdicts and manage standing project/global rules |
 | `ledger_report` | Calls, tokens, estimated cloud savings, and per-model quality stats |
@@ -177,8 +178,9 @@ Compared in November 2026 from each project's README (not from running them). `"
 
 ```python
 delegate(
-  goal="test_calc.py fails. Fix calc.py so that the test passes.",
+  goal="test_calc.py fails: dbm_to_mw(20) must return 100. Fix the formula in calc.py so that the test passes.",
   workspace="/path/to/project",
+  write_globs=["calc.py"],
   verify_commands=["python3 test_calc.py"],
   allow_run=["^python3 test_calc\\.py$"]
 )
@@ -192,6 +194,22 @@ executor: Fixed dbm_to_mw to use 10**(dbm/10) instead of 10**(dbm/20).
   check PASS  $ python3 test_calc.py  (failed before the job)
 Checks passed. Read job_diff if the change is delicate, then job_feedback.
 ```
+
+**Strict contract (default).** The quality of what the local model returns is set by the contract the orchestrator writes, so the server refuses a `delegate` or `delegate_many` task that leaves the executor without limits:
+
+| The contract must give | Refused when |
+| --- | --- |
+| A goal with concrete targets | it has fewer than 8 words or no file path, symbol or exact value |
+| `write_globs` | it is empty, or a glob matches every file (`*`, `**/*`) |
+| `verify_commands` | it is empty, or a check cannot fail (`true`, `echo`, `exit 0`) |
+| `constraints` | the checks only look for text or files (`grep`, `test`, `ls`) and no constraint says what must hold |
+| `constraints` with the design decisions | the task writes files whose look no command proves (`.html`, `.css`, `.svg`, UI components) |
+| A check that fails before the work, or `constraints` | every check already passes at the baseline and there is no constraint: the job stops before the executor starts |
+| Atomic `constraints` | a constraint holds several requirements (longer than 160 characters, parts joined by `;`, or more than one sentence) |
+| Evidence for every constraint at `finish` | the executor cites no line of a file for a constraint, or the quote is not in the file: the work goes back, and without evidence the job ends `checks_failed` |
+| `job_evidence` or `job_diff` read before `job_feedback(accepted=True)` | neither the cited lines nor the diff were inspected |
+
+The receipt lists, under each constraint, the line the executor cited (`path:line "quote"`), already looked up in the file. `job_evidence` shows those lines with their surroundings, a few dozen lines instead of the whole diff, and is enough to accept a job that is verified by checks that failed before the work and whose constraints all have evidence. Lines that no constraint cites are covered by the checks only: `job_diff` remains for reading the whole change. Write the contract as an interface, not as a wish: exact names, numbers and formulas in the goal and the constraints, and a check that runs the code. Design stays with the orchestrator: every decision (structure, layout, colors, sizes, motion) goes into the contract before the work, because the executor takes the simplest reading of what is left unsaid and the orchestrator can only check the result against what the contract says. `TANDEM_STRICT=0` brings back the loose contract.
 
 **States:** `verified`, `unverified`, `checks_failed`, `blocked`, `stuck`, `out_of_steps`, `out_of_time`, `error`.
 
@@ -217,45 +235,93 @@ Read this before pointing Tandem at a sensitive repository:
 
 ## Benchmarks
 
-Reproducible live suite: [benchmarks/run_benchmark.py](benchmarks/run_benchmark.py) · Full report: [benchmarks/RESULTS.md](benchmarks/RESULTS.md)
+> **Trade-off first.** Tandem can save cloud tokens, and it is slower: the work runs on the local model, whose speed depends on your hardware (here about 11 tokens per second). Reading and test-driven fixes save 59 to 99% of the cloud tokens for seconds to minutes of waiting. Generating new code from a contract keeps the quality but saves much less, because the design has to be written into the contract, and it takes tens of minutes instead of one cloud turn.
 
-Measured live on `qwen3.8-27b@iq3_s` (LM Studio, `65536` ctx, `23.8 tok/s` probed, cache disabled, `1 cloud tok ≈ 3.6 chars`) on **Intel Core i9-9900K @ 3.60GHz (16 threads)**, **22 GiB RAM**, **AMD Radeon Navi 21 (RX 6800/6900 XT, 16 GiB VRAM)**, Linux x86_64:
+Reproducible suite: [benchmarks/run_benchmark.py](benchmarks/run_benchmark.py) · Full report: [benchmarks/RESULTS.md](benchmarks/RESULTS.md)
 
-**Reading, Command Digest & Extraction (`digest_file`, `digest_many`, `digest_command`, `extract_from_file`)**
-
-| Task | Source → Cloud | Cloud Saved (est.) | Local Tokens | Time | Verification |
-| --- | --- | ---: | ---: | ---: | --- |
-| Full doc QA (`README.md`) | 23.2 KB → 557 B | **~6,281 tok (97.6%)** | 9,132 | 64.2 s | 0/3 quotes (`unsupported`)* |
-| Grep QA (`agent.py`, 7/1,506 lines) | 75.9 KB → 654 B | **~20,904 tok (99.1%)** | 878 | 22.9 s | 2/2 quotes (`quote_only`) |
-| 8-file survey (`tandem_mcp/*.py`) | 176.2 KB → 1.7 KB | **~48,479 tok (99.0%)** | 80,840 | 620.4 s | 16/16 quotes (`checked`) |
-| Command output (`git log -n 30 --stat`) | 13.9 KB → 2.0 KB | **~3,304 tok (85.7%)** | n/a | 118 s | 10/10 quotes verified |
-| JSON extraction (`pyproject.toml`) | 686 B → 241 B | **~124 tok (64.9%)** | n/a | 15 s | JSON Schema validated |
-
-**Delegated Coding (`delegate`)**
-
-| Task | Baseline → Receipt | Cloud Saved (est.) | Local Tokens | Time | Result |
-| --- | --- | ---: | ---: | ---: | --- |
-| Micro bugfix (1 file, 6 lines) | 1.0 KB → 422 B | **~174 tok (59.7%)** | 4,061 | 19.1 s | `VERIFIED` (3 steps, 0 repairs) |
-| Multi-file bugfix (4 files) | 6.1 KB → 490 B | **~1,557 tok (92.0%)** | 7,365 | 32.1 s | `VERIFIED` (4 steps, 0 repairs) |
-
-**Animation A/B Comparison (Orbital Particle Simulation, identical spec)**
-
-| Without Tandem: `Gemini Hydrogen` (Cloud Direct) | With Tandem MCP: `Gemini Hydrogen` (Orchestrator) + `qwen3.8-27b@iq3_s` (Local) |
-| :---: | :---: |
-| <img src="benchmarks/animation_without_tandem.gif" alt="Without Tandem: Gemini Hydrogen (Cloud Direct)" width="360" height="230" /> | <img src="benchmarks/animation_with_tandem.gif" alt="With Tandem MCP: Gemini Hydrogen orchestrator + qwen3.8-27b@iq3_s local executor" width="360" height="230" /> |
-| *Cloud Direct: `Gemini Hydrogen` · 10.3 KB, 272 lines · **~2,873 cloud output tokens*** | *Orchestrator: `Gemini Hydrogen` · Local executor: `qwen3.8-27b@iq3_s` (`65536` ctx) · 10.2 KB, 333 lines · **~260 cloud spec + receipt tokens (~91.0% cloud output saved, -2,613 tok)** (`69,004` local tokens, `1` repair)* |
-
-| Variant | Models Used (Caption) | Output | Cloud Tokens | Cloud Saved (est.) | Local Tokens | Time | Verification |
-| --- | --- | --- | ---: | ---: | ---: | ---: | --- |
-| **Without Tandem** | `Gemini Hydrogen` (Cloud Direct) | **[Live Demo](https://alenoc.github.io/tandem-mcp/benchmarks/animation_without_tandem/)** ([source](benchmarks/animation_without_tandem/index.html), 10.3 KB, 272 lines) | ~2,873 out | n/a | 0 | Immediate | `node --check` + DOM PASS |
-| **With Tandem MCP** | Orchestrator: `Gemini Hydrogen` · Local: `qwen3.8-27b@iq3_s` (`LM Studio`, `delegate`) | **[Live Demo](https://alenoc.github.io/tandem-mcp/benchmarks/animation_with_tandem/)** ([source](benchmarks/animation_with_tandem/index.html), 10.2 KB, 333 lines) | ~260 spec+receipt | **~2,613 tok (91.0%)** | 69,004 | 819.7 s | `node --check` + PNG PASS + `job_feedback(accepted=True)` |
-
-> **Cloud token savings:** offloading the 333-line animation generation to `qwen3.8-27b@iq3_s` cut cloud output tokens from **~2,873** down to **~260** (**~91.0% saved**, `-2,613` cloud tokens).
-
-**[Open both interactive animations side-by-side in your browser](https://alenoc.github.io/tandem-mcp/benchmarks/animation_comparison.html)** ([source](benchmarks/animation_comparison.html))
+Orchestrator `Fable 5.2` (cloud) and executor `qwen3.8-27b@iq3_s` (LM Studio, `65536` ctx, `11.2 tok/s` probed), Tandem 3.1.0 with the strict contract, cache disabled, `1 cloud tok = 3.6 chars`, on **Intel Core i9-9900K @ 3.60GHz (16 threads)**, **22 GiB RAM**, **AMD Radeon Navi 21 (RX 6800/6900 XT, 16 GiB VRAM)**, Linux x86_64.
 
 <details>
-<summary>Exact prompt used for 2D orbital animations</summary>
+<summary>LM Studio configuration used for the executor</summary>
+
+IQ3_S quantization, 65536 context, all 65 layers on the GPU, flash attention and MTP speculative decoding are the settings that weigh most on the times below.
+
+| Load setting | Value | | Inference setting | Value |
+| --- | --- | --- | --- | --- |
+| Model file | `unsloth/Qwen3.8-27B-GGUF/Qwen3.8-27B-UD-IQ3_S.gguf` (12.04 GB, 27B, IQ3_S) | | Temperature | 0.15 (Tandem sets its own per call: 0.1, and 0.7 for extra `ask` samples) |
+| Runtime | LM Studio 0.4.28, `llama.cpp` Vulkan (`linux-x86_64-vulkan-avx2` 2.73.0) | | Top K / Top P / Min P | 20 / 0.95 / 0.05 |
+| Context length | 65536 (model supports 262144) | | Repeat penalty | 1 |
+| GPU offload | 65 layers (all) | | Presence penalty | off |
+| CPU thread pool | 8 | | Thinking | enabled, reasoning budget 1024 tokens |
+| Evaluation / physical batch | 1024 / 512 | | Context overflow | rolling window |
+| Max concurrent predictions | 1 | | Limit response length | off |
+| Unified KV cache | on | | Structured output | off (Tandem sends a schema per call) |
+| KV cache on GPU | on, K cache `Q8_0`, V cache `Q4_0` | | Seed | random |
+| Flash attention | on | | | |
+| Context checkpoints | 32 | | | |
+| Keep model in memory / mmap | on / on | | | |
+| On-demand tensor loading | auto | | | |
+| Speculative decoding | MTP, max draft tokens 4, min 0, draft probability 0.75 | | | |
+| RoPE frequency base / scale | auto / auto | | | |
+
+</details>
+
+**Reading, command digest and extraction (`digest_file`, `digest_many`, `digest_command`, `extract_from_file`)**
+
+| Task | Source → Cloud | Cloud saved (est.) | Local tokens | Time | Evidence |
+| --- | --- | ---: | ---: | ---: | --- |
+| Full-file doc QA (`README.md`) | 27.9 KB → 405 B | **~7,649 tok (98.6%)** | 10,298 | 66.2 s | 0 ok / 2 dropped (`unsupported`) |
+| Targeted grep QA (`agent.py`) | 85.9 KB → 692 B | **~23,666 tok (99.2%)** | 643 | 14.1 s | 3 ok / 0 dropped (`quote_only`) |
+| Multi-file package survey (`tandem_mcp/*.py`) | 209.8 KB → 1.5 KB | **~57,846 tok (99.3%)** | 108,207 | 800.3 s | 8 ok / 0 dropped (`checked`) |
+| Recent git history (`git log -n 30 --stat`) | 18.1 KB → 1.4 KB | **~4,614 tok (92.0%)** | 18,528 | 109.9 s | 8 ok / 0 dropped |
+| Project manifest (`pyproject.toml`) | 786 B → 113 B | **~187 tok (85.6%)** | 633 | 9.8 s | schema validated, 0 values not in the source |
+
+**Delegated fixes with an existing test (`delegate`)**
+
+| Task | Baseline → Receipt | Cloud saved (est.) | Local tokens | Time | Result |
+| --- | --- | ---: | ---: | ---: | --- |
+| Micro bugfix (1 tiny file, 6 lines) | 1.0 KB → 432 B | **~171 tok (58.7%)** | 6,297 | 25.3 s | `VERIFIED` (4 steps, 0 repairs) |
+| Multi-file bugfix (`config_loader.py` + 3 other files) | 6.1 KB → 476 B | **~1,561 tok (92.2%)** | 8,066 | 32.8 s | `VERIFIED` (4 steps, 0 repairs) |
+
+### Generation from a contract: same quality, smaller saving, longer wait
+
+Each demo was produced twice: written directly by `Fable 5.2`, and written by `qwen3.8-27b@iq3_s` under a strict contract that `Fable 5.2` wrote once, before any output existed. Nothing was fixed after generation, and the result was judged against the contract only, as an orchestrator without a reference solution would.
+
+| Orbital simulation, direct (`Fable 5.2`) | Orbital simulation, with Tandem (`qwen3.8-27b@iq3_s`) |
+| :---: | :---: |
+| <img src="benchmarks/animation_without_tandem.gif" alt="Orbital simulation written directly by the cloud model" width="360" height="230" /> | <img src="benchmarks/animation_with_tandem.gif" alt="Orbital simulation written by the local executor under a Tandem contract" width="360" height="230" /> |
+| **3D neon portal, direct (`Fable 5.2`)** | **3D neon portal, with Tandem (`qwen3.8-27b@iq3_s`)** |
+| <img src="benchmarks/scene3d_without_tandem.gif" alt="3D neon portal written directly by the cloud model" width="360" height="230" /> | <img src="benchmarks/scene3d_with_tandem.gif" alt="3D neon portal written by the local executor under Tandem contracts" width="360" height="230" /> |
+
+| | Orbital animation, direct | Orbital animation, with Tandem | 3D portal, direct | 3D portal, with Tandem |
+| --- | ---: | ---: | ---: | ---: |
+| Who writes the code | `Fable 5.2` | `qwen3.8-27b@iq3_s` under a contract by `Fable 5.2` | `Fable 5.2` | `qwen3.8-27b@iq3_s` under 4 contracts by `Fable 5.2` |
+| Output | 11,956 B, 272 lines | 12,499 B, 459 lines | 15,122 B, 327 lines | 18,243 B, 616 lines in 4 files |
+| Cloud output tokens | ~3,321 (the file) | ~2,343 (contract 4,450 + check harness 3,986 chars) | ~4,201 (the file) | ~2,396 (contracts 6,874 + check harness 1,753 chars) |
+| Cloud output tokens saved | n/a | **29.4%** | n/a | **43.0%** |
+| Cloud input tokens to inspect | 0 | ~4,199 (receipt + `job_evidence`) | 0 | ~7,814 (receipts + `job_evidence`) |
+| Local tokens | 0 | 104,087 | 0 | 199,182 |
+| Wall time | one cloud turn | **1121 s** (19 min) | one cloud turn | **1890 s** (31 min) |
+| Contract | n/a | 46 atomic constraints, 1 check that runs the page | n/a | 69 atomic constraints, checks that run the modules |
+| Executor result | n/a | `VERIFIED`, 9 steps, 0 repairs | n/a | 4 of 4 tasks `VERIFIED`, 0 repairs |
+| Constraints met on inspection | n/a | 46 of 46 | n/a | 67 of 69 |
+| Fixes after generation | none | none | none | none |
+| Headless render | 60 FPS, no error | 60 FPS, no error | 60 FPS, 84 polygons, no error | 60 FPS, 84 polygons, no error |
+| Demo | [live](https://alenoc.github.io/tandem-mcp/benchmarks/animation_without_tandem/) ([source](benchmarks/animation_without_tandem/index.html)) | [live](https://alenoc.github.io/tandem-mcp/benchmarks/animation_with_tandem/) ([source](benchmarks/animation_with_tandem/index.html)) | [live](https://alenoc.github.io/tandem-mcp/benchmarks/scene3d_without_tandem/) ([source](benchmarks/scene3d_without_tandem/index.html)) | [live](https://alenoc.github.io/tandem-mcp/benchmarks/scene3d_with_tandem/) ([source](benchmarks/scene3d_with_tandem/)) |
+
+Side by side in the browser: **[orbital simulation](https://alenoc.github.io/tandem-mcp/benchmarks/animation_comparison.html)** · **[3D neon portal](https://alenoc.github.io/tandem-mcp/benchmarks/scene3d_comparison.html)**
+
+What these runs show:
+
+- **Quality is preserved when the design is in the contract.** With 46 and 69 atomic constraints the local model delivered both demos at the first attempt with no repair. An earlier run with the bare user prompt was also `VERIFIED`, and looked plainer: the design decisions had been left to the local model.
+- **The saving on cloud output tokens is 29.4% and 43.0%**, because the contract and the check harness cost most of what writing the code costs. Adding the input tokens of receipts and inspection, generation through Tandem used more cloud tokens in total than writing the code directly.
+- **It takes 19 and 31 minutes** on this hardware, against one cloud turn.
+- **`VERIFIED` is not perfection.** Reading the cited lines found two constraints of the 3D engine that are not met as written (polygons are sorted by distance from the scene origin instead of camera depth). The result is published as delivered.
+
+Use Tandem for generation when cloud output tokens matter more than time, or when the specification exists anyway. Use it for reading and test-driven fixes almost always.
+
+<details>
+<summary>Exact prompt used for the orbital simulation</summary>
 
 ```text
 Create a single self-contained file index.html implementing an interactive full-viewport HTML5 Canvas orbital particle simulation in dark space (#060913):
@@ -273,68 +339,17 @@ Create a single self-contained file index.html implementing an interactive full-
 Keep everything self-contained in index.html with zero external dependencies and valid JavaScript syntax.
 ```
 
-</details>
-
-### 3D Neon Portal & Floating Monolith: Quality-Preserved Hybrid Delegation
-
-Using Tandem's **hybrid quality-preservation workflow** (non-vague contract `constraints` + `delegate_many` decomposition into `html_css`, `engine3d`, and `app_loop` + `job_diff` & orchestrator visual PNG inspection + targeted `job_continue` polish + `job_feedback`), the local executor (`qwen3.8-27b@iq3_s`) matches the frontier cloud baseline (`Gemini Hydrogen`) in framing, geometry, lighting, and HUD layout while cutting cloud output tokens by **~73.7%**:
-
-<table>
-  <thead>
-    <tr>
-      <th align="center">Without Tandem (Cloud Direct)</th>
-      <th align="center">With Tandem MCP (Hybrid Quality Control)</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td align="center">
-        <a href="https://alenoc.github.io/tandem-mcp/benchmarks/scene3d_without_tandem/">
-          <img src="benchmarks/scene3d_without_tandem.gif" alt="3D Neon Portal without Tandem (Cloud Direct)" width="360" height="230" />
-        </a><br />
-        <sub><b>Model:</b> <code>Gemini Hydrogen</code> (direct)</sub><br />
-        <sub>403 lines &middot; 15,724 B &middot; ~4,368 cloud output tokens</sub>
-      </td>
-      <td align="center">
-        <a href="https://alenoc.github.io/tandem-mcp/benchmarks/scene3d_with_tandem/">
-          <img src="benchmarks/scene3d_with_tandem.gif" alt="3D Neon Portal with Tandem MCP" width="360" height="230" />
-        </a><br />
-        <sub><b>Orchestrator:</b> <code>Gemini Hydrogen</code> + <b>Local:</b> <code>qwen3.8-27b@iq3_s</code></sub><br />
-        <sub>907 lines (3 files) &middot; 26,884 B &middot; ~1,150 cloud tokens (<b>73.7% saved</b>)</sub>
-      </td>
-    </tr>
-  </tbody>
-</table>
-
-| Variant | Model(s) | Output & Live Demo | Cloud Output Tokens | Cloud Tokens Saved | Local Tokens (`qwen3.8-27b@iq3_s`) | Verification |
-| :--- | :--- | :--- | ---: | ---: | ---: | :--- |
-| **Without Tandem** | `Gemini Hydrogen` (cloud direct) | **[Live Demo](https://alenoc.github.io/tandem-mcp/benchmarks/scene3d_without_tandem/)** ([source](benchmarks/scene3d_without_tandem/index.html), 15.7 KB, 403 lines) | ~4,368 | n/a | n/a | `node --check` PASS + headless Chrome PNG/FPS check (`60 FPS`, `84` polys) |
-| **With Tandem MCP** | Orchestrator: `Gemini Hydrogen` · Local: `qwen3.8-27b@iq3_s` (`LM Studio`, `delegate_many` + `job_continue`) | **[Live Demo](https://alenoc.github.io/tandem-mcp/benchmarks/scene3d_with_tandem/)** ([index.html](benchmarks/scene3d_with_tandem/index.html), [engine3d.js](benchmarks/scene3d_with_tandem/engine3d.js), [app.js](benchmarks/scene3d_with_tandem/app.js), 26.9 KB, 907 lines) | ~1,150 (specs + visual polish) | **~3,218 tok (73.7%)** | 727,481 | All 3 jobs `VERIFIED` (`node --check` PASS) + visual PNG parity check (`84` polys) + `job_feedback(accepted=True)` |
-
-> **Cloud token savings & quality parity:** decomposing the 3D engine into 3 contracted modules (`html_css`, `engine3d`, `app_loop`) and running targeted `job_continue` polish passes after `job_diff` and PNG inspection cut cloud output tokens from **~4,368** down to **~1,150** (**~73.7% saved**, `-3,218` cloud tokens) with **no visual degradation**.
-
-**[Open both interactive 3D portals side-by-side in your browser](https://alenoc.github.io/tandem-mcp/benchmarks/scene3d_comparison.html)** ([source](benchmarks/scene3d_comparison.html))
-
-<details>
-<summary>Architectural spec &amp; decomposition used for 3D Neon Portal</summary>
-
-- `html_css` (`index.html`, 117 lines): full-viewport `<canvas id="c">`, dark radial gradient `#0d1633 -> #050814 -> #020309`, compact top-left glassmorphic `.hud` (`NEON PORTAL 3D`, `TANDEM MCP` badge, `#fps`, `#polys`, `#parts`, `#btnPause`, `#btnOrbit`, `#btnReset`, `#speed` slider, `#spdVal`).
-- `engine3d` (`engine3d.js`, 742 lines): pure 2D-canvas software 3D engine exposed on `window.Engine3D` (`init`, `setSpeed`, `togglePause`, `toggleOrbit`, `toggleWireframe`, `reset`, `getStats`) with camera `yaw=0.55, pitch=0.34, dist=9.6, fov=580`, cyber-grid floor (`y=-2.0`), two-tier stepped obsidian platform (`y=-1.25` and `y=-0.85`), twin pillars (`x=±1.25`), lintel (`y=1.95`) + crown cap (`y=2.32`), radial-gradient portal core + 2 counter-rotating tilted rings, 6 alternating cyan/magenta octahedral crystals (`r=2.45`), 180 twinkling stars, and 110 rising neon particles.
-- `app_loop` (`app.js`, 48 lines): initializes `window.Engine3D.init(canvas)` and wires `#btnPause`, `#btnOrbit`, `#btnReset`, `#speed`/`#spdVal`, and periodic `#fps`, `#polys`, `#parts` updates.
+The contract of the Tandem variant adds 46 constraints to this prompt: [benchmarks/contracts/animation.json](benchmarks/contracts/animation.json). The four contracts of the 3D portal are in [benchmarks/contracts/scene3d.json](benchmarks/contracts/scene3d.json).
 
 </details>
-
-*\*In the `README.md` run, the local model paraphrased its quotes instead of copying them verbatim; Tandem's verifier dropped all 3 and flagged `unsupported` instead of passing unverified claims to the cloud model.*
-
-**Takeaway:** `digest_file` (especially with `grep`) and `digest_many` deliver **98%+** cloud input savings; `delegate` pays off on multi-file or test-repair tasks, while trivial 1-file edits save too few tokens to justify local latency.
 
 ---
 
 ## Tests
 
 ```sh
-.venv/bin/python tests/test_offline.py     # 214 checks: limits, evidence, journal, rollback, installer
-.venv/bin/python tests/test_protocol.py    # 160 checks: full loop against scripted server (no model)
+.venv/bin/python tests/test_offline.py     # 231 checks: limits, evidence, journal, rollback, installer
+.venv/bin/python tests/test_protocol.py    # 169 checks: full loop against scripted server (no model)
 .venv/bin/python tests/test_live.py        # live checks against your running local model
 .venv/bin/python tests/test_live.py --text # live checks via JSON-reply protocol
 ```

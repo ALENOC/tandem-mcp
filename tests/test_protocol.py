@@ -12,6 +12,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 os.environ['TANDEM_HOME'] = tempfile.mkdtemp()
+os.environ['TANDEM_STRICT'] = '0'             # the loose contract; the strict one is checked in its own section
 for name in ('TANDEM_BASE_URL', 'LM_STUDIO_BASE_URL', 'TANDEM_MODEL', 'TANDEM_CONTEXT'):
     os.environ.pop(name, None)
 from fake_server import Fake  # noqa: E402
@@ -515,6 +516,58 @@ ok('constraints verification required' in server.job_feedback(c_job, True), 'can
 ok(server.job_feedback(c_job, True, constraints_verified=True) == 'recorded', 'accept succeeds after full job_diff + constraints_verified=True')
 ok('vague constraint' in server.delegate('Update portal.js with yaw=0.55', str(croot), constraints=['looks good']),
    'vague constraint without concrete anchor is refused')
+os.environ['TANDEM_STRICT'] = '1'
+YAW_CHECK = '''python3 -c "import sys; sys.exit(0 if 'yaw' in open('portal.js').read() else 1)"'''
+fake.requests.clear()
+fake.script = [('finish', {'summary': 'nothing to do'})]
+p_out = server.delegate('Tidy the layout of portal.js and keep the camera yaw = 0.55 as it is now.', str(croot),
+                        verify_commands=[YAW_CHECK], write_globs=['portal.js'], wait_seconds=60)
+ok('ERROR' in p_out.split('\n')[0] and 'nothing would prove the result' in p_out and not fake.requests,
+   'strict: checks that already pass and no constraint stop the job before the executor is called')
+fake.script = [('finish', {'summary': 'kept'}),
+               ('finish', {'summary': 'kept', 'evidence': [{'constraint': 1, 'path': 'portal.js', 'quote': 'const yaw = 0.77;'}]}),
+               ('finish', {'summary': 'kept', 'evidence': [{'constraint': 1, 'path': 'portal.js', 'quote': 'const  yaw = 0.55;'}]})]
+p_out = server.delegate('Tidy the layout of portal.js and keep the camera yaw = 0.55 as it is now.', str(croot),
+                        verify_commands=[YAW_CHECK], write_globs=['portal.js'],
+                        constraints=['portal.js still holds const yaw = 0.55'], wait_seconds=60)
+ok('VERIFIED' in p_out.split('\n')[0] and 'INSPECTION REQUIRED' in p_out, 'strict: the same job runs once constraints are given, and asks for inspection')
+p_data = store.read_job(p_out.split()[1].rstrip(':'))
+ok(p_data['repairs'] == 2 and p_data['unproven'] == [] and 'cited: portal.js:1  "const  yaw = 0.55;"' in p_out
+   and 'has no checked evidence' in json.dumps(fake.requests[-1]['messages']),
+   'strict: a constraint without a quote found in the file sends the work back, the cited line is in the receipt')
+fake.script = [('finish', {'summary': 'kept'})]
+p_out = server.delegate('Tidy the layout of portal.js and keep the camera yaw = 0.55 as it is now.', str(croot),
+                        verify_commands=[YAW_CHECK], write_globs=['portal.js'], max_repairs=0,
+                        constraints=['portal.js still holds const yaw = 0.55', 'portal.js loads nothing from a CDN'], wait_seconds=60)
+ok('CHECKS_FAILED' in p_out.split('\n')[0] and p_out.count('NO EVIDENCE') == 2, 'strict: without evidence the job is not verified')
+fake.script = [('finish', {'summary': 'kept', 'evidence': [{'constraint': 1, 'path': 'portal.js', 'quote': 'yaw = 0.55'},
+                                                           {'constraint': 2, 'path': 'portal.js', 'absent': 'https://cdn'}]})]
+p_out = server.delegate('Tidy the layout of portal.js and keep the camera yaw = 0.55 as it is now.', str(croot),
+                        verify_commands=[YAW_CHECK], write_globs=['portal.js'], max_repairs=0,
+                        constraints=['portal.js still holds const yaw = 0.55', 'portal.js loads nothing from a CDN'], wait_seconds=60)
+ok('VERIFIED' in p_out.split('\n')[0] and 'does not hold "https://cdn"' in p_out, 'strict: an absence can be the evidence of a constraint')
+e_job = p_out.split()[1].rstrip(':')
+e_view = server.job_evidence(e_job)
+ok(store.read_job(e_job).get('weak') is True and 'portal.js:1> const yaw = 0.55;' in e_view and 'not enough to accept the job' in e_view
+   and store.read_job(e_job)['evidence_inspected'] is False,
+   'cited lines are shown, but do not count as the inspection when the checks proved nothing')
+(croot / 'gate.js').unlink(missing_ok=True)
+fake.script = [('write_file', {'path': 'gate.js', 'content': '// gate\nconst pillars = 2;\nconst width = 2.5;\n'}),
+               ('finish', {'summary': 'made', 'evidence': [{'constraint': 1, 'path': 'gate.js', 'quote': 'const pillars = 2;'}]})]
+g_out = server.delegate('Create gate.js that declares const pillars = 2 and const width = 2.5 for the portal gate.', str(croot),
+                        verify_commands=['python3 -c "import sys; sys.exit(0 if \'pillars\' in open(\'gate.js\').read() else 1)"'],
+                        write_globs=['gate.js'], constraints=['gate.js declares const pillars = 2'], wait_seconds=60)
+g_job = g_out.split()[1].rstrip(':')
+ok('VERIFIED' in g_out.split('\n')[0] and 'job_evidence(' in g_out and 'inspection required' in server.job_feedback(g_job, True, constraints_verified=True),
+   'the receipt points to job_evidence and the gate is closed before any inspection')
+g_view = server.job_evidence(g_job, context=1)
+ok('gate.js:2> const pillars = 2;' in g_view and 'gate.js:1| // gate' in g_view and 'Shown 3 of 3' in g_view
+   and server.job_feedback(g_job, True, constraints_verified=True) == 'recorded',
+   'reading the cited lines opens the gate when failing checks now pass and every constraint has evidence')
+(croot / 'gate.js').write_text('// gate\nconst pillars = 3;\n')
+ok('no longer in the file' in server.job_evidence(g_job) and store.read_job(g_job)['evidence_inspected'] is False,
+   'evidence that no longer holds closes the gate again')
+os.environ['TANDEM_STRICT'] = '0'
 c_data = store.read_job(c_job)
 c_data['state'] = 'blocked'
 store.write_job(c_job, c_data)
@@ -569,7 +622,7 @@ try:
     rpc('notifications/initialized')
     tools = {t['name']: t for t in rpc('tools/list', ident=2)['result']['tools']}
     want = {'executor_status', 'executor_probe', 'ask', 'digest_file', 'digest_command', 'digest_many', 'extract_from_file', 'delegate',
-            'delegate_many', 'job_status', 'job_continue', 'job_diff', 'job_rollback', 'job_feedback', 'lesson_add', 'lessons',
+            'delegate_many', 'job_status', 'job_continue', 'job_diff', 'job_evidence', 'job_rollback', 'job_feedback', 'lesson_add', 'lessons',
             'ledger_report'}
     ok(set(tools) == want, f'MCP tools: {sorted(set(tools) ^ want)}')
     ok(all(t.get('description') for t in tools.values()) and 'verify_commands' in tools['delegate']['inputSchema']['properties'], 'tool schemas')

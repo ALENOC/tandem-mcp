@@ -39,23 +39,23 @@
 <body>
   <header>
     <div>
-      <h1>3D Neon Portal &amp; Floating Monolith: Gemini Hydrogen (Cloud Direct) vs. Tandem MCP (Gemini Hydrogen + Local qwen3.8-27b@iq3_s)</h1>
-      <p>Identical architectural specification, zero external dependencies, orchestrator-decomposed + visually verified.</p>
+      <h1>3D Neon Portal: Fable 5.2 (direct) vs. Tandem MCP (Fable 5.2 orchestrator + local qwen3.8-27b@iq3_s)</h1>
+      <p>Same task, zero external dependencies. The Tandem variant was written by the local model under a strict contract, with no fix after generation.</p>
     </div>
     <p><a href="RESULTS.md" style="color:#60a5fa;text-decoration:none;">View full benchmark results &rarr;</a></p>
   </header>
   <div class="grid">
     <section class="pane">
       <div class="bar">
-        <span class="tag cloud">Without Tandem (Gemini Hydrogen Direct)</span>
-        <span class="meta">403 lines &middot; 15,724 B &middot; ~4,368 cloud output tokens</span>
+        <span class="tag cloud">Without Tandem (Fable 5.2 direct)</span>
+        <span class="meta">15,122 B &middot; 327 lines &middot; ~4,201 cloud output tokens</span>
       </div>
       <iframe src="scene3d_without_tandem/index.html" title="3D Scene Cloud Direct"></iframe>
     </section>
     <section class="pane">
       <div class="bar">
-        <span class="tag tandem">With Tandem MCP (Gemini Hydrogen + qwen3.8-27b@iq3_s)</span>
-        <span class="meta">578 lines (3 files) &middot; 17,767 B &middot; ~650 cloud tokens (~85.1% saved)</span>
+        <span class="tag tandem">With Tandem MCP (Fable 5.2 + qwen3.8-27b@iq3_s)</span>
+        <span class="meta">18,243 B &middot; 616 lines (4 files) &middot; ~2,396 cloud output tokens (43.0% saved) &middot; 199,182 local tokens &middot; 1890 s &middot; 4 of 4 VERIFIED</span>
       </div>
       <iframe src="scene3d_with_tandem/index.html" title="3D Scene Tandem MCP"></iframe>
     </section>

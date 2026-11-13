@@ -86,7 +86,8 @@ root = Path(tempfile.mkdtemp())
                                    'assert abs(dbm_to_mw(10) - 10) < 1e-9, dbm_to_mw(10)\nassert abs(swr(100, 4) - 1.5) < 1e-9\n'
                                    'assert swr(0, 0) == 1.0\nprint("all good")\n')
 start = time.time()
-out = server.delegate('test_calc.py fails. Fix calc.py so that the test passes.', str(root), verify_commands=[f'{PY} test_calc.py'],
+out = server.delegate('test_calc.py fails: dbm_to_mw(20) must return 100. Fix the formula in calc.py so that the test passes.', str(root),
+                      verify_commands=[f'{PY} test_calc.py'], write_globs=['calc.py'],
                       allow_run=[r'^\S*python\S* test_calc\.py$'], wait_seconds=1200, max_steps=20)
 job = out.split()[1].rstrip(':')
 data = store.read_job(job) or {}

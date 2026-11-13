@@ -15,7 +15,9 @@ shape the tools:
 """
 import json
 import logging
+import os
 import re
+import shlex
 from pathlib import Path
 
 from mcp.server.mcpserver import MCPServer
@@ -26,11 +28,19 @@ GUIDE = '''Hybrid orchestration (cloud model = architect & reviewer, local model
 - Reading & extraction: use digest_file (with grep when possible), digest_command, digest_many, and extract_from_file
   instead of reading large files/logs into cloud context. Quotes and numbers are checked against the source;
   if a result is flagged unsupported/contested or ask(samples>1) shows agreement < 1.0, inspect only the cited lines.
-- Bounded coding: use delegate with tight write_globs and real verify_commands (tests, build, lint, syntax).
+- Bounded coding: delegate under a strict contract. Every task must name the files it may write (write_globs),
+  give verify_commands that fail until the work is done and that run the code (tests, build, a script), and list
+  as constraints every value, name and behaviour the result must have, one requirement per constraint (the executor
+  must cite a line for each, so a compound constraint hides requirements). A contract without them is refused.
+  The quality of the result is set by the contract: state interfaces, exact numbers and formulas, not wishes.
+  Design stays with you: write every design decision into the contract before the work (structure, layout, colors,
+  sizes, motion, edge cases). The executor takes the simplest reading of what is left unsaid, and after the work
+  you can only check the result against what the contract says, not against a solution you do not have.
   For multi-file or >150-line features, split into small modular tasks via delegate_many (with `after` dependencies)
   rather than asking a small local model for one giant single-shot file.
-- Keep frontier quality: verify_commands prove code runs/parses, not design or visual polish. Review job_diff
-  (or rendered output for UI) on non-trivial changes; use job_continue(hint=...) for targeted fixes, job_rollback
+- Keep frontier quality: verify_commands prove code runs/parses, not design or visual polish. Inspect every job:
+  job_evidence shows the lines the executor cited for each constraint (a few dozen lines, enough when the checks failed
+  before the work and every constraint has evidence), job_diff the whole change. Render the output for UI work; use job_continue(hint=...) for targeted fixes, job_rollback
   to undo cleanly, and job_feedback / lesson_add so mistakes become standing project rules.
 - Skip delegation for trivial 1-line edits or purely open-ended design with no check.
 The executor is slow. If a call runs past the client timeout and moves to the background, do not cancel it
@@ -304,16 +314,28 @@ def _receipt(job):
             lines.append('    ' + c['tail'][-500:].replace('\n', '\n    '))
     if data.get('constraints'):
         lines.append('Contract constraints to inspect:')
+        cited = data.get('evidence') or {}
         for idx, c in enumerate(data['constraints'], 1):
             lines.append(f'  - [ ] {idx}. {c}')
+            for row in cited.get(str(idx), [])[:3]:
+                lines.append(f'        cited: {row["path"]}:{row["line"]}  "{row["quote"]}"' if 'quote' in row else
+                             f'        cited: {row["path"]} does not hold "{row["absent"]}"')
+            if data.get('require_proof') and str(idx) not in cited and data['state'] != 'running':
+                lines.append('        NO EVIDENCE: the executor cited no line for this constraint')
+        if cited:
+            lines.append('  The cited lines exist in the files (checked). Whether they satisfy the constraint is yours to judge.')
+    if data.get('constraints') and any(_VISUAL.search(row[0]) for row in data.get('changes') or []):
+        lines.append('No check proves the look: render the result and compare it with each constraint above.')
     if data.get('weak') and data['state'] == 'verified':
         lines.append('INSPECTION REQUIRED: every check already passed before the job, so the checks do not prove this work. '
                      f'Inspect job_diff({job!r}) before job_feedback(accepted=True).')
     elif data['state'] == 'verified' and data.get('changes'):
         churn = sum(add + rem for _, _, add, rem in data['changes'])
         if churn > 40 or data.get('constraints'):
-            lines.append(f'INSPECTION REQUIRED ({churn} lines changed): Inspect job_diff({job!r}) and verify all contract '
-                         'constraints before job_feedback(accepted=True), or use job_continue for targeted polish.')
+            how = (f'Inspect job_evidence({job!r}), the lines cited for each constraint (enough for this job), or job_diff({job!r}), '
+                   'the whole change' if not _focused(data) else f'Inspect job_diff({job!r})')
+            lines.append(f'INSPECTION REQUIRED ({churn} lines changed): {how}. Verify every contract constraint before '
+                         'job_feedback(accepted=True), or use job_continue for a targeted fix.')
     if data['state'] in ('stuck', 'out_of_steps') and not data.get('changes'):
         lines.append('HINT: no file was changed; if the task was too large for one shot, split it into smaller modules with delegate_many.')
     if data.get('restored'):
@@ -350,7 +372,77 @@ def _wait(job, seconds):
 _ANCHOR_RE = re.compile(r'[/\\`\'":=]|#[A-Za-z0-9_-]+|\.[A-Za-z0-9]{1,5}\b|\d')
 
 
-def _validate_contract(goal: str, constraints: list[str] | None, verify_commands: list[str] | None) -> list[str]:
+_CATCH_ALL = re.compile(r'^[*?./]*$')
+_SHELL_WORDS = {'do', 'then', 'else', 'elif', 'if', 'while', 'until', '!', '{', '('}
+_SHELL_ONLY = {'for', 'done', 'fi', 'case', 'esac', '}', ')'}
+_PRESENCE = {'grep', 'egrep', 'fgrep', 'rg', 'test', '[', 'ls', 'wc', 'stat', 'find', 'cat', 'head', 'tail'}
+_NO_PROOF = {'true', ':', 'echo', 'printf', 'exit', 'pwd', 'sleep', 'date'}
+_VISUAL = re.compile(r'\.(?:html?|css|scss|sass|less|svg|vue|svelte|jsx|tsx)$', re.I)
+
+
+def strict():
+    """The strict contract is the rule; TANDEM_STRICT=0 brings back the loose one."""
+    return os.environ.get('TANDEM_STRICT', '1').strip().lower() not in ('0', 'off', 'false', 'no')
+
+
+def _commands_of(check):
+    """Names of the commands a check runs, shell keywords left out."""
+    try:
+        parts, _ = sandbox.split_command(check)
+    except sandbox.SandboxError:
+        return ['(shell)']                               # a substitution: something does run
+    names = []
+    for part in parts:
+        try:
+            words = shlex.split(part)
+        except ValueError:
+            words = part.split()
+        while words and (words[0] in _SHELL_WORDS or sandbox._ASSIGNMENT.match(words[0])):
+            words.pop(0)
+        if words and words[0] not in _SHELL_ONLY:
+            names.append(os.path.basename(words[0]))
+    return names
+
+
+def _strict_contract(text, constraints, verify_commands, write_globs):
+    """What a delegated task must state before the executor starts: where it may write, what proves
+    the work, and what must hold that no command can prove."""
+    words = text.split()
+    if len(text) < 40 or len(words) < 8 or not _ANCHOR_RE.search(text):
+        raise ValueError('contract refused: the goal must name its targets (file paths, symbols, exact values) and say '
+                         'the expected behaviour, in at least 8 words')
+    for c in constraints:
+        if len(c) > 160 or re.search(r';\s+\S|[.!?]\s+[A-Z]', c):
+            raise ValueError(f'contract refused: one requirement per constraint, in at most 160 characters ({c[:60]!r}...). '
+                             'Split it: the executor cites one line of a file for each constraint, so a constraint that '
+                             'holds several requirements leaves all but one without evidence')
+    globs = [str(g).strip() for g in (write_globs or []) if str(g).strip()]
+    if not globs:
+        raise ValueError('contract refused: write_globs is required, name the files this task may write')
+    for g in globs:
+        if _CATCH_ALL.match(g):
+            raise ValueError(f'contract refused: write_globs {g!r} matches every file, name the files or the folder')
+    checks = [str(c).strip() for c in (verify_commands or []) if str(c).strip()]
+    if not checks:
+        raise ValueError('contract refused: verify_commands is required, give at least one command that fails '
+                         'until the work is done (a test, a build, a script that runs the code)')
+    names = []
+    for check in checks:
+        ran = _commands_of(check)
+        if ran and all(n in _NO_PROOF for n in ran):
+            raise ValueError(f'contract refused: the check {check[:60]!r} cannot fail, so it proves nothing')
+        names += ran
+    if any(_VISUAL.search(g) for g in globs) and not constraints:
+        raise ValueError('contract refused: this task writes files whose look no command can prove, so constraints are '
+                         'required: write your design decisions (layout, colors, sizes, motion, behaviour) as constraints. '
+                         'The executor makes no design choice for you, and you cannot recognise later what you did not ask')
+    if names and all(n in _PRESENCE or n in _NO_PROOF for n in names) and not constraints:
+        raise ValueError('contract refused: the checks only look for text or files and never run the work, so '
+                         'constraints are required: list what must hold (values, names, behaviour) for your inspection')
+
+
+def _validate_contract(goal: str, constraints: list[str] | None, verify_commands: list[str] | None,
+                       write_globs: list[str] | None = None) -> list[str]:
     text = str(goal or '').strip()
     if not text:
         raise ValueError('vague goal refused: describe the exact target, files, and expected behaviour')
@@ -369,6 +461,8 @@ def _validate_contract(goal: str, constraints: list[str] | None, verify_commands
                 'vague goal refused: specify concrete targets (file paths, symbols, exact values/numbers), '
                 'a non-empty constraints list, or verify_commands'
             )
+    if strict():
+        _strict_contract(text, clean_constraints, verify_commands, write_globs)
     return clean_constraints
 
 
@@ -380,15 +474,27 @@ def delegate(goal: str, workspace: str, verify_commands: list[str] = [], write_g
              constraints: list[str] = []) -> str:
     """Give the local executor a bounded task in a project and get a receipt.
 
+    The contract is strict (TANDEM_STRICT=0 relaxes it): a call is refused unless it gives a goal
+    with concrete targets, write_globs that name files, and verify_commands that can fail. When the
+    checks only look for text or files (grep, test, ls), or the task writes files whose look no
+    command proves (HTML, CSS, SVG, UI components), constraints are required too. For every
+    constraint the executor must cite, at finish, the line that satisfies it: the server looks the
+    quote up in the file, sends the work back when a constraint has none, and lists the cited lines
+    in the receipt. Constraints are atomic: one requirement each, at most 160 characters, so that
+    every requirement gets its own cited line. When every
+    check already passes before the work and no constraint is given, the job stops before the
+    executor starts, because nothing would prove the work. Accepting a job needs its job_evidence
+    (the cited lines) or its job_diff read.
+
     goal: what to do, precise and self-contained (files, names, exact values, expected behaviour).
-      Vague goals without concrete targets, constraints, or verify_commands are refused.
     workspace: absolute path of the project folder; the executor cannot leave it.
     verify_commands: shell commands that must exit 0 for the work to be accepted (tests, build,
       a grep that must find or not find something). They run after the executor finishes in an
       isolated sandbox with secret env vars stripped; their failures go back to it for up to
       max_repairs attempts. Give at least one whenever you can. The files they name (and test
       folders) are read only for the executor unless write_globs names them.
-    write_globs: files it may write, as globs relative to the workspace (empty: any file).
+    write_globs: files it may write, as globs relative to the workspace. Required; a glob that
+      matches every file ('*', '**/*') is refused.
     allow_run: regular expressions of commands the executor itself may run (empty: none). Every
       part of a pipeline or chain must match one. A pattern matches anywhere in the part: start it
       with ^ (for example '^pytest\\b') so that it names the command and not one of its arguments.
@@ -410,11 +516,11 @@ def delegate(goal: str, workspace: str, verify_commands: list[str] = [], write_g
     with a change, renames. Poor tasks: design choices, anything without a check."""
     try:
         ws = sandbox.Workspace(workspace, write_globs, allow_run, immutable)
-        clean_constraints = _validate_contract(goal, constraints, verify_commands)
+        clean_constraints = _validate_contract(goal, constraints, verify_commands, write_globs)
         job = agent.start(goal, ws, list(verify_commands), max(3, min(max_steps, 80)), max(0, min(max_repairs, 5)), model,
-                          context, baseline, max(0, int(max_seconds)),
+                          context, baseline or strict(), max(0, int(max_seconds)),
                           checks_network=checks_network, unjailed_checks=unjailed_checks,
-                          constraints=clean_constraints)
+                          constraints=clean_constraints, require_proof=strict())
         _wait(job, wait_seconds)
         return _saved('delegate', 0, _receipt(job))
     except Exception as exc:
@@ -430,10 +536,10 @@ def delegate_many(tasks: list[dict], workspace: str, allow_run: list[str] = [], 
 
     tasks: a list of objects with
       name             short unique name
-      goal             what to do, self-contained and non-vague
-      verify_commands  checks of this task (list of shell commands)
-      write_globs      files this task may write (list of globs)
-      constraints      explicit checkable requirements for this task (optional list)
+      goal             what to do, self-contained, with concrete targets
+      verify_commands  checks of this task that can fail (list of shell commands, required)
+      write_globs      files this task may write (list of globs, required)
+      constraints      explicit checkable requirements (required when the checks only look for text)
       after            names of the tasks that must succeed first (list)
       context          facts for this task (optional)
       immutable        read-only files or globs for this task (optional)
@@ -449,7 +555,7 @@ def delegate_many(tasks: list[dict], workspace: str, allow_run: list[str] = [], 
             if not isinstance(t, dict) or not str(t.get('goal', '')).strip():
                 return _fail(f'task {n + 1} has no goal')
             t_verify = list(t.get('verify_commands') or [])
-            t_constraints = _validate_contract(str(t['goal']), t.get('constraints'), t_verify)
+            t_constraints = _validate_contract(str(t['goal']), t.get('constraints'), t_verify, t.get('write_globs'))
             specs.append({'name': str(t.get('name') or f'task{n + 1}'), 'goal': str(t['goal']),
                           'verify_commands': t_verify, 'write_globs': list(t.get('write_globs') or []),
                           'immutable': list(t.get('immutable') or []),
@@ -461,7 +567,8 @@ def delegate_many(tasks: list[dict], workspace: str, allow_run: list[str] = [], 
             return _fail('a batch holds 1 to 16 tasks')
         job = agent.start_batch(specs, workspace, allow_run, max(1, min(int(workers), 8)), max(3, min(max_steps, 80)),
                                 max(0, min(max_repairs, 5)), model, context,
-                                checks_network=checks_network, unjailed_checks=unjailed_checks, immutable=immutable)
+                                checks_network=checks_network, unjailed_checks=unjailed_checks, immutable=immutable,
+                                require_proof=strict())
         _wait(job, wait_seconds)
         return _saved('delegate', 0, _receipt(job))
     except Exception as exc:
@@ -492,6 +599,7 @@ def job_continue(job_id: str, hint: str, extra_steps: int = 15, wait_seconds: in
             data['diff_inspected'] = False
             data['diff_truncated'] = False
             data['diff_paths'] = []
+            data['evidence_inspected'] = False
             store.write_job(job_id, data)
         agent.resume(job_id, hint, max(3, min(int(extra_steps), 60)))
         _wait(job_id, wait_seconds)
@@ -535,6 +643,84 @@ def job_diff(job_id: str, path: str = '', max_lines: int = 200) -> str:
     return _saved('job_diff', 0, '\n'.join(lines) or 'no change')
 
 
+def _focused(data):
+    """Why the cited lines are not enough to accept this job, or ''. They are enough when checks that
+    failed before the work pass now and every constraint has evidence that was looked up."""
+    if data.get('state') != 'verified':
+        return f'the job is {data.get("state")}'
+    if not data.get('constraints') or not data.get('evidence'):
+        return 'the job has no constraint with cited evidence'
+    if data.get('unproven'):
+        return 'some constraints have no evidence'
+    if data.get('weak') or not data.get('checks'):
+        return 'no check failed before the work, so the checks do not prove it'
+    return ''
+
+
+@mcp.tool()
+def job_evidence(job_id: str, context: int = 1) -> str:
+    """The lines the executor cited for each contract constraint, with `context` lines around them,
+    read from the files as they are now. This is the focused inspection of a delegated job: a few
+    dozen lines instead of the whole diff. It satisfies the inspection asked by job_feedback when
+    the job is verified by checks that failed before the work and every constraint has checked
+    evidence; in any other case it says so and job_diff is still needed. Lines that no constraint
+    cites are covered only by the verify commands: use job_diff when you want to read them."""
+    data = store.read_job(job_id)
+    if not data:
+        return f'unknown job {job_id}'
+    constraints, cited = data.get('constraints') or [], data.get('evidence') or {}
+    if not constraints or not cited:
+        return f'job {job_id} has no cited evidence: inspect job_diff({job_id!r})'
+    context = max(0, min(int(context), 8))
+    root, texts, shown, stale, out = Path(data.get('workspace', '.')), {}, set(), [], []
+
+    def rows_of(rel):
+        if rel not in texts:
+            p = agent._safe_workspace_path(root, rel)
+            try:
+                texts[rel] = sandbox.read_text(p, 2_000_000).splitlines() if p is not None and p.is_file() else None
+            except Exception:
+                texts[rel] = None
+        return texts[rel]
+
+    for idx, text in enumerate(constraints, 1):
+        out.append(f'{idx}. {text[:90]}')
+        if not cited.get(str(idx)):
+            out.append('   NO EVIDENCE')
+            stale.append(idx)
+        for row in cited.get(str(idx), [])[:3]:
+            rows = rows_of(row['path'])
+            if rows is None:
+                out.append(f'   {row["path"]}: the file is gone')
+                stale.append(idx)
+            elif 'absent' in row:
+                still = agent._squash(row['absent']) not in agent._squash('\n'.join(rows))
+                out.append(f'   {row["path"]} does not hold "{row["absent"]}"' if still else f'   {row["path"]} now holds "{row["absent"]}"')
+                if not still:
+                    stale.append(idx)
+            else:
+                quote = agent._squash(row['quote'])
+                at = row.get('line') or 0
+                if not (1 <= at <= len(rows) and quote in agent._squash(rows[at - 1])):      # the file moved since the job ended
+                    at = next((k for k, line in enumerate(rows, 1) if quote in agent._squash(line)), 0)
+                if not at:
+                    out.append(f'   {row["path"]}: the cited line is no longer in the file: "{row["quote"]}"')
+                    stale.append(idx)
+                    continue
+                for k in range(max(1, at - context), min(len(rows), at + context) + 1):
+                    out.append(f'   {row["path"]}:{k}{">" if k == at else "|"} {rows[k - 1][:220]}')
+                    shown.add((row['path'], k))
+    added = sum(row[2] for row in data.get('changes') or [])
+    out.append(f'Shown {len(shown)} of {added} added or changed lines in {len(data.get("changes") or [])} file(s). '
+               'The other lines are covered by the verify commands only.')
+    why = _focused(data) or ('the evidence of constraint ' + ', '.join(str(n) for n in sorted(set(stale))) + ' no longer holds' if stale else '')
+    data['evidence_inspected'] = not why
+    store.write_job(job_id, data)
+    out.append(f'This view is not enough to accept the job ({why}): inspect job_diff({job_id!r}).' if why else
+               'Judge each constraint on its cited lines, then job_feedback(accepted=..., constraints_verified=True).')
+    return _saved('job_evidence', 0, '\n'.join(out))
+
+
 @mcp.tool()
 def job_rollback(job_id: str) -> str:
     """Undo a delegated job: every file it changed goes back to its content before the job.
@@ -562,10 +748,13 @@ def job_feedback(job_id: str, accepted: bool, lesson: str = '', constraints_veri
             return _fail(f'cannot accept job in state {data.get("state")!r}: fix or job_continue until verified')
         churn = sum(add + rem for _, _, add, rem in (data.get('changes') or []))
         needs_diff = bool(data.get('changes')) and (churn > 40 or bool(data.get('constraints')) or bool(data.get('weak'))
-                                                    or data.get('state') == 'unverified')    # no check ran: the diff is the only proof
-        if needs_diff and not data.get('diff_inspected'):
-            return _fail(f'inspection required before accepting: call job_diff({job_id!r}) first to inspect the diff and verify constraints')
-        if needs_diff and data.get('diff_truncated'):
+                                                    or data.get('state') == 'unverified'     # no check ran: the diff is the only proof
+                                                    or strict())                             # strict: a verdict is given on a diff that was read
+        focused = bool(data.get('evidence_inspected')) and not _focused(data)      # the cited lines were read and are enough
+        if needs_diff and not focused and not data.get('diff_inspected'):
+            return _fail(f'inspection required before accepting: call job_evidence({job_id!r}) for the lines cited for each constraint, '
+                         f'or job_diff({job_id!r}) for the whole change')
+        if needs_diff and not focused and data.get('diff_truncated'):
             return _fail(f'full diff inspection required: job_diff({job_id!r}) was truncated; inspect each file or raise max_lines before accepting')
         if data.get('constraints') and not constraints_verified:
             return _fail('constraints verification required: confirm all contract constraints were inspected by passing constraints_verified=True')
