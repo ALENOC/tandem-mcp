@@ -213,38 +213,38 @@ Read this before pointing Tandem at a sensitive repository:
 
 Reproducible live suite: [benchmarks/run_benchmark.py](benchmarks/run_benchmark.py) · Full report: [benchmarks/RESULTS.md](benchmarks/RESULTS.md)
 
-Measured live on `qwen3.8-27b@iq3_s` (LM Studio, `65536` ctx, `11.1 tok/s`, cache disabled, `1 cloud tok ≈ 3.6 chars`) on **Intel Core i9-9900K @ 3.60GHz (16 threads)**, **22 GiB RAM**, **AMD Radeon Navi 21 (RX 6800/6900 XT, 16 GiB VRAM)**, Linux x86_64:
+Measured live on `qwen3.8-27b@iq3_s` (LM Studio, `65536` ctx, `23.8 tok/s` probed, cache disabled, `1 cloud tok ≈ 3.6 chars`) on **Intel Core i9-9900K @ 3.60GHz (16 threads)**, **22 GiB RAM**, **AMD Radeon Navi 21 (RX 6800/6900 XT, 16 GiB VRAM)**, Linux x86_64:
 
 **Reading, Command Digest & Extraction (`digest_file`, `digest_many`, `digest_command`, `extract_from_file`)**
 
 | Task | Source → Cloud | Cloud Saved (est.) | Local Tokens | Time | Verification |
 | --- | --- | ---: | ---: | ---: | --- |
-| Full doc QA (`README.md`) | 23.0 KB → 491 B | **~6,262 tok (97.9%)** | 9,141 | 66.2 s | 0/3 quotes (`unsupported`)* |
-| Grep QA (`agent.py`, 7/1,500 lines) | 75.4 KB → 692 B | **~20,753 tok (99.1%)** | 643 | 14.0 s | 3/3 quotes (`quote_only`) |
-| 8-file survey (`tandem_mcp/*.py`) | 172.8 KB → 1.6 KB | **~47,560 tok (99.1%)** | 77,047 | 532.1 s | 12/12 quotes (`checked`) |
-| Command output (`git log -n 30 --stat`) | 14.1 KB → 1.4 KB | **~3,535 tok (90.0%)** | — | 147 s | 10/10 quotes verified |
-| JSON extraction (`pyproject.toml`) | 686 B → 143 B | **~151 tok (79.2%)** | — | 12 s | JSON Schema validated |
+| Full doc QA (`README.md`) | 23.2 KB → 557 B | **~6,281 tok (97.6%)** | 9,132 | 64.2 s | 0/3 quotes (`unsupported`)* |
+| Grep QA (`agent.py`, 7/1,506 lines) | 75.9 KB → 654 B | **~20,904 tok (99.1%)** | 878 | 22.9 s | 2/2 quotes (`quote_only`) |
+| 8-file survey (`tandem_mcp/*.py`) | 176.2 KB → 1.7 KB | **~48,479 tok (99.0%)** | 80,840 | 620.4 s | 16/16 quotes (`checked`) |
+| Command output (`git log -n 30 --stat`) | 13.9 KB → 2.0 KB | **~3,304 tok (85.7%)** | — | 118 s | 10/10 quotes verified |
+| JSON extraction (`pyproject.toml`) | 686 B → 241 B | **~124 tok (64.9%)** | — | 15 s | JSON Schema validated |
 
 **Delegated Coding (`delegate`)**
 
 | Task | Baseline → Receipt | Cloud Saved (est.) | Local Tokens | Time | Result |
 | --- | --- | ---: | ---: | ---: | --- |
-| Micro bugfix (1 file, 6 lines) | 1.0 KB → 438 B | **~169 tok (58.2%)** | 5,581 | 24.3 s | `VERIFIED` (4 steps, 0 repairs) |
-| Multi-file bugfix (4 files) | 6.1 KB → 469 B | **~1,562 tok (92.3%)** | 7,432 | 34.7 s | `VERIFIED` (4 steps, 0 repairs) |
+| Micro bugfix (1 file, 6 lines) | 1.0 KB → 422 B | **~174 tok (59.7%)** | 4,061 | 19.1 s | `VERIFIED` (3 steps, 0 repairs) |
+| Multi-file bugfix (4 files) | 6.1 KB → 490 B | **~1,557 tok (92.0%)** | 7,365 | 32.1 s | `VERIFIED` (4 steps, 0 repairs) |
 
 **Animation A/B Comparison (Orbital Particle Simulation, identical spec)**
 
 | Without Tandem — `Gemini Hydrogen` (Cloud Direct) | With Tandem MCP — `Gemini Hydrogen` (Orchestrator) + `qwen3.8-27b@iq3_s` (Local) |
 | :---: | :---: |
 | <img src="benchmarks/animation_without_tandem.gif" alt="Without Tandem — Gemini Hydrogen (Cloud Direct)" width="360" height="230" /> | <img src="benchmarks/animation_with_tandem.gif" alt="With Tandem MCP — Gemini Hydrogen orchestrator + qwen3.8-27b@iq3_s local executor" width="360" height="230" /> |
-| *Cloud Direct: `Gemini Hydrogen` · 10.3 KB, 272 lines · **~2,873 cloud output tokens*** | *Orchestrator: `Gemini Hydrogen` · Local executor: `qwen3.8-27b@iq3_s` (`65536` ctx) · 11.0 KB, 364 lines · **~130 cloud receipt tokens (~95.5% cloud output saved, -2,743 tok)** (`17,449` local tokens, `0` repairs)* |
+| *Cloud Direct: `Gemini Hydrogen` · 10.3 KB, 272 lines · **~2,873 cloud output tokens*** | *Orchestrator: `Gemini Hydrogen` · Local executor: `qwen3.8-27b@iq3_s` (`65536` ctx) · 10.2 KB, 333 lines · **~260 cloud spec + receipt tokens (~91.0% cloud output saved, -2,613 tok)** (`69,004` local tokens, `1` repair)* |
 
 | Variant | Models Used (Caption) | Output | Cloud Tokens | Cloud Saved (est.) | Local Tokens | Time | Verification |
 | --- | --- | --- | ---: | ---: | ---: | ---: | --- |
 | **Without Tandem** | `Gemini Hydrogen` (Cloud Direct) | **[Live Demo](https://alenoc.github.io/tandem-mcp/benchmarks/animation_without_tandem/)** ([source](benchmarks/animation_without_tandem/index.html), 10.3 KB, 272 lines) | ~2,873 out | — | 0 | Immediate | `node --check` + DOM PASS |
-| **With Tandem MCP** | Orchestrator: `Gemini Hydrogen` · Local: `qwen3.8-27b@iq3_s` (`LM Studio`, `delegate`) | **[Live Demo](https://alenoc.github.io/tandem-mcp/benchmarks/animation_with_tandem/)** ([source](benchmarks/animation_with_tandem/index.html), 11.0 KB, 364 lines) | ~130 receipt | **~2,743 tok (95.5%)** | 17,449 | 322.7 s | `VERIFIED` (2 steps, 0 repairs) + `node --check` PASS |
+| **With Tandem MCP** | Orchestrator: `Gemini Hydrogen` · Local: `qwen3.8-27b@iq3_s` (`LM Studio`, `delegate`) | **[Live Demo](https://alenoc.github.io/tandem-mcp/benchmarks/animation_with_tandem/)** ([source](benchmarks/animation_with_tandem/index.html), 10.2 KB, 333 lines) | ~260 spec+receipt | **~2,613 tok (91.0%)** | 69,004 | 819.7 s | `node --check` + PNG PASS + `job_feedback(accepted=True)` |
 
-> **Cloud token savings:** offloading the 364-line animation generation to `qwen3.8-27b@iq3_s` cut cloud output tokens from **~2,873** down to a **~130-token** verified receipt (**~95.5% saved**, `-2,743` cloud tokens).
+> **Cloud token savings:** offloading the 333-line animation generation to `qwen3.8-27b@iq3_s` cut cloud output tokens from **~2,873** down to **~260** (**~91.0% saved**, `-2,613` cloud tokens).
 
 **[Open both interactive animations side-by-side in your browser](https://alenoc.github.io/tandem-mcp/benchmarks/animation_comparison.html)** ([source](benchmarks/animation_comparison.html))
 
@@ -271,7 +271,7 @@ Keep everything self-contained in index.html with zero external dependencies and
 
 ### 3D Neon Portal & Floating Monolith — Quality-Preserved Hybrid Delegation
 
-Using Tandem's **hybrid quality-preservation workflow** (tight architectural spec + `delegate_many` decomposition into `html_css`, `engine3d`, and `app_loop` + orchestrator visual PNG inspection + targeted `job_continue` polish), the local executor (`qwen3.8-27b@iq3_s`) matches the frontier cloud baseline (`Gemini Hydrogen`) in framing, geometry, lighting, and HUD layout while still cutting cloud output tokens by **~85.1%**:
+Using Tandem's **hybrid quality-preservation workflow** (non-vague contract `constraints` + `delegate_many` decomposition into `html_css`, `engine3d`, and `app_loop` + `job_diff` & orchestrator visual PNG inspection + targeted `job_continue` polish + `job_feedback`), the local executor (`qwen3.8-27b@iq3_s`) matches the frontier cloud baseline (`Gemini Hydrogen`) in framing, geometry, lighting, and HUD layout while cutting cloud output tokens by **~82.1%**:
 
 <table>
   <thead>
@@ -294,7 +294,7 @@ Using Tandem's **hybrid quality-preservation workflow** (tight architectural spe
           <img src="benchmarks/scene3d_with_tandem.gif" alt="3D Neon Portal with Tandem MCP" width="360" height="230" />
         </a><br />
         <sub><b>Orchestrator:</b> <code>Gemini Hydrogen</code> + <b>Local:</b> <code>qwen3.8-27b@iq3_s</code></sub><br />
-        <sub>578 lines (3 files) &middot; 17,767 B &middot; ~650 cloud tokens (<b>85.1% saved</b>)</sub>
+        <sub>778 lines (3 files) &middot; 22,883 B &middot; ~780 cloud tokens (<b>82.1% saved</b>)</sub>
       </td>
     </tr>
   </tbody>
@@ -303,9 +303,9 @@ Using Tandem's **hybrid quality-preservation workflow** (tight architectural spe
 | Variant | Model(s) | Output & Live Demo | Cloud Output Tokens | Cloud Tokens Saved | Local Tokens (`qwen3.8-27b@iq3_s`) | Verification |
 | :--- | :--- | :--- | ---: | ---: | ---: | :--- |
 | **Without Tandem** | `Gemini Hydrogen` (cloud direct) | **[Live Demo](https://alenoc.github.io/tandem-mcp/benchmarks/scene3d_without_tandem/)** ([source](benchmarks/scene3d_without_tandem/index.html), 15.7 KB, 403 lines) | ~4,368 | — | — | `node --check` PASS + headless Chrome PNG/FPS check (`60 FPS`, `84` polys) |
-| **With Tandem MCP** | Orchestrator: `Gemini Hydrogen` · Local: `qwen3.8-27b@iq3_s` (`LM Studio`, `delegate_many` + `delegate` + `job_continue`) | **[Live Demo](https://alenoc.github.io/tandem-mcp/benchmarks/scene3d_with_tandem/)** ([index.html](benchmarks/scene3d_with_tandem/index.html), [engine3d.js](benchmarks/scene3d_with_tandem/engine3d.js), [app.js](benchmarks/scene3d_with_tandem/app.js), 17.8 KB, 578 lines) | ~650 (specs + visual polish) | **~3,718 tok (85.1%)** | 314,126 | All 3 jobs `VERIFIED` (`node --check` PASS) + visual PNG parity check (`60 FPS`, `164` polys) |
+| **With Tandem MCP** | Orchestrator: `Gemini Hydrogen` · Local: `qwen3.8-27b@iq3_s` (`LM Studio`, `delegate_many` + `job_continue`) | **[Live Demo](https://alenoc.github.io/tandem-mcp/benchmarks/scene3d_with_tandem/)** ([index.html](benchmarks/scene3d_with_tandem/index.html), [engine3d.js](benchmarks/scene3d_with_tandem/engine3d.js), [app.js](benchmarks/scene3d_with_tandem/app.js), 22.9 KB, 778 lines) | ~780 (specs + visual polish) | **~3,588 tok (82.1%)** | 199,095 | All 3 jobs `VERIFIED` (`node --check` PASS) + visual PNG parity check + `job_feedback(accepted=True)` |
 
-> **Cloud token savings & quality parity:** decomposing the 3D engine into 3 contracted modules (`html_css`, `engine3d`, `app_loop`) and running a single visual-inspection polish pass cut cloud output tokens from **~4,368** down to **~650** (**~85.1% saved**, `-3,718` cloud tokens) with **no visual degradation**.
+> **Cloud token savings & quality parity:** decomposing the 3D engine into 3 contracted modules (`html_css`, `engine3d`, `app_loop`) and running targeted `job_continue` polish passes after `job_diff` and PNG inspection cut cloud output tokens from **~4,368** down to **~780** (**~82.1% saved**, `-3,588` cloud tokens) with **no visual degradation**.
 
 **[Open both interactive 3D portals side-by-side in your browser](https://alenoc.github.io/tandem-mcp/benchmarks/scene3d_comparison.html)** ([source](benchmarks/scene3d_comparison.html))
 

@@ -1,394 +1,673 @@
-(function (global) {
+/* engine3d.js
+ * Pure HTML5 2D-canvas software 3D engine.
+ * No WebGL, no external libraries.
+ * Perspective projection + painter's algorithm z-sorting.
+ * Flat/specular shading with a wireframe toggle.
+ */
+(function () {
   'use strict';
 
-  var TAU = Math.PI * 2;
+  // ---------------------------------------------------------------------------
+  // Public API surface
+  // ---------------------------------------------------------------------------
+  var Engine3D = {
+    init: init,
+    setSpeed: setSpeed,
+    togglePause: togglePause,
+    toggleWireframe: toggleWireframe,
+    reset: reset,
+    getStats: getStats
+  };
 
-  function PortalEngine(canvas, hudRefs) {
-    hudRefs = hudRefs || {};
-    var ctx = canvas.getContext('2d');
+  // ---------------------------------------------------------------------------
+  // Module state
+  // ---------------------------------------------------------------------------
+  var canvas = null;
+  var ctx = null;
+  var W = 0;      // CSS pixel width
+  var H = 0;      // CSS pixel height
+  var dpr = 1;
 
-    var W = 0, H = 0, DPR = 1;
-    var cam = { yaw: 0.55, pitch: 0.34, dist: 9.6, fov: 580 };
-    var LIGHT = { x: 0.48, y: 0.72, z: -0.5 };
-    var t = 0, last = 0, speed = 1, playing = true, orbit = true;
-    var fps = 0, fpsAcc = 0, fpsN = 0, fpsT = 0;
-    var polyCount = 0, partCount = 0;
-    var raf = 0;
+  // Camera (orbit)
+  var cam = {
+    yaw: 0.6,
+    pitch: 0.35,
+    dist: 14,
+    minDist: 5,
+    maxDist: 40,
+    focal: 0
+  };
 
-    var stars = [];
-    var parts = [];
-    var polys = [];
+  var speed = 1.0;
+  var paused = false;
+  var wireframe = false;
 
-    function resize() {
-      DPR = Math.min(2, global.devicePixelRatio || 1);
-      W = canvas.clientWidth || global.innerWidth || 800;
-      H = canvas.clientHeight || global.innerHeight || 600;
-      canvas.width = Math.max(1, Math.round(W * DPR));
-      canvas.height = Math.max(1, Math.round(H * DPR));
-      ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-    }
+  var simTime = 0;
+  var lastTs = 0;
+  var rafId = 0;
 
-    function project(x, y, z) {
-      var cy = Math.cos(cam.yaw), sy = Math.sin(cam.yaw);
-      var cp = Math.cos(cam.pitch), sp = Math.sin(cam.pitch);
-      var x1 = x * cy - z * sy;
-      var z1 = x * sy + z * cy;
-      var y1 = y * cp - z1 * sp;
-      var z2 = y * sp + z1 * cp;
-      var rz = z2 + cam.dist;
-      if (rz < 0.12) rz = 0.12;
-      var s = (cam.fov * Math.min(W, H) / 720) / rz;
-      return { x: W * 0.5 + x1 * s, y: H * 0.52 - y1 * s, s: s, rz: rz };
-    }
+  // Stats
+  var fps = 0;
+  var polys = 0;
+  var fpsAccum = 0;
+  var fpsFrames = 0;
+  var fpsTimer = 0;
 
-    function shade(c, n) {
-      var d = (n.x * LIGHT.x + n.y * LIGHT.y + n.z * LIGHT.z) * 0.5 + 0.5;
-      var f = 0.42 + 0.72 * d;
-      var r = Math.min(255, c[0] * f) | 0;
-      var g = Math.min(255, c[1] * f) | 0;
-      var b = Math.min(255, c[2] * f) | 0;
-      return 'rgb(' + r + ',' + g + ',' + b + ')';
-    }
+  // Interaction
+  var dragging = false;
+  var lastX = 0;
+  var lastY = 0;
 
-    function addBox(cx, cy, cz, sx, sy, sz, fill, rim) {
-      var hx = sx / 2, hy = sy / 2, hz = sz / 2;
-      var v = [
-        [cx - hx, cy - hy, cz - hz], [cx + hx, cy - hy, cz - hz],
-        [cx + hx, cy + hy, cz - hz], [cx - hx, cy + hy, cz - hz],
-        [cx - hx, cy - hy, cz + hz], [cx + hx, cy - hy, cz + hz],
-        [cx + hx, cy + hy, cz + hz], [cx - hx, cy + hy, cz + hz]
-      ];
-      var faces = [
-        [1, 2, 3, 0], [5, 4, 7, 6], [4, 0, 3, 7], [1, 5, 6, 2],
-        [4, 5, 6, 7], [0, 1, 2, 3]
-      ];
-      var nrm = [
-        [0, 0, -1], [0, 0, 1], [-1, 0, 0], [1, 0, 0], [0, 1, 0], [0, -1, 0]
-      ];
-      for (var i = 0; i < faces.length; i++) {
-        var f = faces[i];
-        var a = v[f[0]], b = v[f[1]], c = v[f[2]], d = v[f[3]];
-        var pa = project(a[0], a[1], a[2]);
-        var pb = project(b[0], b[1], b[2]);
-        var pc = project(c[0], c[1], c[2]);
-        var pd = project(d[0], d[1], d[2]);
-        var cxp = (a[0] + b[0] + c[0] + d[0]) / 4;
-        var cyp = (a[1] + b[1] + c[1] + d[1]) / 4;
-        var czp = (a[2] + b[2] + c[2] + d[2]) / 4;
-        var n = nrm[i];
-        var depth = project(cxp, cyp, czp).rz;
-        polys.push({
-          type: 'box', depth: depth,
-          pts: [pa, pb, pc, pd],
-          fill: shade(fill, n), rim: rim
-        });
-      }
-    }
+  // Precomputed scene data
+  var stars = [];
+  var gridLines = [];
+  var portalRings = [];
+  var monolith = null;
+  var core = null;
+  var particles = [];
 
-    function addOcta(cx, cy, cz, rx, ry, rz, col, rim) {
-      var top = [cx, cy + ry, cz];
-      var bot = [cx, cy - ry, cz];
-      var e0 = [cx + rx, cy, cz];
-      var e1 = [cx, cy, cz + rz];
-      var e2 = [cx - rx, cy, cz];
-      var e3 = [cx, cy, cz - rz];
-      var tris = [
-        [top, e0, e1], [top, e1, e2], [top, e2, e3], [top, e3, e0],
-        [bot, e1, e0], [bot, e2, e1], [bot, e3, e2], [bot, e0, e3]
-      ];
-      for (var i = 0; i < tris.length; i++) {
-        var tr = tris[i];
-        var A = tr[0], B = tr[1], C = tr[2];
-        var ux = B[0] - A[0], uy = B[1] - A[1], uz = B[2] - A[2];
-        var vx = C[0] - A[0], vy = C[1] - A[1], vz = C[2] - A[2];
-        var nx = uy * vz - uz * vy;
-        var ny = uz * vx - ux * vz;
-        var nz = ux * vy - uy * vx;
-        var nl = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
-        nx /= nl; ny /= nl; nz /= nl;
-        var pa = project(A[0], A[1], A[2]);
-        var pb = project(B[0], B[1], B[2]);
-        var pc = project(C[0], C[1], C[2]);
-        var cxp = (A[0] + B[0] + C[0]) / 3;
-        var cyp = (A[1] + B[1] + C[1]) / 3;
-        var czp = (A[2] + B[2] + C[2]) / 3;
-        polys.push({
-          type: 'tri', depth: project(cxp, cyp, czp).rz,
-          pts: [pa, pb, pc],
-          fill: shade(col, { x: nx, y: ny, z: nz }), rim: rim
-        });
-      }
-    }
+  // ---------------------------------------------------------------------------
+  // Small math helpers
+  // ---------------------------------------------------------------------------
+  function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
-    function addRing(cx, cy, cz, r, seg, tilt, spin, col, rim) {
-      var ct = Math.cos(tilt), st = Math.sin(tilt);
-      var ring = [];
-      for (var i = 0; i < seg; i++) {
-        var a = spin + i / seg * TAU;
-        var x = Math.cos(a) * r;
-        var z = Math.sin(a) * r;
-        var y = 0;
-        var y2 = y * ct - z * st;
-        var z2 = y * st + z * ct + Math.cos(a + t) * 0.14;
-        ring.push([cx + x, cy + y2, cz + z2]);
-      }
-      for (var j = 0; j < seg; j++) {
-        var A = ring[j];
-        var B = ring[(j + 1) % seg];
-        var pa = project(A[0], A[1], A[2]);
-        var pb = project(B[0], B[1], B[2]);
-        var cxp = (A[0] + B[0]) / 2;
-        var cyp = (A[1] + B[1]) / 2;
-        var czp = (A[2] + B[2]) / 2;
-        polys.push({
-          type: 'line', depth: project(cxp, cyp, czp).rz,
-          pts: [pa, pb], fill: col, rim: rim
-        });
-      }
-    }
-
-    function buildScene() {
-      polys.length = 0;
-
-      addBox(0, -1.25, 0, 4.6, 0.34, 4.6, [14, 21, 38], 'rgba(56,189,248,0.45)');
-      addBox(0, -0.85, 0, 3.4, 0.36, 3.4, [20, 29, 52], 'rgba(232,121,249,0.5)');
-
-      addBox(-1.25, 0.48, 0, 0.56, 2.3, 0.56, [18, 28, 50], 'rgba(56,189,248,0.65)');
-      addBox(1.25, 0.48, 0, 0.56, 2.3, 0.56, [18, 28, 50], 'rgba(56,189,248,0.65)');
-
-      addBox(0, 1.95, 0, 3.45, 0.46, 0.72, [24, 34, 62], 'rgba(232,121,249,0.75)');
-      addBox(0, 2.32, 0, 2.1, 0.24, 0.46, [16, 24, 46], 'rgba(56,189,248,0.6)');
-
-      var cyan = [22, 163, 224], mag = [192, 68, 226];
-      var cyanRim = 'rgba(125,211,252,0.9)', magRim = 'rgba(245,208,254,0.9)';
-      for (var i = 0; i < 6; i++) {
-        var ang = t * 0.6 + i * TAU / 6;
-        var cx = Math.cos(ang) * 2.45;
-        var cz = Math.sin(ang) * 2.45;
-        var cy = 0.35 + Math.sin(t * 1.9 + i * 1.05) * 0.28;
-        var isCyan = i % 2 === 0;
-        addOcta(cx, cy, cz, 0.26, 0.44, 0.26, isCyan ? cyan : mag, isCyan ? cyanRim : magRim);
-      }
-
-      addRing(0, 0.52, 0, 1.05, 44, 0.25, t * 0.9, 'rgba(125,211,252,0.9)', 'rgba(125,211,252,0.9)');
-      addRing(0, 0.52, 0, 0.78, 36, -0.45, -t * 1.3, 'rgba(245,208,254,0.9)', 'rgba(245,208,254,0.9)');
-    }
-
-    function drawGrid() {
-      var ext = 7, step = 1, y = -2.0;
-      ctx.lineWidth = 1;
-      for (var i = -ext; i <= ext; i += step) {
-        var a1 = project(i, y, -ext), a2 = project(i, y, ext);
-        var b1 = project(-ext, y, i), b2 = project(ext, y, i);
-        if (i === 0) {
-          ctx.strokeStyle = 'rgba(232,121,249,0.34)';
-        } else {
-          ctx.strokeStyle = 'rgba(56,189,248,0.16)';
-        }
-        ctx.beginPath();
-        ctx.moveTo(a1.x, a1.y); ctx.lineTo(a2.x, a2.y);
-        ctx.moveTo(b1.x, b1.y); ctx.lineTo(b2.x, b2.y);
-        ctx.stroke();
-      }
-    }
-
-    function drawStars() {
-      for (var i = 0; i < stars.length; i++) {
-        var s = stars[i];
-        var tw = 0.5 + 0.5 * Math.sin(t * s.sp + s.ph);
-        var a = 0.25 + 0.65 * tw;
-        var x = (s.x * W) % W; if (x < 0) x += W;
-        var y = (s.y * H) % H; if (y < 0) y += H;
-        ctx.globalAlpha = a;
-        ctx.fillStyle = s.c;
-        ctx.beginPath();
-        ctx.arc(x, y, s.r, 0, TAU);
-        ctx.fill();
-      }
-      ctx.globalAlpha = 1;
-    }
-
-    function drawPortal() {
-      var p = project(0, 0.52, 0);
-      var R = 1.08 * p.s * 1.25;
-      var g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, R);
-      g.addColorStop(0, 'rgba(255,255,255,0.95)');
-      g.addColorStop(0.4, 'rgba(125,211,252,0.85)');
-      g.addColorStop(0.75, 'rgba(192,68,226,0.42)');
-      g.addColorStop(1, 'rgba(192,68,226,0)');
-      ctx.fillStyle = g;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, R, 0, TAU);
-      ctx.fill();
-    }
-
-    function drawParts() {
-      for (var i = 0; i < parts.length; i++) {
-        var p = parts[i];
-        var pr = project(p.x, p.y, p.z);
-        var a = 0.35 + 0.5 * (0.5 + 0.5 * Math.sin(t * 2 + p.ph));
-        ctx.globalAlpha = a;
-        ctx.fillStyle = p.c;
-        ctx.beginPath();
-        ctx.arc(pr.x, pr.y, Math.max(0.6, p.r * pr.s * 0.02), 0, TAU);
-        ctx.fill();
-      }
-      ctx.globalAlpha = 1;
-    }
-
-    function drawPolys() {
-      polys.sort(function (a, b) { return b.depth - a.depth; });
-      for (var i = 0; i < polys.length; i++) {
-        var p = polys[i];
-        if (p.type === 'line') {
-          ctx.strokeStyle = p.fill;
-          ctx.lineWidth = 2.2;
-          ctx.beginPath();
-          ctx.moveTo(p.pts[0].x, p.pts[0].y);
-          ctx.lineTo(p.pts[1].x, p.pts[1].y);
-          ctx.stroke();
-        } else {
-          ctx.beginPath();
-          ctx.moveTo(p.pts[0].x, p.pts[0].y);
-          for (var j = 1; j < p.pts.length; j++) ctx.lineTo(p.pts[j].x, p.pts[j].y);
-          ctx.closePath();
-          ctx.fillStyle = p.fill;
-          ctx.fill();
-          ctx.strokeStyle = p.rim;
-          ctx.lineWidth = 1;
-          ctx.stroke();
-        }
-      }
-    }
-
-    function update(dt) {
-      if (orbit) cam.yaw += dt * 0.12;
-      for (var i = 0; i < parts.length; i++) {
-        var p = parts[i];
-        p.y += dt * p.vy;
-        if (p.y > 3.2) { p.y = -1.6; }
-      }
-    }
-
-    function frame(now) {
-      raf = global.requestAnimationFrame ? global.requestAnimationFrame(frame) : 0;
-      if (!last) last = now;
-      var dt = Math.min(0.05, (now - last) / 1000);
-      last = now;
-      if (playing) { t += dt * speed; update(dt * speed); }
-
-      fpsAcc += dt; fpsN++;
-      if (now - fpsT > 250) {
-        fps = fpsN / Math.max(0.001, fpsAcc);
-        fpsAcc = 0; fpsN = 0; fpsT = now;
-      }
-
-      buildScene();
-      polyCount = polys.length;
-      partCount = parts.length;
-
-      ctx.clearRect(0, 0, W, H);
-      drawStars();
-      drawGrid();
-      drawPortal();
-      drawPolys();
-      drawParts();
-
-      if (hudRefs.fpsEl) hudRefs.fpsEl.textContent = Math.round(fps);
-      if (hudRefs.polysEl) hudRefs.polysEl.textContent = polyCount;
-      if (hudRefs.partsEl) hudRefs.partsEl.textContent = partCount;
-    }
-
-    function initStars() {
-      stars.length = 0;
-      for (var i = 0; i < 180; i++) {
-        stars.push({
-          x: Math.random(), y: Math.random(),
-          r: 0.4 + Math.random() * 1.4,
-          sp: 0.5 + Math.random() * 2.5,
-          ph: Math.random() * TAU,
-          c: Math.random() < 0.5 ? '#e0f2fe' : '#c7d2fe'
-        });
-      }
-    }
-
-    function initParts() {
-      parts.length = 0;
-      var cols = ['rgba(125,211,252,0.9)', 'rgba(245,208,254,0.9)'];
-      for (var i = 0; i < 110; i++) {
-        parts.push({
-          x: (Math.random() - 0.5) * 4.5,
-          y: -1.6 + Math.random() * 4.8,
-          z: (Math.random() - 0.5) * 4.5,
-          vy: 0.25 + Math.random() * 0.5,
-          r: 0.5 + Math.random() * 1.2,
-          ph: Math.random() * TAU,
-          c: cols[i % 2]
-        });
-      }
-    }
-
-    function bind() {
-      var dragging = false, px = 0, py = 0;
-      canvas.addEventListener('pointerdown', function (e) {
-        dragging = true; px = e.clientX; py = e.clientY;
-        canvas.setPointerCapture && canvas.setPointerCapture(e.pointerId);
-      });
-      canvas.addEventListener('pointermove', function (e) {
-        if (!dragging) return;
-        cam.yaw += (e.clientX - px) * 0.005;
-        cam.pitch += (e.clientY - py) * 0.005;
-        cam.pitch = Math.max(-1.4, Math.min(1.4, cam.pitch));
-        px = e.clientX; py = e.clientY;
-      });
-      window.addEventListener('pointerup', function () { dragging = false; });
-      canvas.addEventListener('wheel', function (e) {
-        e.preventDefault();
-        cam.dist += e.deltaY * 0.01;
-        cam.dist = Math.max(3, Math.min(20, cam.dist));
-      }, { passive: false });
-
-      if (hudRefs.playBtn) {
-        hudRefs.playBtn.addEventListener('click', function () {
-          playing = !playing;
-          hudRefs.playBtn.textContent = playing ? 'Pause' : 'Play';
-          hudRefs.playBtn.classList.toggle('active', playing);
-        });
-      }
-      if (hudRefs.orbitBtn) {
-        hudRefs.orbitBtn.addEventListener('click', function () {
-          orbit = !orbit;
-          hudRefs.orbitBtn.classList.toggle('active', orbit);
-        });
-      }
-      if (hudRefs.resetBtn) {
-        hudRefs.resetBtn.addEventListener('click', function () {
-          cam.yaw = 0.55; cam.pitch = 0.34; cam.dist = 9.6;
-          t = 0; speed = 1;
-          if (hudRefs.spd) hudRefs.spd.value = '1.0';
-          if (hudRefs.spdVal) hudRefs.spdVal.textContent = '1.0x';
-        });
-      }
-      if (hudRefs.spd) {
-        hudRefs.spd.addEventListener('input', function () {
-          speed = parseFloat(hudRefs.spd.value) || 1;
-          if (hudRefs.spdVal) hudRefs.spdVal.textContent = speed.toFixed(1) + 'x';
-        });
-      }
-    }
-
-    function start() {
-      resize();
-      initStars();
-      initParts();
-      bind();
-      if (global.addEventListener) global.addEventListener('resize', resize);
-      last = 0;
-      raf = global.requestAnimationFrame ? global.requestAnimationFrame(frame) : 0;
-    }
-
-    return { start: start, resize: resize };
+  function normalize(v) {
+    var l = Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z) || 1;
+    return { x: v.x / l, y: v.y / l, z: v.z / l };
   }
 
-  global.PortalEngine = PortalEngine;
-})(typeof window !== 'undefined' ? window : this);
+  function cross(a, b) {
+    return {
+      x: a.y * b.z - a.z * b.y,
+      y: a.z * b.x - a.x * b.z,
+      z: a.x * b.y - a.y * b.x
+    };
+  }
+
+  function dot(a, b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
+
+  // ---------------------------------------------------------------------------
+  // Camera transform + perspective projection
+  // ---------------------------------------------------------------------------
+  function toCamera(p) {
+    var cy = Math.cos(cam.yaw), sy = Math.sin(cam.yaw);
+    var cp = Math.cos(cam.pitch), sp = Math.sin(cam.pitch);
+
+    // Rotate around Y (yaw)
+    var x1 = p.x * cy - p.z * sy;
+    var z1 = p.x * sy + p.z * cy;
+    var y1 = p.y;
+
+    // Rotate around X (pitch)
+    var y2 = y1 * cp - z1 * sp;
+    var z2 = y1 * sp + z1 * cp;
+    var x2 = x1;
+
+    // Push back by distance (camera sits at +Z looking at origin)
+    return { x: x2, y: y2, z: z2 + cam.dist };
+  }
+
+  function project(cp) {
+    var f = cam.focal;
+    return {
+      x: W * 0.5 + (cp.x * f) / cp.z,
+      y: H * 0.5 - (cp.y * f) / cp.z,
+      z: cp.z,
+      s: f / cp.z
+    };
+  }
+
+  // World-space position of the camera (inverse of toCamera applied to origin).
+  function cameraWorldPos() {
+    var cy = Math.cos(cam.yaw), sy = Math.sin(cam.yaw);
+    var cp = Math.cos(cam.pitch), sp = Math.sin(cam.pitch);
+    return {
+      x: -sy * cp * cam.dist,
+      y: -sp * cam.dist,
+      z: -cy * cp * cam.dist
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Scene construction
+  // ---------------------------------------------------------------------------
+  function buildStars() {
+    stars = [];
+    var n = 260;
+    for (var i = 0; i < n; i++) {
+      // Distribute on a large sphere shell
+      var u = Math.random() * 2 - 1;
+      var th = Math.random() * Math.PI * 2;
+      var r = Math.sqrt(1 - u * u);
+      var rad = 60 + Math.random() * 40;
+      stars.push({
+        x: r * Math.cos(th) * rad,
+        y: u * rad,
+        z: r * Math.sin(th) * rad,
+        b: 0.4 + Math.random() * 0.6,
+        tw: Math.random() * 6.28
+      });
+    }
+  }
+
+  function buildGrid() {
+    gridLines = [];
+    var ext = 24;
+    var step = 2;
+    var y = -4;
+    var i;
+    for (i = -ext; i <= ext; i += step) {
+      gridLines.push({ a: { x: i, y: y, z: -ext }, b: { x: i, y: y, z: ext }, major: (i % 8 === 0) });
+      gridLines.push({ a: { x: -ext, y: y, z: i }, b: { x: ext, y: y, z: i }, major: (i % 8 === 0) });
+    }
+  }
+
+  function buildPortal() {
+    portalRings = [];
+    var segs = 64;
+    var radii = [3.2, 2.6, 2.0, 1.5];
+    var cols = [
+      [0, 255, 255],   // cyan
+      [255, 0, 200],   // magenta
+      [0, 255, 255],
+      [255, 0, 200]
+    ];
+    for (var r = 0; r < radii.length; r++) {
+      var pts = [];
+      for (var i = 0; i <= segs; i++) {
+        var a = (i / segs) * Math.PI * 2;
+        pts.push({
+          x: Math.cos(a) * radii[r],
+          y: Math.sin(a) * radii[r],
+          z: 0
+        });
+      }
+      portalRings.push({ pts: pts, col: cols[r], phase: r * 0.7, width: 3.5 - r * 0.5 });
+    }
+  }
+
+  // Faceted monolith: a beveled box (12 faces) built from 8 corner verts.
+  function buildMonolith() {
+    var hx = 1.1, hy = 2.2, hz = 0.5;
+    var v = [
+      { x: -hx, y: -hy, z: -hz }, { x: hx, y: -hy, z: -hz },
+      { x: hx, y: hy, z: -hz }, { x: -hx, y: hy, z: -hz },
+      { x: -hx, y: -hy, z: hz }, { x: hx, y: -hy, z: hz },
+      { x: hx, y: hy, z: hz }, { x: -hx, y: hy, z: hz }
+    ];
+    var faces = [
+      [0, 1, 2, 3], // back
+      [5, 4, 7, 6], // front
+      [4, 0, 3, 7], // left
+      [1, 5, 6, 2], // right
+      [3, 2, 6, 7], // top
+      [4, 5, 1, 0]  // bottom
+    ];
+    monolith = { verts: v, faces: faces, baseY: 0.4 };
+  }
+
+  function buildCore() {
+    // Glowing icosahedron-ish core: use an octahedron (6 verts, 8 faces)
+    var r = 0.55;
+    var v = [
+      { x: r, y: 0, z: 0 }, { x: -r, y: 0, z: 0 },
+      { x: 0, y: r, z: 0 }, { x: 0, y: -r, z: 0 },
+      { x: 0, y: 0, z: r }, { x: 0, y: 0, z: -r }
+    ];
+    var faces = [
+      [0, 2, 4], [2, 1, 4], [1, 3, 4], [3, 0, 4],
+      [2, 0, 5], [1, 2, 5], [3, 1, 5], [0, 3, 5]
+    ];
+    core = { verts: v, faces: faces };
+  }
+
+  function buildParticles() {
+    particles = [];
+    var n = 40;
+    for (var i = 0; i < n; i++) {
+      particles.push({
+        ang: (i / n) * Math.PI * 2,
+        rad: 4.2 + (i % 3) * 0.5,
+        y: Math.sin(i * 1.3) * 1.6,
+        spd: 0.4 + (i % 5) * 0.12,
+        size: 0.12 + (i % 4) * 0.05,
+        hue: i % 2
+      });
+    }
+  }
+
+  function buildScene() {
+    buildStars();
+    buildGrid();
+    buildPortal();
+    buildMonolith();
+    buildCore();
+    buildParticles();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Rendering primitives (all pushed into a depth-sorted draw list)
+  // ---------------------------------------------------------------------------
+  var drawList = [];
+
+  function pushPoly(verts, col, opts) {
+    // verts: array of projected {x,y,z}
+    var depth = 0;
+    for (var i = 0; i < verts.length; i++) depth += verts[i].z;
+    depth /= verts.length;
+    drawList.push({ type: 'poly', verts: verts, col: col, depth: depth, opts: opts || {} });
+  }
+
+  function pushLine(a, b, col, width, glow) {
+    drawList.push({
+      type: 'line', a: a, b: b, col: col,
+      depth: (a.z + b.z) * 0.5, width: width, glow: glow
+    });
+  }
+
+  function pushPoint(p, col, size, glow) {
+    drawList.push({ type: 'point', p: p, col: col, size: size, glow: glow, depth: p.z });
+  }
+
+  // Flat + specular shading of a face given world-space normal and projected verts
+  function shadeFace(worldVerts, normal, baseCol, opts) {
+    var light = normalize({ x: -0.4, y: 0.8, z: 0.6 });
+    var ndl = dot(normal, light);
+    if (ndl < 0) ndl = 0;
+    var ambient = 0.25;
+    var diff = ambient + (1 - ambient) * ndl;
+
+    // Specular (Blinn-ish) using view dir ~ (0,0,1) in camera space approx
+    var view = { x: 0, y: 0, z: 1 };
+    var half = normalize({
+      x: light.x + view.x,
+      y: light.y + view.y,
+      z: light.z + view.z
+    });
+    var spec = Math.pow(Math.max(0, dot(normal, half)), 24) * (opts.specular || 0.6);
+
+    var r = clamp(baseCol[0] * diff + 255 * spec, 0, 255) | 0;
+    var g = clamp(baseCol[1] * diff + 255 * spec, 0, 255) | 0;
+    var b = clamp(baseCol[2] * diff + 255 * spec, 0, 255) | 0;
+    return [r, g, b];
+  }
+
+  // ---------------------------------------------------------------------------
+  // Scene drawing
+  // ---------------------------------------------------------------------------
+  function drawStars() {
+    for (var i = 0; i < stars.length; i++) {
+      var s = stars[i];
+      var cp = toCamera(s);
+      if (cp.z <= 0.1) continue;
+      var p = project(cp);
+      if (p.x < -20 || p.x > W + 20 || p.y < -20 || p.y > H + 20) continue;
+      var tw = 0.6 + 0.4 * Math.sin(simTime * 2 + s.tw);
+      var a = clamp(s.b * tw, 0, 1);
+      pushPoint(p, [255, 255, 255], 1 + s.b, a);
+    }
+  }
+
+  function drawGrid() {
+    for (var i = 0; i < gridLines.length; i++) {
+      var L = gridLines[i];
+      var a = toCamera(L.a);
+      var b = toCamera(L.b);
+      if (a.z <= 0.1 || b.z <= 0.1) continue;
+      var pa = project(a);
+      var pb = project(b);
+      // Fade with distance
+      var fade = clamp(1.4 - (a.z + b.z) * 0.5 / cam.dist, 0.15, 1);
+      var col = L.major ? [0, 255, 255] : [255, 0, 200];
+      var alpha = (L.major ? 0.55 : 0.3) * fade;
+      pushLine(pa, pb, col, L.major ? 1.6 : 1, alpha);
+    }
+  }
+
+  function drawPortal() {
+    for (var r = 0; r < portalRings.length; r++) {
+      var ring = portalRings[r];
+      var spin = simTime * 0.5 + ring.phase;
+      var pts = ring.pts;
+      var prev = null;
+      for (var i = 0; i < pts.length; i++) {
+        var w = pts[i];
+        // Slowly rotate ring in its own plane for shimmer
+        var ca = Math.cos(spin), sa = Math.sin(spin);
+        var wx = w.x * ca - w.y * sa;
+        var wy = w.x * sa + w.y * ca;
+        var cp = toCamera({ x: wx, y: wy, z: w.z });
+        if (cp.z <= 0.1) { prev = null; continue; }
+        var p = project(cp);
+        if (prev) {
+          var pulse = 0.6 + 0.4 * Math.sin(simTime * 3 + i * 0.3 + ring.phase);
+          pushLine(prev, p, ring.col, ring.width, 0.5 + 0.5 * pulse);
+        }
+        prev = p;
+      }
+    }
+  }
+
+  function drawMonolith() {
+    var rot = simTime * 0.7;
+    var cr = Math.cos(rot), sr = Math.sin(rot);
+    var bob = Math.sin(simTime * 1.2) * 0.25;
+
+    // Transform each vertex: rotate around Y, then lift, then camera transform
+    var wv = [];
+    var pv = [];
+    for (var i = 0; i < monolith.verts.length; i++) {
+      var v = monolith.verts[i];
+      var x = v.x * cr - v.z * sr;
+      var z = v.x * sr + v.z * cr;
+      var y = v.y + monolith.baseY + bob;
+      wv.push({ x: x, y: y, z: z });
+      pv.push(toCamera({ x: x, y: y, z: z }));
+    }
+
+    var camPos = cameraWorldPos();
+
+    for (var f = 0; f < monolith.faces.length; f++) {
+      var idx = monolith.faces[f];
+      var a = wv[idx[0]], b = wv[idx[1]], c = wv[idx[2]], d = wv[idx[3]];
+      var n = normalize(cross({ x: b.x - a.x, y: b.y - a.y, z: b.z - a.z },
+                              { x: c.x - a.x, y: c.y - a.y, z: c.z - a.z }));
+      // Backface cull: keep faces whose normal points toward the camera
+      var toCam = { x: camPos.x - a.x, y: camPos.y - a.y, z: camPos.z - a.z };
+      if (dot(n, toCam) <= 0) continue;
+
+      var cam = [pv[idx[0]], pv[idx[1]], pv[idx[2]], pv[idx[3]]];
+      var ok = true;
+      for (var k = 0; k < cam.length; k++) if (cam[k].z <= 0.1) { ok = false; break; }
+      if (!ok) continue;
+
+      var col = shadeFace(wv, n, [120, 140, 255], { specular: 0.7 });
+      var verts = cam.map(function (q) { return project(q); });
+      pushPoly(verts, col, { specular: true });
+      polys++;
+    }
+  }
+
+  function drawCore() {
+    var rot = simTime * 1.5;
+    var cr = Math.cos(rot), sr = Math.sin(rot);
+    var bob = Math.sin(simTime * 1.2) * 0.25;
+    var cy = monolith.baseY + bob;
+
+    var wv = [];
+    var pv = [];
+    for (var i = 0; i < core.verts.length; i++) {
+      var v = core.verts[i];
+      var x = v.x * cr - v.z * sr;
+      var z = v.x * sr + v.z * cr;
+      var y = v.y + cy;
+      wv.push({ x: x, y: y, z: z });
+      pv.push(toCamera({ x: x, y: y, z: z }));
+    }
+
+    var camPos = cameraWorldPos();
+
+    for (var f = 0; f < core.faces.length; f++) {
+      var idx = core.faces[f];
+      var a = wv[idx[0]], b = wv[idx[1]], c = wv[idx[2]];
+      var n = normalize(cross({ x: b.x - a.x, y: b.y - a.y, z: b.z - a.z },
+                              { x: c.x - a.x, y: c.y - a.y, z: c.z - a.z }));
+      var toCam = { x: camPos.x - a.x, y: camPos.y - a.y, z: camPos.z - a.z };
+      if (dot(n, toCam) <= 0) continue;
+
+      var cam = [pv[idx[0]], pv[idx[1]], pv[idx[2]]];
+      var ok = true;
+      for (var k = 0; k < cam.length; k++) if (cam[k].z <= 0.1) { ok = false; break; }
+      if (!ok) continue;
+
+      var pulse = 0.7 + 0.3 * Math.sin(simTime * 4);
+      var col = [
+        clamp(255 * pulse, 0, 255) | 0,
+        clamp(120 * pulse, 0, 255) | 0,
+        clamp(255 * pulse, 0, 255) | 0
+      ];
+      var verts = cam.map(function (q) { return project(q); });
+      pushPoly(verts, col, { glow: true });
+      polys++;
+    }
+  }
+
+  function drawParticles() {
+    for (var i = 0; i < particles.length; i++) {
+      var p = particles[i];
+      var ang = p.ang + simTime * p.spd;
+      var x = Math.cos(ang) * p.rad;
+      var z = Math.sin(ang) * p.rad;
+      var y = p.y + Math.sin(simTime * 2 + i) * 0.3;
+      var cp = toCamera({ x: x, y: y, z: z });
+      if (cp.z <= 0.1) continue;
+      var pr = project(cp);
+      var col = p.hue ? [0, 255, 255] : [255, 0, 200];
+      var size = p.size * pr.s * 0.5;
+      pushPoint(pr, col, size, 0.9);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Draw list rendering (painter's algorithm)
+  // ---------------------------------------------------------------------------
+  function render() {
+    drawList.length = 0;
+    polys = 0;
+
+    drawStars();
+    drawGrid();
+    drawPortal();
+    drawMonolith();
+    drawCore();
+    drawParticles();
+
+    // Painter's algorithm: far to near
+    drawList.sort(function (a, b) { return b.depth - a.depth; });
+
+    ctx.clearRect(0, 0, W, H);
+
+    // Background gradient
+    var grad = ctx.createRadialGradient(W * 0.5, H * 0.45, 0, W * 0.5, H * 0.5, Math.max(W, H) * 0.75);
+    grad.addColorStop(0, '#120a2a');
+    grad.addColorStop(1, '#05030f');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+
+    for (var i = 0; i < drawList.length; i++) {
+      var it = drawList[i];
+      if (it.type === 'poly') {
+        drawPoly(it);
+      } else if (it.type === 'line') {
+        drawLine(it);
+      } else if (it.type === 'point') {
+        drawPoint(it);
+      }
+    }
+  }
+
+  function drawPoly(it) {
+    var v = it.verts;
+    ctx.beginPath();
+    ctx.moveTo(v[0].x, v[0].y);
+    for (var i = 1; i < v.length; i++) ctx.lineTo(v[i].x, v[i].y);
+    ctx.closePath();
+
+    if (wireframe) {
+      ctx.strokeStyle = 'rgb(' + it.col[0] + ',' + it.col[1] + ',' + it.col[2] + ')';
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+      return;
+    }
+
+    if (it.opts.glow) {
+      ctx.shadowColor = 'rgb(' + it.col[0] + ',' + it.col[1] + ',' + it.col[2] + ')';
+      ctx.shadowBlur = 18;
+    }
+    ctx.fillStyle = 'rgb(' + it.col[0] + ',' + it.col[1] + ',' + it.col[2] + ')';
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    // subtle edge
+    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    ctx.lineWidth = 0.6;
+    ctx.stroke();
+  }
+
+  function drawLine(it) {
+    ctx.beginPath();
+    ctx.moveTo(it.a.x, it.a.y);
+    ctx.lineTo(it.b.x, it.b.y);
+    ctx.strokeStyle = 'rgba(' + it.col[0] + ',' + it.col[1] + ',' + it.col[2] + ',' + it.glow + ')';
+    ctx.lineWidth = it.width;
+    if (it.glow > 0.5) {
+      ctx.shadowColor = 'rgb(' + it.col[0] + ',' + it.col[1] + ',' + it.col[2] + ')';
+      ctx.shadowBlur = 12;
+    }
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+
+  function drawPoint(it) {
+    var p = it.p;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, Math.max(0.5, it.size), 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(' + it.col[0] + ',' + it.col[1] + ',' + it.col[2] + ',' + it.glow + ')';
+    if (it.glow > 0.5) {
+      ctx.shadowColor = 'rgb(' + it.col[0] + ',' + it.col[1] + ',' + it.col[2] + ')';
+      ctx.shadowBlur = 10;
+    }
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Main loop
+  // ---------------------------------------------------------------------------
+  function frame(ts) {
+    if (!lastTs) lastTs = ts;
+    var dt = (ts - lastTs) / 1000;
+    lastTs = ts;
+    if (dt > 0.1) dt = 0.1;
+
+    // FPS accounting
+    fpsAccum += dt;
+    fpsFrames++;
+    fpsTimer += dt;
+    if (fpsTimer >= 0.5) {
+      fps = Math.round(fpsFrames / fpsAccum);
+      fpsAccum = 0;
+      fpsFrames = 0;
+      fpsTimer = 0;
+    }
+
+    if (!paused) simTime += dt * speed;
+
+    render();
+
+    rafId = requestAnimationFrame(frame);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Sizing / DPR
+  // ---------------------------------------------------------------------------
+  function resize() {
+    dpr = window.devicePixelRatio || 1;
+    W = canvas.clientWidth || window.innerWidth;
+    H = canvas.clientHeight || window.innerHeight;
+    canvas.width = Math.round(W * dpr);
+    canvas.height = Math.round(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    cam.focal = Math.min(W, H) * 1.1;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Interaction
+  // ---------------------------------------------------------------------------
+  function onDown(e) {
+    dragging = true;
+    lastX = e.clientX;
+    lastY = e.clientY;
+  }
+  function onMove(e) {
+    if (!dragging) return;
+    var dx = e.clientX - lastX;
+    var dy = e.clientY - lastY;
+    lastX = e.clientX;
+    lastY = e.clientY;
+    cam.yaw += dx * 0.005;
+    cam.pitch += dy * 0.005;
+    cam.pitch = clamp(cam.pitch, -1.4, 1.4);
+  }
+  function onUp() { dragging = false; }
+  function onWheel(e) {
+    e.preventDefault();
+    cam.dist += e.deltaY * 0.01;
+    cam.dist = clamp(cam.dist, cam.minDist, cam.maxDist);
+  }
+
+  function attachEvents() {
+    canvas.addEventListener('mousedown', onDown);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    canvas.addEventListener('wheel', onWheel, { passive: false });
+    // Touch support
+    canvas.addEventListener('touchstart', function (e) {
+      if (e.touches.length) { onDown({ clientX: e.touches[0].clientX, clientY: e.touches[0].clientY }); }
+    }, { passive: true });
+    canvas.addEventListener('touchmove', function (e) {
+      if (e.touches.length) { onMove({ clientX: e.touches[0].clientX, clientY: e.touches[0].clientY }); }
+    }, { passive: true });
+    canvas.addEventListener('touchend', onUp);
+    window.addEventListener('resize', resize);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Public API
+  // ---------------------------------------------------------------------------
+  function init(cv) {
+    canvas = cv;
+    ctx = canvas.getContext('2d');
+    resize();
+    buildScene();
+    attachEvents();
+    lastTs = 0;
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = requestAnimationFrame(frame);
+  }
+
+  function setSpeed(v) {
+    speed = clamp(Number(v) || 1, 0, 5);
+  }
+
+  function togglePause() {
+    paused = !paused;
+    return paused;
+  }
+
+  function toggleWireframe() {
+    wireframe = !wireframe;
+    return wireframe;
+  }
+
+  function reset() {
+    cam.yaw = 0.6;
+    cam.pitch = 0.35;
+    cam.dist = 14;
+    simTime = 0;
+    speed = 1.0;
+    paused = false;
+    wireframe = false;
+  }
+
+  function getStats() {
+    return { fps: fps, polys: polys };
+  }
+
+  // Expose
+  if (typeof window !== 'undefined') {
+    window.Engine3D = Engine3D;
+  }
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = Engine3D;
+  }
+})();
