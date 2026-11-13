@@ -287,13 +287,13 @@ IQ3_S quantization, 65536 context, all 65 layers on the GPU, flash attention and
 
 Each demo was produced twice: written directly by `Fable 5.2`, and written by `qwen3.8-27b@iq3_s` under a strict contract that `Fable 5.2` wrote once, before any output existed. Nothing was fixed after generation, and the result was judged against the contract only, as an orchestrator without a reference solution would.
 
-| Orbital simulation, direct (`Fable 5.2`) | Orbital simulation, with Tandem (`qwen3.8-27b@iq3_s`) |
+| Orbital simulation, direct (`Fable 5.2`) | Orbital simulation, with Tandem (orchestrator `Fable 5.2` + executor `qwen3.8-27b@iq3_s`) |
 | :---: | :---: |
-| <img src="benchmarks/animation_without_tandem.gif" alt="Orbital simulation written directly by the cloud model" width="360" height="230" /> | <img src="benchmarks/animation_with_tandem.gif" alt="Orbital simulation written by the local executor under a Tandem contract" width="360" height="230" /> |
-| **3D neon portal, direct (`Fable 5.2`)** | **3D neon portal, with Tandem (`qwen3.8-27b@iq3_s`)** |
-| <img src="benchmarks/scene3d_without_tandem.gif" alt="3D neon portal written directly by the cloud model" width="360" height="230" /> | <img src="benchmarks/scene3d_with_tandem.gif" alt="3D neon portal written by the local executor under Tandem contracts" width="360" height="230" /> |
+| <img src="benchmarks/animation_without_tandem.gif" alt="Orbital simulation written directly by the cloud model" width="360" height="230" /> | <img src="benchmarks/animation_with_tandem.gif" alt="Orbital simulation written by the local executor qwen3.8-27b@iq3_s under a Tandem contract by the orchestrator Fable 5.2" width="360" height="230" /> |
+| **3D neon portal, direct (`Fable 5.2`)** | **3D neon portal, with Tandem (orchestrator `Fable 5.2` + executor `qwen3.8-27b@iq3_s`)** |
+| <img src="benchmarks/scene3d_without_tandem.gif" alt="3D neon portal written directly by the cloud model" width="360" height="230" /> | <img src="benchmarks/scene3d_with_tandem.gif" alt="3D neon portal written by the local executor qwen3.8-27b@iq3_s under Tandem contracts by the orchestrator Fable 5.2" width="360" height="230" /> |
 
-| | Orbital animation, direct | Orbital animation, with Tandem | 3D portal, direct | 3D portal, with Tandem |
+| | Orbital animation, direct (`Fable 5.2`) | Orbital animation, with Tandem (`Fable 5.2` + `qwen3.8-27b@iq3_s`) | 3D portal, direct (`Fable 5.2`) | 3D portal, with Tandem (`Fable 5.2` + `qwen3.8-27b@iq3_s`) |
 | --- | ---: | ---: | ---: | ---: |
 | Who writes the code | `Fable 5.2` | `qwen3.8-27b@iq3_s` under a contract by `Fable 5.2` | `Fable 5.2` | `qwen3.8-27b@iq3_s` under 4 contracts by `Fable 5.2` |
 | Output | 11,956 B, 272 lines | 12,499 B, 459 lines | 15,122 B, 327 lines | 18,243 B, 616 lines in 4 files |
