@@ -147,6 +147,9 @@ def digest_file(path: str, question: str, max_words: int = 120, grep: str = '', 
         text = sandbox.read_text(Path(path).expanduser())
         result = digest.answer(text, question, max_words, grep, tool='digest_file', model=model)
         out = digest.render(result, Path(path).name)
+        cut = sandbox.cut_note(Path(path).expanduser())
+        if cut:
+            out += '\n' + cut
         return _saved('digest_file', len(text), out, executor_tokens=result['tokens'], **_evidence(result))
     except Exception as exc:
         return _fail(exc)
@@ -171,9 +174,13 @@ def digest_command(command: str, cwd: str, question: str = '', max_words: int = 
         if len(output) < 600:
             out = f'exit {code}\n{output.strip()}'
         else:
-            result = digest.answer(output, question, max_words, tool='digest_command', cache=False)
-            more = _evidence(result)
-            out = f'exit {code}\n{digest.render(result, "output")}\nLast lines:\n{tail}\nFull output: {full} ({len(output.splitlines())} lines)'
+            try:
+                result = digest.answer(output, question, max_words, tool='digest_command', cache=False)
+                more = _evidence(result)
+                verdict = digest.render(result, 'output')
+            except engine.ExecutorError as exc:          # the exit code and the output must not be lost with the reading
+                verdict = f'(output not read by the executor: {exc})'
+            out = f'exit {code}\n{verdict}\nLast lines:\n{tail}\nFull output: {full} ({len(output.splitlines())} lines)'
         store.write_job(job, {'id': job, 'kind': 'command', 'state': 'done', 'command': command, 'exit': code})
         return _saved('digest_command', len(output), out, **more)
     except Exception as exc:
@@ -203,6 +210,8 @@ def digest_many(root: str, glob: str, question: str, max_files: int = 25, max_wo
             bad += result['rejected']
             ev = result['evidence'][0] if result['evidence'] else None
             flag = ' [UNVERIFIED]' if result['rejected'] and not result['evidence'] else ''
+            if sandbox.cut_note(base / rel, 400_000):
+                flag += ' [only the first 400000 bytes were read]'
             lines.append(f'{rel}: {result["answer"]}{flag}' + (f'  ({rel}:{ev["line"]} "{ev["quote"][:70]}")' if ev else ''))
         if cut:
             lines.append(f'[only the first {max_files} files were read]')
@@ -224,6 +233,9 @@ def extract_from_file(path: str, json_schema: str, instructions: str, grep: str 
         data, tokens, parts = digest.extract(text, json.loads(json_schema), instructions, grep)
         loose = digest.loose_values(data, text)
         out = json.dumps(data, separators=(',', ':'))
+        cut = sandbox.cut_note(Path(path).expanduser())
+        if cut:
+            out += '\n' + cut
         if loose:
             out += '\nNOTE: not found in the file as written (reworded, computed or made up): ' + \
                    ', '.join(json.dumps(v)[:60] for v in loose[:12]) + (f' and {len(loose) - 12} more' if len(loose) > 12 else '')
@@ -234,7 +246,7 @@ def extract_from_file(path: str, json_schema: str, instructions: str, grep: str 
 
 # delegated work --------------------------------------------------------------------------------
 HINTS = {'verified': 'Checks passed. Read job_diff if the change is delicate, then job_feedback.',
-         'unverified': 'No check was given: read job_diff before you rely on it.',
+         'unverified': 'No check was given: read job_diff before you rely on it, then job_feedback.',
          'checks_failed': 'Not accepted. job_diff shows the attempt; job_continue with a hint, or job_rollback.',
          'blocked': 'The executor could not do it. job_continue with what it lacks, or do it yourself.',
          'stuck': 'The executor went in circles. job_continue with a different approach, or job_rollback.',
@@ -317,6 +329,9 @@ def _receipt(job):
         else:
             note = 'unbacked (outside the journal, job_rollback does not undo them)'
         lines.append(f'NOTE: changed by commands, {note}: ' + ', '.join(data['touched'][:12]))
+    if data.get('created_dirs'):
+        lines.append('NOTE: generated folders created by commands, not shown in job_diff (job_rollback removes them): '
+                     + ', '.join(data['created_dirs'][:12]))
     if data['state'] not in ('verified', 'unverified', 'rolled_back') and data.get('tried'):
         lines.append('Last steps of the executor:')
         lines += ['  ' + t for t in data['tried']]
@@ -373,7 +388,8 @@ def delegate(goal: str, workspace: str, verify_commands: list[str] = [], write_g
       folders) are read only for the executor unless write_globs names them.
     write_globs: files it may write, as globs relative to the workspace (empty: any file).
     allow_run: regular expressions of commands the executor itself may run (empty: none). Every
-      part of a pipeline or chain must match one.
+      part of a pipeline or chain must match one. A pattern matches anywhere in the part: start it
+      with ^ (for example '^pytest\\b') so that it names the command and not one of its arguments.
     immutable: files or globs relative to the workspace that are always read only.
     context: facts it needs and cannot find in the files.
     constraints: explicit, checkable contract requirements (coordinates, selectors, invariants)
@@ -473,6 +489,7 @@ def job_continue(job_id: str, hint: str, extra_steps: int = 15, wait_seconds: in
         if data:
             data['diff_inspected'] = False
             data['diff_truncated'] = False
+            data['diff_paths'] = []
             store.write_job(job_id, data)
         agent.resume(job_id, hint, max(3, min(int(extra_steps), 60)))
         _wait(job_id, wait_seconds)
@@ -485,7 +502,7 @@ def job_continue(job_id: str, hint: str, extra_steps: int = 15, wait_seconds: in
 def job_diff(job_id: str, path: str = '', max_lines: int = 200) -> str:
     """Unified diff of what a delegated job changed (one file if path is given)."""
     entry = agent.RUNNING.get(job_id)
-    if entry and entry[1] is None:
+    if (entry and entry[1] is None) or (store.read_job(job_id) or {}).get('kind') == 'batch':
         return 'this is a batch: ask for the diff of one of its task jobs (job_status lists them)'
     if entry and entry[0].is_alive():
         text = entry[1].diff(path)
@@ -502,8 +519,14 @@ def job_diff(job_id: str, path: str = '', max_lines: int = 200) -> str:
             text = '\n'.join('--- ' + b for b in blocks[1:] if len(b.splitlines()) > 1 and b.splitlines()[1].endswith('b/' + path))
         lines = text.splitlines()
         truncated = len(lines) > max_lines
-        data['diff_inspected'] = True
-        data['diff_truncated'] = truncated
+        changed = {row[0] for row in data.get('changes') or []}
+        seen = set(data.get('diff_paths') or [])
+        if not truncated:
+            seen |= {path} & changed if path else changed
+        data['diff_paths'] = sorted(seen)
+        if not path or (changed and changed <= seen):
+            data['diff_inspected'] = True
+            data['diff_truncated'] = truncated and not (changed and changed <= seen)
         store.write_job(job_id, data)
     if truncated:
         lines = lines[:max_lines] + [f'[{len(lines) - max_lines} more lines: ask for one path or raise max_lines]']
@@ -527,16 +550,17 @@ def job_feedback(job_id: str, accepted: bool, lesson: str = '', constraints_veri
     """Your verdict on a delegated job. It feeds the acceptance statistics, and `lesson` (one
     sentence on what to do differently, or what was right) is given to the executor at its
     next tasks in the same project. For non-trivial changes, weak checks, or jobs with contract
-    constraints, `accepted=True` requires inspecting `job_diff(job_id)` first (and setting
+    constraints, and for any job that had no check, `accepted=True` requires inspecting `job_diff(job_id)` first (and setting
     `constraints_verified=True` when constraints were provided)."""
     data = store.read_job(job_id)
     if not data:
         return f'unknown job {job_id}'
     if accepted:
-        if data.get('state') and data.get('state') != 'verified':
+        if data.get('state') and data.get('state') not in ('verified', 'unverified'):
             return _fail(f'cannot accept job in state {data.get("state")!r}: fix or job_continue until verified')
         churn = sum(add + rem for _, _, add, rem in (data.get('changes') or []))
-        needs_diff = bool(data.get('changes')) and (churn > 40 or bool(data.get('constraints')) or bool(data.get('weak')))
+        needs_diff = bool(data.get('changes')) and (churn > 40 or bool(data.get('constraints')) or bool(data.get('weak'))
+                                                    or data.get('state') == 'unverified')    # no check ran: the diff is the only proof
         if needs_diff and not data.get('diff_inspected'):
             return _fail(f'inspection required before accepting: call job_diff({job_id!r}) first to inspect the diff and verify constraints')
         if needs_diff and data.get('diff_truncated'):

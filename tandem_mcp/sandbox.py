@@ -32,7 +32,9 @@ TEST_RUNNERS = re.compile(
     r'|\b(?:npm|pnpm|yarn|bun|cargo|go|dotnet|mvn|gradle)\s+test\b'
 )
 SECRET_ENV = re.compile(
-    r'(?:^|_)(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|PWD|CREDENTIAL|CREDENTIALS|AUTH|COOKIE|PRIVATE|DSN|CONNECTION_STRING)(?:_|$)'
+    r'(?:^|_)(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|CREDENTIALS|AUTH|COOKIE|PRIVATE|DSN|CONNECTION_STRING)(?:_|$)'
+    r'|(?:PASSWORD|PASSWD|_PWD)$'
+    r'|^(?:DATABASE|DB|REDIS|MONGO\w*|POSTGRES\w*|MYSQL|AMQP|BROKER)_UR[LI]$'
     r'|^(?:AWS_|AZURE_|GCP_|GOOGLE_APPLICATION_|GITHUB_|GITLAB_|OPENAI_|ANTHROPIC_|GEMINI_|HF_|NPM_|PYPI_|DOCKER_)',
     re.I,
 )
@@ -123,6 +125,14 @@ def split_command(command):
             i += 1
         elif c == '`' or command.startswith('$(', i) or command.startswith('<(', i) or command.startswith('>(', i):
             raise SandboxError('command substitution is not allowed')
+        elif c == '$' and i + 1 < n and command[i + 1] in '\'"':
+            # $'..' and $".." are read differently by dash and bash: the split below could disagree with the shell
+            raise SandboxError("$'...' and $\"...\" quoting is not allowed")
+        elif c == '#' and (not cur or cur[-1][-1] in ' \t'):
+            # a comment: the shell drops it, so it must not count as text that matches the allow list
+            while i < n and command[i] != '\n':
+                i += 1
+            continue
         elif c == '>':
             j = i + 1
             if j < n and command[j] in '>|':
@@ -297,11 +307,65 @@ def jail_available():
     return _jail
 
 
+def _socket_masks(base='/run', depth=3):
+    """Mounts that hide the Unix sockets of the host from the sandbox. A socket on the file system
+    stays reachable through a read only bind and without a network: the session bus, the Docker
+    socket, the key agents. The per user runtime folders are replaced by empty ones, every other
+    socket under /run is covered by /dev/null."""
+    args, users = [], os.path.join(base, 'user')
+    if os.path.isdir(users) and not os.path.islink(users):
+        args += ['--tmpfs', users]
+    stack = [(base, 0)]
+    while stack:
+        folder, level = stack.pop()
+        try:
+            with os.scandir(folder) as it:
+                entries = sorted(it, key=lambda e: e.name)
+        except OSError:
+            continue
+        for entry in entries:
+            try:
+                if entry.path == users or entry.is_symlink():
+                    continue
+                if entry.is_dir(follow_symlinks=False):
+                    if level + 1 < depth:
+                        stack.append((entry.path, level + 1))
+                elif stat.S_ISSOCK(entry.stat(follow_symlinks=False).st_mode):
+                    args += ['--ro-bind', '/dev/null', entry.path]
+            except OSError:
+                continue
+    return args
+
+
+def skip_dirs(root):
+    """Folders of a workspace that stamp() does not enter (generated folders), as relative paths."""
+    out, stack = set(), [(os.fspath(root), '')]
+    while stack:
+        dirpath, prefix = stack.pop()
+        try:
+            with os.scandir(dirpath) as it:
+                entries = list(it)
+        except OSError:
+            continue
+        for entry in entries:
+            try:
+                if entry.is_symlink() or not entry.is_dir(follow_symlinks=False):
+                    continue
+            except OSError:
+                continue
+            if entry.name in SKIP_DIRS:
+                out.add(f'{prefix}{entry.name}')
+            else:
+                stack.append((entry.path, f'{prefix}{entry.name}/'))
+    return out
+
+
 def jail_command(command, root, allow_net=False):
     """The bubblewrap call that runs `command` with only `root` writable."""
     root = Path(root).resolve()
     home = Path.home().resolve()
     args = ['bwrap', '--ro-bind', '/', '/', '--dev', '/dev', '--proc', '/proc', '--tmpfs', '/tmp']
+    args += _socket_masks()
     for name in SECRETS:
         secret = home / name
         if root == secret or secret in root.parents:
@@ -327,7 +391,7 @@ def jail_command(command, root, allow_net=False):
         args += ['--ro-bind', m, m]
     if not allow_net and os.environ.get('TANDEM_SANDBOX_NET', '') != '1':
         args += ['--unshare-net']
-    return args + ['--unshare-pid', '--die-with-parent', '--new-session', '--chdir', str(root), '/bin/sh', '-c', command]
+    return args + ['--unshare-pid', '--unshare-ipc', '--die-with-parent', '--new-session', '--chdir', str(root), '/bin/sh', '-c', command]
 
 
 def clean_env(strip_secrets=True):
@@ -346,10 +410,10 @@ def describe_jail():
     try:
         if jail_available():
             net = 'network allowed' if os.environ.get('TANDEM_SANDBOX_NET', '') == '1' else 'no network'
-            return f'bubblewrap (machine read only, workspace writable, credentials hidden, env secrets stripped, {net})'
+            return f'bubblewrap (machine read only, workspace writable, credentials and host sockets hidden, env secrets stripped, {net})'
     except SandboxError as exc:
         return f'ERROR: {exc}'
-    return 'WARNING: bubblewrap unavailable — falling back to unjailed command text checks only (set TANDEM_SANDBOX=require to fail closed)'
+    return 'WARNING: bubblewrap unavailable: falling back to unjailed command text checks only (set TANDEM_SANDBOX=require to fail closed)'
 
 
 def run(command, cwd, timeout=180, jail=False, allow_net=False, strip_env=None):
@@ -378,6 +442,18 @@ def run(command, cwd, timeout=180, jail=False, allow_net=False, strip_env=None):
 
 
 # reading ---------------------------------------------------------------------------------------
+def cut_note(path, limit=4_000_000):
+    """A note when read_text() gave only the start of a file, '' otherwise."""
+    path = Path(path)
+    try:
+        size = path.stat().st_size
+    except OSError:
+        return ''
+    if path.suffix.lower() == '.pdf' or size <= limit:
+        return ''
+    return f'NOTE: the file has {size} bytes, only the first {limit} were read: narrow it or split it.'
+
+
 def read_text(path, limit=4_000_000):
     """Text of a file; PDFs through pdftotext when it is installed."""
     path = Path(path)

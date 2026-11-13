@@ -39,9 +39,17 @@ class Reply:
 
 
 # where the model is ----------------------------------------------------------------------------
+def _trusted(url):
+    """True for the server in use or the one named by the configuration: only that one gets the API key."""
+    bases = [_state['url'], _state['pinned'], os.environ.get('TANDEM_BASE_URL'), os.environ.get('LM_STUDIO_BASE_URL')]
+    return any(b and (url == _root(b) or url.startswith(_root(b) + '/')) for b in bases)
+
+
 def _get(url, timeout=4.0, body=None):
-    request = urllib.request.Request(url, data=json.dumps(body).encode() if body is not None else None,
-                                     headers={'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _key()})
+    headers = {'Content-Type': 'application/json'}
+    if _trusted(url):                                    # never to the other ports tried during discovery
+        headers['Authorization'] = 'Bearer ' + _key()
+    request = urllib.request.Request(url, data=json.dumps(body).encode() if body is not None else None, headers=headers)
     with urllib.request.urlopen(request, timeout=timeout) as r:
         return json.load(r)
 
@@ -339,6 +347,14 @@ def problem(data, schema, path=''):
     return ''
 
 
+def _schema_refused(exc):
+    """True when the server answered that it cannot take the request, as opposed to not answering."""
+    cause = exc.__cause__
+    if getattr(cause, 'status_code', None) in (400, 404, 405, 415, 422, 501):
+        return True
+    return bool(re.search(r'response_format|json_schema|grammar', str(exc), re.I))
+
+
 def chat_json(messages, schema, tool='chat', model='', **kwargs):
     """A completion that must be JSON in a schema. The server enforces the schema when it can;
     otherwise the schema goes into the prompt, and a wrong answer gets one repair turn."""
@@ -354,10 +370,11 @@ def chat_json(messages, schema, tool='chat', model='', **kwargs):
         sent = turns if native else turns[:-1] + [{**turns[-1], 'content': str(turns[-1]['content']) + guide}]
         try:
             reply, used = chat(sent, tool=tool, model=model, schema=schema if native else None, **kwargs)
-        except ExecutorError:
-            if native and attempt == 0:                  # the server refused the schema: remember it, use the prompt
+        except ExecutorError as exc:
+            if native and attempt == 0:                  # go on with the schema in the prompt
                 native = False
-                remember(model, schema=False)
+                if _schema_refused(exc):                 # a refusal is remembered, a timeout or a dropped link is not
+                    remember(model, schema=False)
                 continue
             raise
         total = {k: total[k] + used[k] for k in total}

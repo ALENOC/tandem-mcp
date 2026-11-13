@@ -644,4 +644,163 @@ store.write_job(sjob, {
 })
 ok('delegate_many' in _server._receipt(sjob), '_receipt() suggests delegate_many when stuck with no changes')
 
+# hardening after the review ---------------------------------------------------------------------
+import socket as _socket  # noqa: E402
+import shutil as _shutil  # noqa: E402
+
+# comments and $'..' quoting cannot carry text past the allow list
+ok(sandbox.split_command('cat x #pytest')[0] == ['cat x'], 'a shell comment is not part of the command')
+ok(sandbox.split_command('pytest -k a#b tests')[0] == ['pytest -k a#b tests'], '# inside a word is not a comment')
+ok(sandbox.split_command('make # note\nmake test')[0] == ['make', 'make test'], 'a comment ends at the line end')
+cws = sandbox.Workspace(root, [], [r'pytest'])
+ok(refused(cws.check_command, 'cat /etc/hostname #pytest'), 'allow list is not satisfied by a comment')
+ok(refused(sandbox.split_command, "pytest $'\\''; id #'"), "$'..' quoting is refused")
+
+# host sockets are hidden from the sandbox
+run_dir = Path(tempfile.mkdtemp())
+(run_dir / 'user' / '1000').mkdir(parents=True)
+(run_dir / 'svc').mkdir()
+for sock_path in (run_dir / 'docker.sock', run_dir / 'svc' / 'bus.sock'):
+    sock = _socket.socket(_socket.AF_UNIX)
+    sock.bind(str(sock_path))
+    sock.close()
+(run_dir / 'plain.txt').write_text('x')
+masks = sandbox._socket_masks(str(run_dir))
+ok(masks[:2] == ['--tmpfs', str(run_dir / 'user')] and str(run_dir / 'docker.sock') in masks
+   and str(run_dir / 'svc' / 'bus.sock') in masks and str(run_dir / 'plain.txt') not in masks,
+   '_socket_masks() hides runtime folders and sockets only')
+ok('--unshare-ipc' in sandbox.jail_command('true', root), 'jail has its own IPC namespace')
+if sandbox.jail_available() and Path('/run/user').is_dir():
+    code, out = sandbox.run('ls -A /run/user | wc -l', root, timeout=30, jail=True)
+    ok(code == 0 and out.strip() == '0', 'the runtime folder of the user is empty inside the jail')
+
+# secrets in the environment
+ok(all(sandbox.SECRET_ENV.search(k) for k in ('PGPASSWORD', 'DATABASE_URL', 'MYSQL_PWD', 'GH_TOKEN', 'REDIS_URL'))
+   and not any(sandbox.SECRET_ENV.search(k) for k in ('PWD', 'OLDPWD', 'PATH', 'HOME', 'BASE_URL')),
+   'SECRET_ENV covers database URLs and passwords, leaves PWD alone')
+
+# replace_in_file keeps Windows line ends and refuses what is not text
+eol_root = Path(tempfile.mkdtemp())
+(eol_root / 'a.txt').write_bytes(b'one\r\ntwo\r\nthree\r\n')
+(eol_root / 'bad.txt').write_bytes(b'caf\xe9 two\n')
+eol_job, eol_folder = store.new_job('delegate')
+eol_task = agent.Task(eol_job, eol_folder, 'g', sandbox.Workspace(eol_root), [])
+ok(eol_task.call('replace_in_file', {'path': 'a.txt', 'old': 'one\ntwo', 'new': 'one\nTWO'}) == 'replaced'
+   and (eol_root / 'a.txt').read_bytes() == b'one\r\nTWO\r\nthree\r\n', 'replace_in_file keeps CRLF line ends')
+ok(eol_task.call('replace_in_file', {'path': 'bad.txt', 'old': 'two', 'new': 'TWO'}).startswith('ERROR')
+   and (eol_root / 'bad.txt').read_bytes() == b'caf\xe9 two\n', 'replace_in_file leaves a non UTF-8 file alone')
+
+# what a check writes among its own files is not blamed on the executor
+art_root = Path(tempfile.mkdtemp())
+(art_root / 'tests').mkdir()
+(art_root / 'tests' / 'test_a.py').write_text('assert True\n')
+art_job, art_folder = store.new_job('delegate')
+art_ws = sandbox.Workspace(art_root)
+art_task = agent.Task(art_job, art_folder, 'g', art_ws, ['true pytest; touch tests/artifact.out'], unjailed_checks=True)
+art_ws.protect(art_task.verify)
+art_task.take_guard()
+art_checks = art_task.run_checks()
+ok(art_checks[0]['exit'] == 0 and not (art_root / 'tests' / 'artifact.out').exists()
+   and art_task.restore_guard() == [] and art_task.restored == [], 'artifacts of the checks are removed quietly')
+(art_root / 'tests' / 'conftest.py').write_text('x = 1\n')
+ok(art_task.restore_guard() == ['tests/conftest.py'] and art_task.restored == ['tests/conftest.py'],
+   'a file the executor adds to tests/ is still reported')
+
+# generated folders created by a command
+gen_root = Path(tempfile.mkdtemp())
+(gen_root / 'tests').mkdir()
+(gen_root / 'src').mkdir()
+(gen_root / 'tests' / 'test_a.py').write_text('assert True\n')
+gen_job, gen_folder = store.new_job('delegate')
+gen_ws = sandbox.Workspace(gen_root, ['src/*.py'], [r'^(mkdir|cp)\b'])
+gen_task = agent.Task(gen_job, gen_folder, 'g', gen_ws, ['true pytest'])
+gen_ws.protect(gen_task.verify)
+gen_task.take_guard()
+gen_out = gen_task.call('run', {'command': 'mkdir -p tests/build build && cp tests/test_a.py tests/build/conftest.py && cp tests/test_a.py build/any.py'})
+ok('removed' in gen_out and not (gen_root / 'tests' / 'build').exists() and not (gen_root / 'build').exists(),
+   'generated folders outside the write globs or inside tests/ are removed')
+free_root = Path(tempfile.mkdtemp())
+(free_root / 'a.py').write_text('x = 1\n')
+free_job, free_folder = store.new_job('delegate')
+free_task = agent.Task(free_job, free_folder, 'g', sandbox.Workspace(free_root, [], [r'^(mkdir|cp)\b']), [])
+free_task.call('run', {'command': 'mkdir dist && cp a.py dist/a.py'})
+free_task._save('unverified', 'done', [])
+free_task._record_post_state()
+ok(free_task.created_dirs == ['dist'] and 'dist' in _server._receipt(free_job), 'a generated folder is recorded and shown in the receipt')
+ok('dist/' in agent.rollback(free_job) and not (free_root / 'dist').exists(), 'rollback removes the generated folder')
+
+# syntax checks do not take data for code
+syn = Path(tempfile.mkdtemp())
+(syn / 'tsconfig.json').write_text('{\n  // strict mode\n  "compilerOptions": {"strict": true, "paths": {"a": ["//x"]},},\n}\n')
+(syn / 'package.json').write_text('{"name": "x",}\n')
+ok(agent.syntax_of(syn / 'tsconfig.json') == '', 'tsconfig.json may hold comments and trailing commas')
+ok(bool(agent.syntax_of(syn / 'package.json')), 'package.json may not')
+if _shutil.which('node'):
+    (syn / 'data.html').write_text('<script type="application/ld+json">{"a": 1}</script>'
+                                   '<script type="x-shader/x-fragment">precision mediump float;</script><script>let a = 1;</script>'
+                                   '<script type="module">import {b} from "./b.js"; export const c = b;</script>')
+    (syn / 'only.html').write_text('<script type="application/json">{"a": 1}</script>')
+    (syn / 'badmod.html').write_text('<script type="module">import {b from "./b.js";</script>')
+    ok(agent.syntax_of(syn / 'data.html') == '' and agent.syntax_of(syn / 'only.html') is None
+       and bool(agent.syntax_of(syn / 'badmod.html')), 'only JavaScript <script> blocks are checked, modules as modules')
+
+# a server that does not answer is not a server that refuses the schema
+class _Refusal(Exception):
+    status_code = 400
+
+
+def _wrapped(cause, text='call failed'):
+    try:
+        raise engine.ExecutorError(text) from cause
+    except engine.ExecutorError as exc:
+        return exc
+
+
+ok(engine._schema_refused(_wrapped(_Refusal())) and engine._schema_refused(_wrapped(None, 'response_format is not supported'))
+   and not engine._schema_refused(_wrapped(TimeoutError(), 'Request timed out.')), 'only a refusal turns the forced schema off')
+
+# the API key goes to the configured server only
+_old_url = os.environ.get('TANDEM_BASE_URL')
+os.environ['TANDEM_BASE_URL'] = 'http://127.0.0.1:1234/v1'
+ok(engine._trusted('http://127.0.0.1:1234/v1/models') and engine._trusted('http://127.0.0.1:1234/api/v0/models')
+   and not engine._trusted('http://127.0.0.1:8080/v1/models') and not engine._trusted('http://127.0.0.1:12345/v1/models'),
+   'only the configured server gets the API key')
+if _old_url is None:
+    del os.environ['TANDEM_BASE_URL']
+else:
+    os.environ['TANDEM_BASE_URL'] = _old_url
+
+# reading limits are said, not silent
+big = syn / 'big.log'
+big.write_text('line\n' * 30)
+ok('only the first 100' in sandbox.cut_note(big, 100) and sandbox.cut_note(big) == '', 'cut_note() reports a file read in part')
+_old_parts = digest.MAX_PARTS
+digest.MAX_PARTS = 2
+try:
+    digest.answer('word\n' * 40000, 'q', model='none', cache=False)
+    too_large = False
+except engine.ExecutorError as exc:
+    too_large = 'narrow it with grep' in str(exc)
+digest.MAX_PARTS = _old_parts
+ok(too_large, 'a material of too many parts is refused before any executor call')
+
+# acceptance gates
+ujob, ufolder = store.new_job('delegate')
+store.write_job(ujob, {'id': ujob, 'kind': 'delegate', 'state': 'unverified', 'workspace': str(root),
+                       'changes': [['a.py', 'changed', 1, 1], ['b.py', 'new', 2, 0]], 'checks': [], 'before': []})
+(ufolder / 'changes.diff').write_text('--- a/a.py\n+++ b/a.py\n@@ -1 +1 @@\n-x\n+y\n--- /dev/null\n+++ b/b.py\n@@ -0,0 +1,2 @@\n+p\n+q')
+ok('inspection required' in _server.job_feedback(ujob, True), 'a job without checks needs its diff read before acceptance')
+_server.job_diff(ujob, path='nothing.py')
+_server.job_diff(ujob, path='a.py')
+ok('inspection required' in _server.job_feedback(ujob, True), 'the diff of one file out of two does not open the gate')
+_server.job_diff(ujob, path='b.py')
+ok(_server.job_feedback(ujob, True) == 'recorded', 'a job without checks is accepted once every changed file was read')
+
+# jobs waiting for a verdict are not kept for ever
+old_job, old_folder = store.new_job('delegate')
+store.write_job(old_job, {'state': 'unverified', 'accepted': None, 'changes': [['a.py', 'changed', 1, 0]], 'touched': []})
+os.utime(old_folder, (0, 0))
+store.cleanup(cache_keep=200, jobs_ttl_days=1, jobs_keep=500, preserve_pending=True)
+ok(not old_folder.exists(), 'a pending job older than TANDEM_JOBS_PENDING_TTL_DAYS is removed')
+
 print(f'{checks} checks, 0 failures')

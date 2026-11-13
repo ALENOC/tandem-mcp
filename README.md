@@ -78,6 +78,8 @@ Manual stdio configuration (any MCP client):
 | `TANDEM_SANDBOX` | `auto`, `require`, or `off` | `auto` |
 | `TANDEM_SANDBOX_NET` | `1` allows network inside sandbox | off |
 | `TANDEM_HOME` | Ledger, lessons, caps, cache, and jobs folder | `~/.local/share/tandem-mcp` |
+| `TANDEM_MAX_PARTS` | Most parts one `digest_*` answer may read (one executor call each) | `60` |
+| `TANDEM_JOBS_PENDING_TTL_DAYS` | Days a job with changes and no verdict is kept | `120` |
 
 **Model notes:**
 - **Ollama**: raise `OLLAMA_CONTEXT_LENGTH` for `delegate` tasks; reading tools (`digest_*`) work at any context length by chunking.
@@ -200,10 +202,12 @@ Checks passed. Read job_diff if the change is delicate, then job_feedback.
 
 Read this before pointing Tandem at a sensitive repository:
 
-- **Sandboxed execution (`bubblewrap`)**: when available, both executor `run` commands and `verify_commands` run inside `bubblewrap` (`--ro-bind / /`, workspace writable, `.git` and `SKIP_DIRS` read-only, home credential folders hidden, `SECRET_ENV` vars stripped, `--unshare-net` enabled).
+- **Sandboxed execution (`bubblewrap`)**: when available, both executor `run` commands and `verify_commands` run inside `bubblewrap` (`--ro-bind / /`, workspace writable, `.git` and `SKIP_DIRS` read-only, home credential folders hidden, `/run/user` replaced by an empty folder and every other Unix socket under `/run` masked (session bus, Docker socket, key agents), `SECRET_ENV` vars stripped, `--unshare-net` and `--unshare-ipc` enabled).
 - **Explicit exceptions**: pass `checks_network=True` or `unjailed_checks=True` on `delegate` only for checks that need network or host resources. `digest_command` runs the orchestrator's own command with the user's rights.
 - **Fail-closed mode**: on systems without `bubblewrap`, `TANDEM_SANDBOX=auto` falls back to command-text checks (`allow_run` + `DENY` list) with a warning in `executor_status`. Set `TANDEM_SANDBOX=require` to fail closed with `SandboxError` instead.
-- **Contract enforcement on shell commands**: `stamp()` hashes every workspace file with SHA-256 before and after `run` (no file-count cap, symlinks excluded). Any file modified outside `write_globs` or owned by another parallel task is reverted immediately.
+- **Contract enforcement on shell commands**: `stamp()` hashes every workspace file with SHA-256 before and after `run` (no file-count cap, symlinks excluded). Any file modified outside `write_globs` or owned by another parallel task is reverted immediately. A generated folder (`build`, `dist`, `node_modules`, ...) that a command creates is removed when it lies outside `write_globs` or inside the files of the checks, otherwise it is listed in the receipt and removed by `job_rollback`.
+- **Allow list**: an `allow_run` pattern matches anywhere in a command part, so anchor it (`^pytest\b`). Shell comments are dropped before matching, and command substitution and `$'...'` quoting are refused.
+- **API key**: `TANDEM_API_KEY` is sent only to the configured or selected server, never to the other local ports tried during discovery. The data folder is private to the user (`0700`).
 - **Safe rollback**: `journal_bin.json` + `snapshot.json` back up original bytes (up to 2 MB/file, 50 MB total). Pre-existing files larger than the cap are tracked as `None` so `job_rollback` preserves them instead of deleting them; `post_state.json` prevents overwriting later user edits.
 - **Hostile text**: file contents and command output are marked as data in prompts, and receipts/diffs should always be reviewed before accepting. See [SECURITY.md](SECURITY.md) to report vulnerabilities.
 
@@ -327,7 +331,7 @@ Using Tandem's **hybrid quality-preservation workflow** (non-vague contract `con
 ## Tests
 
 ```sh
-.venv/bin/python tests/test_offline.py     # 160 checks: limits, evidence, journal, rollback, installer
+.venv/bin/python tests/test_offline.py     # 187 checks: limits, evidence, journal, rollback, installer
 .venv/bin/python tests/test_protocol.py    # 160 checks: full loop against scripted server (no model)
 .venv/bin/python tests/test_live.py        # live checks against your running local model
 .venv/bin/python tests/test_live.py --text # live checks via JSON-reply protocol

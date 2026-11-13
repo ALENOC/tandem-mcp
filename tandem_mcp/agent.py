@@ -114,6 +114,22 @@ def call_syntax(content):
     return node.func.id, args
 
 
+_JS_TYPES = {'', 'text/javascript', 'application/javascript', 'text/ecmascript', 'application/ecmascript',
+             'application/x-javascript'}
+_JSONC_NAMES = re.compile(r'^(?:[tj]sconfig(?:\..+)?\.json|devcontainer\.json|\.eslintrc\.json|\.swcrc|.*\.jsonc)$', re.I)
+
+
+def _is_jsonc(path):
+    """Files that tools read as JSON with comments and trailing commas."""
+    return bool(_JSONC_NAMES.match(path.name)) or path.parent.name in ('.vscode', '.devcontainer')
+
+
+def _strip_jsonc(text):
+    """JSON with comments and trailing commas, as plain JSON. Strings are left alone."""
+    text = re.sub(r'("(?:\\.|[^"\\])*")|//[^\n]*|/\*.*?\*/', lambda m: m.group(1) or '', text, flags=re.S)
+    return re.sub(r'("(?:\\.|[^"\\])*")|,(\s*[}\]])', lambda m: m.group(1) or m.group(2), text, flags=re.S)
+
+
 def syntax_of(path):
     """'' when the file parses, a message when it does not, None when there is no checker for it."""
     suffix = path.suffix.lower()
@@ -121,8 +137,13 @@ def syntax_of(path):
         text = path.read_text(errors='replace')
         if suffix == '.py':
             compile(text, path.name, 'exec')
-        elif suffix == '.json':
-            json.loads(text)
+        elif suffix in ('.json', '.jsonc'):
+            try:
+                json.loads(text)
+            except ValueError:
+                if not _is_jsonc(path):
+                    raise
+                json.loads(_strip_jsonc(text))
         elif suffix == '.toml':
             import tomllib
             tomllib.loads(text)
@@ -142,18 +163,29 @@ def syntax_of(path):
             done = subprocess.run(['node', '--check', str(path)], capture_output=True, text=True, timeout=30)
             return done.stderr.strip()[:300] if done.returncode else ''
         elif suffix in ('.html', '.htm') and shutil.which('node'):
-            scripts = [m.group(1) for m in re.finditer(r'<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>', text, re.S | re.I)
-                       if m.group(1).strip()]
-            if not scripts:
+            classic, modules = [], []
+            for m in re.finditer(r'<script(?![^>]*\bsrc=)([^>]*)>(.*?)</script>', text, re.S | re.I):
+                if not m.group(2).strip():
+                    continue
+                kind = re.search(r'\btype\s*=\s*["\']?([^"\'\s>]*)', m.group(1), re.I)
+                kind = kind.group(1).strip().lower() if kind else ''
+                if kind == 'module':
+                    modules.append(m.group(2))
+                elif kind in _JS_TYPES:                    # JSON data, shaders and templates are not JavaScript
+                    classic.append(m.group(2))
+            if not classic and not modules:
                 return None
-            with tempfile.NamedTemporaryFile('w', suffix='.js', delete=False, encoding='utf-8') as tmp:
-                tmp.write('\n;\n'.join(scripts))
-                tmp_path = tmp.name
-            try:
-                done = subprocess.run(['node', '--check', tmp_path], capture_output=True, text=True, timeout=30)
-                return done.stderr.strip()[:300] if done.returncode else ''
-            finally:
-                Path(tmp_path).unlink(missing_ok=True)
+            for suffix_js, body in ([('.js', '\n;\n'.join(classic))] if classic else []) + [('.mjs', b) for b in modules]:
+                with tempfile.NamedTemporaryFile('w', suffix=suffix_js, delete=False, encoding='utf-8') as tmp:
+                    tmp.write(body)
+                    tmp_path = tmp.name
+                try:
+                    done = subprocess.run(['node', '--check', tmp_path], capture_output=True, text=True, timeout=30)
+                    if done.returncode:
+                        return done.stderr.strip()[:300]
+                finally:
+                    Path(tmp_path).unlink(missing_ok=True)
+            return ''
         else:
             return None
     except SyntaxError as exc:
@@ -212,6 +244,17 @@ def _safe_symlink_target_path(root, rel):
     return Path(root) / rel_str
 
 
+def sandbox_files(folder, limit=2000):
+    """Relative paths of the files under a folder, generated folders included."""
+    out = []
+    for dirpath, _, filenames in os.walk(folder, followlinks=False):
+        for name in filenames:
+            out.append(str((Path(dirpath) / name).relative_to(folder)))
+            if len(out) >= limit:
+                return out
+    return out or ['']
+
+
 def _is_binary(data):
     """True when data contains a NUL byte in its first 4096 bytes."""
     return data is not None and b'\x00' in data[:4096]
@@ -231,6 +274,7 @@ class Task:
         self.guard = {}                    # protected path -> ('file', bytes, mode) or ('symlink', target, 0)
         self.guard_dirs = {}               # protected directory -> st_mode
         self.touched = set()               # files changed by commands, outside the journal
+        self.created_dirs = []             # generated folders (build, dist, ...) created by commands
         self.restored = []                 # protected files a command changed and the server put back
         self.before = []                   # the checks as they were before the work
         self.syntax = {'ok': [], 'bad': [], 'unchecked': []}
@@ -314,8 +358,17 @@ class Task:
                 p = self.ws.writable(args['path'])
                 if not p.is_file():
                     return f'ERROR: {args["path"]} does not exist. Use write_file to create it.'
-                text = p.read_text(errors='replace')
+                try:
+                    text = p.read_bytes().decode('utf-8')
+                except UnicodeDecodeError:
+                    return f'ERROR: {args["path"]} is not UTF-8 text, replace_in_file would damage it.'
+                # a file with Windows line ends is matched with plain ones and written back as it was
+                crlf = '\r\n' in text and text.count('\r\n') == text.count('\n')
+                if crlf:
+                    text = text.replace('\r\n', '\n')
                 old, new = str(args['old']), str(args['new'])
+                if crlf:
+                    old, new = old.replace('\r\n', '\n'), new.replace('\r\n', '\n')
                 count = text.count(old) if old else 0
                 if count == 0 and new and new in text:
                     return ('ERROR: old text not found, and the file already holds the new text: this change is already made. '
@@ -323,7 +376,8 @@ class Task:
                 if count != 1:
                     return f'ERROR: old text found {count} times, it must be found exactly once. Read the file and copy it exactly.'
                 self._remember(p)
-                p.write_text(text.replace(old, new))
+                text = text.replace(old, new)
+                p.write_bytes((text.replace('\n', '\r\n') if crlf else text).encode('utf-8'))
                 return 'replaced'
         if name == 'write_file':
             run_ctx = self.ws.run_lock if self.ws.run_lock is not None else contextlib.nullcontext()
@@ -351,10 +405,14 @@ class Task:
                             except OSError:
                                 pass
                 before = sandbox.stamp(self.ws.root)
+                hidden = sandbox.skip_dirs(self.ws.root)
                 rem = self._remaining_seconds()
                 run_timeout = 180 if rem is None else max(1.0, min(180.0, rem))
                 code, out = sandbox.run(command, self.ws.root, timeout=run_timeout, jail=True)
                 after = sandbox.stamp(self.ws.root)
+                removed = self._new_hidden_dirs(hidden)
+                if removed:
+                    out += '\nERROR: folder(s) created where this task may not write (removed): ' + ', '.join(removed)
                 changed = [rel for rel in sorted(set(before) | set(after))
                            if before.get(rel) != after.get(rel)]
                 outside = [rel for rel in changed
@@ -399,6 +457,23 @@ class Task:
                 cap = max(1500, min(OUT_CAP, self.budget // 4))
                 return f'exit {code}\n' + (out[-cap:] if len(out) > cap else out)
         return f'ERROR: unknown tool {name}. The tools are: {", ".join(NAMES)}'
+
+    def _new_hidden_dirs(self, known):
+        """Folders such as build/ or node_modules/ that a command just created. stamp() does not
+        look inside them, so nothing there would show in the diff: one inside the files of the
+        checks or outside the write globs is removed, the others are recorded and undone by rollback."""
+        removed = []
+        for rel in sorted(sandbox.skip_dirs(self.ws.root) - set(known)):
+            p = _safe_workspace_path(self.ws.root, rel)
+            if p is None or rel in self.created_dirs:
+                continue
+            allowed = not self.ws.write_globs or any(self.ws._in_globs(f'{rel}/{inner}') for inner in sandbox_files(p))
+            if self.ws.is_protected(rel) or '.git' in Path(rel).parts or not allowed:
+                shutil.rmtree(p, ignore_errors=True)
+                removed.append(rel)
+            else:
+                self.created_dirs.append(rel)
+        return removed
 
     # results ---------------------------------------------------------------------------------
     def _before_bytes(self, rel, snapshot=None):
@@ -518,18 +593,24 @@ class Task:
 
     def run_checks(self):
         results = []
-        for command in self.verify:
-            rem = self._remaining_seconds()
-            check_timeout = 900 if rem is None else max(1.0, min(900.0, rem))
-            code, out = sandbox.run(
-                command,
-                self.ws.root,
-                check_timeout,
-                jail=not self.unjailed_checks,
-                allow_net=self.checks_network,
-                strip_env=True,
-            )
-            results.append({'command': command, 'exit': code, 'tail': out.strip()[-1500:]})
+        run_ctx = self.ws.run_lock if self.ws.run_lock is not None else contextlib.nullcontext()
+        with run_ctx:                      # in a batch, never while a command of another task runs
+            for command in self.verify:
+                rem = self._remaining_seconds()
+                check_timeout = 900 if rem is None else max(1.0, min(900.0, rem))
+                code, out = sandbox.run(
+                    command,
+                    self.ws.root,
+                    check_timeout,
+                    jail=not self.unjailed_checks,
+                    allow_net=self.checks_network,
+                    strip_env=True,
+                )
+                results.append({'command': command, 'exit': code, 'tail': out.strip()[-1500:]})
+            if self.verify:
+                # snapshots, coverage data and the like that a check wrote among its own files are
+                # the doing of the check: taken away now, not blamed on the executor at the next finish
+                self.restore_guard(quiet=True)
         return results
 
     def check_syntax(self):
@@ -702,7 +783,7 @@ class Task:
 
     def _record_post_state(self):
         """Record state hashes of modified/touched paths at task end so rollback skips later user edits."""
-        tracked = set(self.journal) | set(self.journal_bin) | set(self.touched)
+        tracked = set(self.journal) | set(self.journal_bin) | set(self.touched) | set(self.created_dirs)
         if not tracked:
             return
         post = store.read_json(self.folder / 'post_state.json', {}) or {}
@@ -751,8 +832,9 @@ class Task:
             except OSError:
                 continue
 
-    def restore_guard(self):
-        """Restore protected files, symlinks, permissions, and directory structure changed by the executor."""
+    def restore_guard(self, quiet=False):
+        """Restore protected files, symlinks, permissions, and directory structure changed by the executor.
+        quiet: put back without recording it in the receipt (changes made by the checks themselves)."""
         back = []
         for rel_dir, before_mode in sorted(self.guard_dirs.items()):
             p = _safe_symlink_target_path(self.ws.root, rel_dir)
@@ -870,7 +952,8 @@ class Task:
                         back.append(rel)
                     except OSError:
                         pass
-        self.restored += [rel for rel in back if rel not in self.restored]
+        if not quiet:
+            self.restored += [rel for rel in back if rel not in self.restored]
         return back
 
     # the conversation ------------------------------------------------------------------------
@@ -915,11 +998,12 @@ class Task:
     def _turn(self, messages):
         """One reply of the executor, as a list of (call id or None, tool name, arguments or error text)."""
         rem = self._remaining_seconds()
+        model = self.used or self.model                  # the model the job started with, whatever is loaded now
         if self.native:
-            reply, used = engine.chat(messages, tool='delegate', model=self.model, tools=SPEC, max_tokens=4000, timeout=rem)
+            reply, used = engine.chat(messages, tool='delegate', model=model, tools=SPEC, max_tokens=4000, timeout=rem)
         else:
-            schema = CALL if engine.caps(self.model or engine.default_model())['schema'] else None
-            reply, used = engine.chat(messages, tool='delegate', model=self.model, schema=schema, max_tokens=4000, timeout=rem)
+            schema = CALL if engine.caps(model or engine.default_model())['schema'] else None
+            reply, used = engine.chat(messages, tool='delegate', model=model, schema=schema, max_tokens=4000, timeout=rem)
         self.tokens += used['prompt'] + used['completion']
         if reply.calls:
             messages.append({'role': 'assistant', 'content': reply.content, 'tool_calls': [
@@ -1110,6 +1194,7 @@ class Task:
                     protocol='native tool calls' if self.native else 'JSON replies',
                     before=[{'command': c['command'], 'exit': c['exit']} for c in self.before], weak=weak,
                     protected=sorted(self.ws.protected), restored=self.restored, touched=sorted(self.touched),
+                    created_dirs=sorted(self.created_dirs),
                     backup_status=backup_status, unbacked_files=unbacked_files,
                     syntax=self.syntax, changes=self.changes(),
                     tried=[f'{e["tool"]} {json.dumps(e["args"])[:90]} -> {e["result"][:90]}' for e in self.log[-4:]],
@@ -1118,6 +1203,13 @@ class Task:
 
 
 RUNNING = {}
+
+
+def _forget_finished(keep=48):
+    """Drop the oldest finished jobs from memory: their receipt, diff and journal are on disk."""
+    done = [job for job, (thread, _) in list(RUNNING.items()) if not thread.is_alive()]
+    for job in done[:max(0, len(done) - keep)]:
+        RUNNING.pop(job, None)
 
 
 def _launch(task, body_of, release=None):
@@ -1143,19 +1235,20 @@ def _launch(task, body_of, release=None):
             release()
 
     thread = threading.Thread(target=body, daemon=True)
+    _forget_finished()
     RUNNING[task.job] = (thread, task)
     thread.start()
     return thread
 
 
 def start(goal, workspace, verify, max_steps=30, max_repairs=2, model='', context='', baseline=True, max_seconds=0,
-          release=None, checks_network=False, unjailed_checks=False, constraints=None):
+          release=None, checks_network=False, unjailed_checks=False, constraints=None, with_thread=False):
     job, folder = store.new_job('delegate')
     task = Task(job, folder, goal, workspace, verify, max_steps, max_repairs, model, context, baseline, max_seconds,
                 checks_network=checks_network, unjailed_checks=unjailed_checks, constraints=constraints)
     task._save('running', '', [])
-    _launch(task, task.run, release)
-    return job
+    thread = _launch(task, task.run, release)
+    return (job, thread) if with_thread else job
 
 
 def resume(job, hint, extra_steps=15):
@@ -1183,6 +1276,8 @@ def resume(job, hint, extra_steps=15):
     task.steps, task.tokens, task.read_chars = data.get('steps', 0), data.get('tokens', 0), data.get('read_chars', 0)
     task.before = data.get('before', [])
     task.restored, task.touched = data.get('restored', []), set(data.get('touched', []))
+    task.created_dirs = list(data.get('created_dirs', []))
+    task.used = data.get('used') or task.model or engine.default_model()
     ws.protect(task.verify)
     task.take_guard()
     task.take_snapshot()
@@ -1274,7 +1369,7 @@ def rollback(job):
     post_state = store.read_json(post_state_path, {}) or {}
     cautious_crash = (not post_state_exists) and (data.get('state') in ('error', 'running'))
     touched = list(data.get('touched', []))
-    if not journal and not journal_bin and not touched:
+    if not journal and not journal_bin and not touched and not data.get('created_dirs'):
         if not (folder / 'journal.json').exists() and not (folder / 'journal_bin.json').exists() and snapshot is None:
             return 'no journal for this job'
     root = Path(data['workspace'])
@@ -1406,6 +1501,16 @@ def rollback(job):
                 p.unlink()
             done.append(rel)
 
+    for rel in data.get('created_dirs', []):
+        p = _safe_workspace_path(root, rel)
+        if p is None or not p.is_dir():
+            continue
+        if user_modified(rel, p) or (cautious_crash and rel not in post_state):
+            skipped.append(rel)
+            continue
+        shutil.rmtree(p, ignore_errors=True)
+        done.append(rel + '/')
+
     data['state'] = 'rolled_back'
     store.write_job(job, data)
     parts = ['restored: ' + (', '.join(done) or 'nothing')]
@@ -1485,12 +1590,12 @@ def start_batch(tasks, workspace, allow_run, workers=1, max_steps=30, max_repair
                         continue
                     ws = sandbox.Workspace(root, spec.get('write_globs'), allow_run, spec.get('immutable') or immutable)
                     ws.claims, ws.name, ws.run_lock = claims, row['name'], run_lock
-                    row['job'] = start(spec['goal'], ws, spec.get('verify_commands', []), max_steps, max_repairs, model,
+                    row['job'], started = start(spec['goal'], ws, spec.get('verify_commands', []), max_steps, max_repairs, model,
                                        spec.get('context') or context, baseline,
                                        checks_network=spec.get('checks_network', checks_network),
                                        unjailed_checks=spec.get('unjailed_checks', unjailed_checks),
-                                       constraints=spec.get('constraints'))
-                    running[row['name']] = RUNNING[row['job']][0]
+                                       constraints=spec.get('constraints'), with_thread=True)
+                    running[row['name']] = started
                     row['state'] = state_of[row['name']] = 'running'
                 left = [r for r in rows if r['state'] in ('waiting', 'running')]
                 save('running' if left else ('verified' if all(r['state'] == 'verified' for r in rows) else
@@ -1501,6 +1606,7 @@ def start_batch(tasks, workspace, allow_run, workers=1, max_steps=30, max_repair
 
     save('running')
     thread = threading.Thread(target=body, daemon=True)
+    _forget_finished()
     RUNNING[batch] = (thread, None)
     thread.start()
     return batch

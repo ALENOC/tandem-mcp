@@ -18,6 +18,7 @@ CACHE_KEEP = int(os.environ.get('TANDEM_CACHE_KEEP', 400))               # diges
 CACHE_TTL_DAYS = float(os.environ.get('TANDEM_CACHE_TTL_DAYS', 14))
 JOBS_KEEP = int(os.environ.get('TANDEM_JOBS_KEEP', 200))
 JOBS_TTL_DAYS = float(os.environ.get('TANDEM_JOBS_TTL_DAYS', 30))
+JOBS_PENDING_TTL_DAYS = float(os.environ.get('TANDEM_JOBS_PENDING_TTL_DAYS', 120))   # jobs with changes and no verdict
 _lock = threading.Lock()
 _last_cleanup = 0.0
 
@@ -28,6 +29,10 @@ def init():
     now = time.time()
     if now - _last_cleanup > 3600:
         _last_cleanup = now
+        try:
+            os.chmod(DATA, 0o700)          # transcripts and file copies live here: not for other users
+        except OSError:
+            pass
         cleanup()
 
 
@@ -224,7 +229,8 @@ def _trim_jobs(ttl_days, keep, preserve_pending=True):
         if data.get('state') == 'running' and now - mtime < 86400:
             continue
         # Preserve jobs that still have un-rolled-back, un-accepted changes.
-        if preserve_pending and data.get('state') != 'rolled_back' and data.get('accepted') is None and (data.get('changes') or data.get('touched')):
+        pending = data.get('state') != 'rolled_back' and data.get('accepted') is None and (data.get('changes') or data.get('touched'))
+        if preserve_pending and pending and (JOBS_PENDING_TTL_DAYS <= 0 or now - mtime < JOBS_PENDING_TTL_DAYS * 86400):
             continue
         if ttl_days > 0 and now - mtime > ttl_days * 86400:
             shutil.rmtree(folder, ignore_errors=True)

@@ -5,11 +5,13 @@ every number of the answer is looked up in the source, and the answer says how m
 material was read. What fails a check is reported, so a made-up answer is visible to the
 orchestrator without reading the source."""
 import json
+import os
 import re
 
 from . import engine, store
 
 MAX_CHUNK = 36000
+MAX_PARTS = int(os.environ.get('TANDEM_MAX_PARTS', 60))      # one executor call per part: more is hours of reading
 ANSWER = {'type': 'object', 'required': ['answer', 'evidence'], 'properties': {
     'answer': {'type': 'string'},
     'evidence': {'type': 'array', 'items': {'type': 'object', 'required': ['line', 'quote'], 'properties': {
@@ -215,6 +217,9 @@ def answer(text, question, max_words=120, grep='', tool='digest', model='', cach
                     'read_lines': 0, 'lines': len(lines), 'tokens': 0, 'model': model}
     size = chunk_chars(model)
     parts, truncated_lines = chunk_with_stats(body, size)
+    if len(parts) > MAX_PARTS:
+        raise engine.ExecutorError(f'material too large for one answer ({len(parts)} parts of {size} characters, '
+                                   f'the limit is {MAX_PARTS}): narrow it with grep')
     read_lines = sum(1 for part in parts for line in part.splitlines() if line != '...')
     tokens = dropped = 0
     if len(parts) > 1:                                   # map: notes per chunk, reduce: answer from the notes
