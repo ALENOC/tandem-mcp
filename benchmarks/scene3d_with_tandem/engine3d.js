@@ -11,8 +11,8 @@
     var W = 0, H = 0, DPR = 1;
 
     // ---- camera ----
-    var cam = { yaw: 0.7, pitch: 0.32, dist: 9.5, target: [0, 0.7, 0] };
-    var camHome = { yaw: 0.7, pitch: 0.32, dist: 9.5 };
+    var cam = { yaw: 0.7, pitch: 0.32, dist: 10.5, target: [0, 0.7, 0] };
+    var camHome = { yaw: 0.7, pitch: 0.32, dist: 10.5 };
 
     // ---- state ----
     var t = 0;
@@ -53,7 +53,7 @@
       var f = (H * 0.92) / zc;
       return {
         x: W / 2 + x2 * f,
-        y: H / 2 - y2 * f,
+        y: H / 2 + 35 - y2 * f,
         z: zc,
         s: f
       };
@@ -131,13 +131,16 @@
       // top lintel arch
       addBox(0, top + 0.25 + bob, 0, 3.7, 0.5, 0.5, '#0e0e1c', 'rgba(56,189,248,0.6)', 10);
 
-      // 6 orbiting glowing octahedron crystals
+      // 6 orbiting glowing octahedron crystals (alternating cyan / magenta)
       for (var c = 0; c < 6; c++) {
         var a = t * 0.9 + (c / 6) * TAU;
         var ox = Math.cos(a) * 2.6;
         var oz = Math.sin(a) * 2.6;
         var oy = 1.2 + bob + Math.sin(t * 2 + c) * 0.25;
-        addOcta(ox, oy, oz, 0.28, 'rgba(56,189,248,0.85)', 'rgba(186,230,253,0.95)', 14);
+        var isCyan = c % 2 === 0;
+        var fillCol = isCyan ? 'rgba(56,189,248,0.85)' : 'rgba(232,121,249,0.85)';
+        var strokeCol = isCyan ? 'rgba(186,230,253,0.95)' : 'rgba(245,190,255,0.95)';
+        addOcta(ox, oy, oz, 0.28, fillCol, strokeCol, 14);
       }
     }
 
@@ -281,7 +284,7 @@
       for (var i = -N; i <= N; i++) {
         var a = project(i * (span / N), -2.0, -span / 2);
         var b = project(i * (span / N), -2.0, span / 2);
-        ctx.strokeStyle = 'rgba(56,189,248,' + (0.05 + 0.12 * (1 - Math.abs(i) / N)) + ')';
+        ctx.strokeStyle = 'rgba(56,189,248,' + (0.18 + 0.04 * (1 - Math.abs(i) / N)) + ')';
         ctx.beginPath();
         ctx.moveTo(a.x, a.y);
         ctx.lineTo(b.x, b.y);
@@ -297,11 +300,11 @@
 
     function drawPortal() {
       var c = project(0, 1.4 + Math.sin(t * 0.8) * 0.12, 0);
-      var R = 1.1 * (c.s / (H * 0.9)) * 3;
+      var R = 1.3 * (c.s / (H * 0.9)) * 3;
       var g = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, R);
-      g.addColorStop(0, 'rgba(255,255,255,0.95)');
-      g.addColorStop(0.3, 'rgba(120,220,255,0.7)');
-      g.addColorStop(0.7, 'rgba(56,189,248,0.25)');
+      g.addColorStop(0, 'rgba(255,255,255,1)');
+      g.addColorStop(0.25, 'rgba(140,230,255,0.85)');
+      g.addColorStop(0.55, 'rgba(56,189,248,0.45)');
       g.addColorStop(1, 'rgba(56,189,248,0)');
       ctx.globalCompositeOperation = 'lighter';
       ctx.fillStyle = g;
