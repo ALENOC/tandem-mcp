@@ -230,6 +230,15 @@ Measured live on `qwen3.8-27b@iq3_s` (LM Studio, `65536` ctx, `11.1 tok/s`, cach
 | Micro bugfix (1 file, 6 lines) | 1.0 KB → 422 B | **~174 tok (59.7%)** | 4,058 | 19.1 s | `VERIFIED` (3 steps, 0 repairs) |
 | Multi-file bugfix (4 files) | 6.1 KB → 469 B | **~1,562 tok (92.3%)** | 7,414 | 34.2 s | `VERIFIED` (4 steps, 0 repairs) |
 
+**Animation A/B Comparison (Orbital Particle Simulation, identical spec)**
+
+| Variant | Model Used (Caption) | Output | Cloud Tokens | Local Tokens | Time | Verification |
+| --- | --- | --- | ---: | ---: | ---: | --- |
+| **Without Tandem** | Cloud Direct (Antigravity / Gemini) | [`animation_without_tandem/index.html`](benchmarks/animation_without_tandem/index.html) (10.3 KB, 272 lines) | ~2,873 out | 0 | Immediate | `node --check` + DOM PASS |
+| **With Tandem MCP** | Local `qwen3.8-27b@iq3_s` (LM Studio, `delegate`) | [`animation_with_tandem/index.html`](benchmarks/animation_with_tandem/index.html) (11.0 KB, 364 lines) | ~130 receipt | 17,449 | 322.7 s | `VERIFIED` (2 steps, 0 repairs) + `node --check` PASS |
+
+Open [`benchmarks/animation_comparison.html`](benchmarks/animation_comparison.html) in a browser to run both animations side-by-side.
+
 *\*In the `README.md` run, the local model paraphrased its quotes instead of copying them verbatim; Tandem's verifier dropped all 3 and flagged `unsupported` instead of passing unverified claims to the cloud model.*
 
 **Takeaway:** `digest_file` (especially with `grep`) and `digest_many` deliver **98%+** cloud input savings; `delegate` pays off on multi-file or test-repair tasks, while trivial 1-file edits save too few tokens to justify local latency.
@@ -239,8 +248,8 @@ Measured live on `qwen3.8-27b@iq3_s` (LM Studio, `65536` ctx, `11.1 tok/s`, cach
 ## Tests
 
 ```sh
-.venv/bin/python tests/test_offline.py     # 135 checks: limits, evidence, journal, rollback, installer
-.venv/bin/python tests/test_protocol.py    # 144 checks: full loop against scripted server (no model)
+.venv/bin/python tests/test_offline.py     # 156 checks: limits, evidence, journal, rollback, installer
+.venv/bin/python tests/test_protocol.py    # 149 checks: full loop against scripted server (no model)
 .venv/bin/python tests/test_live.py        # live checks against your running local model
 .venv/bin/python tests/test_live.py --text # live checks via JSON-reply protocol
 ```
