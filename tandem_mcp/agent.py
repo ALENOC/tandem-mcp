@@ -20,6 +20,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import threading
 import time
@@ -150,26 +151,38 @@ def syntax_of(path):
     return ''
 
 
-def _safe_workspace_path(root, rel):
-    """Return root / rel if it stays inside root without traversing or landing on a symlink, else None."""
+def _safe_workspace_path(root, rel, allow_terminal_symlink=False):
+    """Return root / rel if it stays inside root without traversing or landing on a symlink, else None.
+
+    When allow_terminal_symlink=True, every parent component must still be a non-symlink inside root,
+    but the final component itself is permitted to be a symlink (e.g., to unlink or hash it)."""
     rel_str = str(rel)
     if not rel_str or os.path.isabs(rel_str) or Path(rel_str).is_absolute():
+        return None
+    parts = [p for p in Path(rel_str).parts if p not in ('', '.')]
+    if not parts:
         return None
     root_path = Path(root)
     try:
         root_res = root_path.resolve()
         cur = root_path
-        for part in Path(rel_str).parts:
-            if part in ('', '.'):
-                continue
+        for idx, part in enumerate(parts):
+            is_last = (idx == len(parts) - 1)
+            if allow_terminal_symlink and is_last and part == '..':
+                return None
             cur = cur / part
-            if cur.is_symlink():
+            if not (allow_terminal_symlink and is_last) and cur.is_symlink():
                 return None
         candidate = root_path / rel_str
-        resolved = candidate.resolve()
+        if allow_terminal_symlink:
+            parent_res = candidate.parent.resolve()
+            if parent_res != root_res and root_res not in parent_res.parents:
+                return None
+        else:
+            resolved = candidate.resolve()
+            if resolved != root_res and root_res not in resolved.parents:
+                return None
     except OSError:
-        return None
-    if resolved != root_res and root_res not in resolved.parents:
         return None
     return candidate
 
@@ -199,6 +212,7 @@ class Task:
         self.checks_network, self.unjailed_checks = bool(checks_network), bool(unjailed_checks)
         self.journal = {}                  # relative path -> original text, None when the file was created
         self.journal_bin = {}              # relative path -> sha256 hex of original bytes, None when created
+        self.journal_modes = {}            # relative path -> original st_mode (S_IMODE), None when created
         self.guard = {}                    # protected path -> text the checks must keep seeing
         self.touched = set()               # files changed by commands, outside the journal
         self.restored = []                 # protected files a command changed and the server put back
@@ -233,11 +247,14 @@ class Task:
                 if not blob.exists():
                     blob.write_bytes(zlib.compress(raw, level=3))
                 self.journal_bin[rel] = digest_hex
+                self.journal_modes[rel] = stat.S_IMODE(p.stat().st_mode)
             else:
                 self.journal[rel] = None
                 self.journal_bin[rel] = None
+                self.journal_modes[rel] = None
             store.write_json(self.folder / 'journal.json', self.journal)
             store.write_json(self.folder / 'journal_bin.json', self.journal_bin)
+            store.write_json(self.folder / 'journal_modes.json', self.journal_modes)
 
     def call(self, name, args):
         missing = [k for k in REQUIRED.get(name, []) if k not in args]
@@ -401,12 +418,24 @@ class Task:
             return None, False
         return None, True
 
+    def _before_mode(self, rel, snapshot_modes=None):
+        """Return pre-task S_IMODE int for a journalled or touched path, or None if unknown."""
+        if rel in self.journal_modes:
+            return self.journal_modes[rel]
+        if rel in self.touched:
+            if snapshot_modes is None:
+                snapshot_modes = store.read_json(self.folder / 'snapshot_modes.json')
+            if isinstance(snapshot_modes, dict):
+                return snapshot_modes.get(rel)
+        return None
+
     def _tracked_rels(self):
         return sorted(set(self.journal) | set(self.journal_bin) | set(self.touched))
 
     def diff(self, only=''):
         out = []
         snapshot = store.read_json(self.folder / 'snapshot.json') if self.touched else None
+        snapshot_modes = store.read_json(self.folder / 'snapshot_modes.json') if self.touched else None
         for rel in self._tracked_rels():
             if only and rel != only:
                 continue
@@ -415,10 +444,16 @@ class Task:
                 continue
             try:
                 after_bytes = p.read_bytes() if p.is_file() else None
+                after_mode = stat.S_IMODE(p.stat().st_mode) if p.is_file() else None
             except OSError:
                 after_bytes = None
+                after_mode = None
             before_bytes, known = self._before_bytes(rel, snapshot)
+            before_mode = self._before_mode(rel, snapshot_modes)
+            mode_changed = (before_mode is not None and after_mode is not None and before_mode != after_mode)
             if known and before_bytes == after_bytes:
+                if mode_changed:
+                    out.append(f'--- a/{rel}\n+++ b/{rel}\nmode {oct(before_mode)} -> {oct(after_mode)}')
                 continue
             if _is_binary(before_bytes) or _is_binary(after_bytes):
                 out.append(f'[binary file changed: {rel}]')
@@ -435,16 +470,23 @@ class Task:
     def changes(self):
         rows = []
         snapshot = store.read_json(self.folder / 'snapshot.json') if self.touched else None
+        snapshot_modes = store.read_json(self.folder / 'snapshot_modes.json') if self.touched else None
         for rel in self._tracked_rels():
             p = _safe_workspace_path(self.ws.root, rel)
             if p is None:
                 continue
             try:
                 after_bytes = p.read_bytes() if p.is_file() else None
+                after_mode = stat.S_IMODE(p.stat().st_mode) if p.is_file() else None
             except OSError:
                 after_bytes = None
+                after_mode = None
             before_bytes, known = self._before_bytes(rel, snapshot)
+            before_mode = self._before_mode(rel, snapshot_modes)
+            mode_changed = (before_mode is not None and after_mode is not None and before_mode != after_mode)
             if known and before_bytes == after_bytes:
+                if mode_changed:
+                    rows.append((rel, 'changed', 0, 0))
                 continue
             if not known or _is_binary(before_bytes) or _is_binary(after_bytes):
                 kind = 'new' if (known and before_bytes is None) else 'changed'
@@ -513,13 +555,16 @@ class Task:
         blobs = self.folder / 'blobs'
         blobs.mkdir(exist_ok=True)
         manifest = {}
+        modes = {}
         total_bytes = 0
         for rel in sandbox.walk(self.ws.root, '*', limit=None):
             p = _safe_workspace_path(self.ws.root, rel)
             if p is None:
                 continue
             try:
-                sz = p.stat().st_size
+                st = p.stat()
+                modes[rel] = stat.S_IMODE(st.st_mode)
+                sz = st.st_size
                 if sz > 2_000_000 or total_bytes + sz > 50_000_000:
                     manifest[rel] = None
                     continue
@@ -534,6 +579,7 @@ class Task:
                 blob.write_bytes(zlib.compress(data, level=3))
             manifest[rel] = digest_hex
         store.write_json(snap_path, manifest)
+        store.write_json(self.folder / 'snapshot_modes.json', modes)
         symlinks = {}
         root_res = self.ws.root.resolve()
         for dirpath, dirnames, filenames in os.walk(self.ws.root, followlinks=False):
@@ -559,6 +605,7 @@ class Task:
         """Restore files modified by a command outside write_globs from the pre-task snapshot."""
         snapshot = store.read_json(self.folder / 'snapshot.json')
         snapshot_symlinks = store.read_json(self.folder / 'snapshot_symlinks.json', {}) or {}
+        snapshot_modes = store.read_json(self.folder / 'snapshot_modes.json', {}) or {}
         blobs = self.folder / 'blobs'
         reverted, unbacked = [], []
         for rel in rels:
@@ -579,7 +626,8 @@ class Task:
                 os.symlink(target, p)
                 reverted.append(rel)
                 continue
-            p = _safe_workspace_path(self.ws.root, rel)
+            is_new_cmd = (snapshot is not None and rel not in snapshot)
+            p = _safe_workspace_path(self.ws.root, rel, allow_terminal_symlink=is_new_cmd)
             if p is None:
                 unbacked.append(rel)
                 continue
@@ -597,28 +645,26 @@ class Task:
                     continue
                 p.parent.mkdir(parents=True, exist_ok=True)
                 p.write_bytes(zlib.decompress(blob.read_bytes()))
+                mode = snapshot_modes.get(rel)
+                if mode is not None:
+                    os.chmod(p, mode)
                 reverted.append(rel)
             else:
-                if p.exists() and not p.is_symlink():
+                if p.is_symlink() or p.is_file():
                     p.unlink()
                 reverted.append(rel)
         return reverted, unbacked
 
     def _record_post_state(self):
-        """Record SHA-256 of modified/touched files at task end so rollback skips later user edits."""
+        """Record state hashes of modified/touched paths at task end so rollback skips later user edits."""
         tracked = set(self.journal) | set(self.journal_bin) | set(self.touched)
         if not tracked:
             return
         post = store.read_json(self.folder / 'post_state.json', {}) or {}
         for rel in tracked:
-            p = _safe_workspace_path(self.ws.root, rel)
-            if p is not None and p.is_file():
-                try:
-                    post[rel] = hashlib.sha256(p.read_bytes()).hexdigest()
-                except OSError:
-                    continue
-            elif p is not None:
-                post[rel] = None
+            p = _safe_workspace_path(self.ws.root, rel, allow_terminal_symlink=True)
+            if p is not None:
+                post[rel] = _path_state_hash(p)
         store.write_json(self.folder / 'post_state.json', post)
 
     def take_guard(self):
@@ -945,6 +991,7 @@ def resume(job, hint, extra_steps=15):
                 checks_network=data.get('checks_network', False), unjailed_checks=data.get('unjailed_checks', False))
     task.journal = store.read_json(folder / 'journal.json', {}) or {}
     task.journal_bin = store.read_json(folder / 'journal_bin.json', {}) or {}
+    task.journal_modes = store.read_json(folder / 'journal_modes.json', {}) or {}
     task.log = store.read_json(folder / 'log.json', []) or []
     task.steps, task.tokens, task.read_chars = data.get('steps', 0), data.get('tokens', 0), data.get('read_chars', 0)
     task.before = data.get('before', [])
@@ -963,18 +1010,47 @@ def resume(job, hint, extra_steps=15):
     return job
 
 
-def _file_hash(path):
-    if path.is_symlink() or not path.is_file():
-        return None
+def _path_state_hash(path):
+    """Return a deterministic fingerprint for a symlink, regular file, or directory tree, or None if missing."""
     try:
-        return hashlib.sha256(path.read_bytes()).hexdigest()
+        if path.is_symlink():
+            return 'symlink:' + os.readlink(path)
+        if path.is_file():
+            return hashlib.sha256(path.read_bytes()).hexdigest()
+        if path.is_dir():
+            entries = []
+            for dirpath, dirnames, filenames in os.walk(path, followlinks=False):
+                dp = Path(dirpath)
+                for d in dirnames:
+                    sub = dp / d
+                    rel = str(sub.relative_to(path))
+                    if sub.is_symlink():
+                        entries.append((rel, 'symlink', os.readlink(sub)))
+                    else:
+                        entries.append((rel, 'dir', ''))
+                for f in filenames:
+                    fp = dp / f
+                    rel = str(fp.relative_to(path))
+                    if fp.is_symlink():
+                        entries.append((rel, 'symlink', os.readlink(fp)))
+                    elif fp.is_file():
+                        entries.append((rel, 'file', hashlib.sha256(fp.read_bytes()).hexdigest()))
+                    else:
+                        entries.append((rel, 'other', ''))
+            entries.sort()
+            payload = json.dumps(entries, separators=(',', ':')).encode('utf-8')
+            return 'dir:' + hashlib.sha256(payload).hexdigest()
     except OSError:
         return None
+    return None
 
 
 def rollback(job):
     """Put back every file the task changed (journal and command snapshot), skipping files
     modified by the user after the task ended."""
+    running_entry = RUNNING.get(job)
+    if running_entry and running_entry[0].is_alive():
+        return 'the job is still running'
     folder = store.JOBS / job
     data = store.read_job(job)
     if data and data.get('kind') == 'batch':
@@ -986,12 +1062,14 @@ def rollback(job):
         return 'no journal for this job'
     journal = store.read_json(folder / 'journal.json', {}) or {}
     journal_bin = store.read_json(folder / 'journal_bin.json')
+    journal_modes = store.read_json(folder / 'journal_modes.json', {}) or {}
     snapshot = store.read_json(folder / 'snapshot.json')
     snapshot_symlinks = store.read_json(folder / 'snapshot_symlinks.json', {}) or {}
+    snapshot_modes = store.read_json(folder / 'snapshot_modes.json', {}) or {}
     post_state_path = folder / 'post_state.json'
     post_state_exists = post_state_path.exists()
     post_state = store.read_json(post_state_path, {}) or {}
-    cautious_crash = (data.get('state') == 'error' and not post_state_exists)
+    cautious_crash = (not post_state_exists) and (data.get('state') in ('error', 'running'))
     touched = list(data.get('touched', []))
     if not journal and not journal_bin and not touched:
         if not (folder / 'journal.json').exists() and not (folder / 'journal_bin.json').exists() and snapshot is None:
@@ -1003,7 +1081,7 @@ def rollback(job):
     def user_modified(rel, p):
         if rel not in post_state:
             return False
-        return _file_hash(p) != post_state[rel]
+        return _path_state_hash(p) != post_state[rel]
 
     entries = journal_bin if journal_bin is not None else journal
     for rel, entry in entries.items():
@@ -1014,13 +1092,13 @@ def rollback(job):
         if user_modified(rel, p):
             skipped.append(rel)
             continue
-        if cautious_crash and p.exists() and not p.is_symlink():
+        if cautious_crash and _path_state_hash(p) is not None:
             if entry is None:
                 no_post_state.append(rel)
                 continue
             expected_hash = (entry if journal_bin is not None
                              else hashlib.sha256(entry.encode('utf-8', errors='replace')).hexdigest())
-            if _file_hash(p) != expected_hash:
+            if _path_state_hash(p) != expected_hash:
                 no_post_state.append(rel)
                 continue
         if journal_bin is not None:
@@ -1038,6 +1116,9 @@ def rollback(job):
                 else:
                     unbacked.append(rel)
                     continue
+                mode = journal_modes.get(rel)
+                if mode is not None:
+                    os.chmod(p, mode)
         else:
             if entry is None:
                 if p.exists() and not p.is_symlink():
@@ -1045,6 +1126,9 @@ def rollback(job):
             else:
                 p.parent.mkdir(parents=True, exist_ok=True)
                 p.write_text(entry)
+                mode = journal_modes.get(rel)
+                if mode is not None:
+                    os.chmod(p, mode)
         done.append(rel)
 
     for rel in touched:
@@ -1062,6 +1146,10 @@ def rollback(job):
             if user_modified(rel, p):
                 skipped.append(rel)
                 continue
+            if cautious_crash and _path_state_hash(p) is not None:
+                if _path_state_hash(p) != 'symlink:' + target:
+                    no_post_state.append(rel)
+                    continue
             if p.is_symlink() or p.is_file():
                 p.unlink()
             elif p.is_dir():
@@ -1070,7 +1158,8 @@ def rollback(job):
             os.symlink(target, p)
             done.append(rel)
             continue
-        p = _safe_workspace_path(root, rel)
+        is_new_cmd = (snapshot is not None and rel not in snapshot)
+        p = _safe_workspace_path(root, rel, allow_terminal_symlink=is_new_cmd)
         if p is None:
             skipped.append(rel)
             continue
@@ -1080,9 +1169,9 @@ def rollback(job):
         if snapshot is None:
             left.append(rel)
             continue
-        if cautious_crash and p.exists() and not p.is_symlink():
+        if cautious_crash and _path_state_hash(p) is not None:
             expected_hash = snapshot.get(rel)
-            if expected_hash is None or _file_hash(p) != expected_hash:
+            if expected_hash is None or _path_state_hash(p) != expected_hash:
                 no_post_state.append(rel)
                 continue
         if rel in snapshot:
@@ -1096,9 +1185,12 @@ def rollback(job):
                 continue
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_bytes(zlib.decompress(blob.read_bytes()))
+            mode = snapshot_modes.get(rel)
+            if mode is not None:
+                os.chmod(p, mode)
             done.append(rel)
         else:
-            if p.exists() and not p.is_symlink():
+            if p.is_symlink() or p.is_file():
                 p.unlink()
             done.append(rel)
 

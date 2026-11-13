@@ -10,6 +10,7 @@ import os
 import re
 import shlex
 import shutil
+import stat
 import subprocess
 from pathlib import Path
 
@@ -435,7 +436,7 @@ def stamp(root, limit=None):
             try:
                 if entry.is_symlink():
                     if entry.name not in SKIP_DIRS:
-                        out[f'{prefix}{entry.name}'] = (-1, 'symlink:' + os.readlink(entry.path))
+                        out[f'{prefix}{entry.name}'] = (-1, 'symlink:' + os.readlink(entry.path), 0)
                         if limit is not None and len(out) >= limit:
                             return out
                     continue
@@ -446,7 +447,7 @@ def stamp(root, limit=None):
                     st = entry.stat(follow_symlinks=False)
                     with open(entry.path, 'rb') as f:
                         digest_hex = hashlib.file_digest(f, 'sha256').hexdigest()
-                    out[f'{prefix}{entry.name}'] = (st.st_size, digest_hex)
+                    out[f'{prefix}{entry.name}'] = (st.st_size, digest_hex, stat.S_IMODE(st.st_mode))
                     if limit is not None and len(out) >= limit:
                         return out
             except OSError:

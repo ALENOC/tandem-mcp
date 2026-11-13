@@ -468,4 +468,78 @@ rb_sym = agent.rollback(int_sym_job)
 ok((int_sym_root / 'link.txt').is_symlink() and os.readlink(int_sym_root / 'link.txt') == 'real.txt' and 'link.txt' in rb_sym,
    'internal symlink replaced by regular file via run() is restored as a symlink by rollback()')
 
+# 12. symlink replaced by a directory during run(), then user adds link/importante.txt -> rollback() skips link and preserves it
+dir_sym_root = Path(tempfile.mkdtemp(dir=Path.home() if os.environ.get('TANDEM_TEST_IN_HOME') else None))
+(dir_sym_root / 'target_dir').mkdir()
+(dir_sym_root / 'target_dir' / 'base.txt').write_text('base\n')
+os.symlink('target_dir', dir_sym_root / 'link')
+dir_sym_ws = sandbox.Workspace(dir_sym_root, ['*'], [r'^python3\b'])
+dir_sym_job, dir_sym_folder = store.new_job('delegate')
+dir_sym_task = agent.Task(dir_sym_job, dir_sym_folder, 'goal', dir_sym_ws, [], 5, 0, '', '')
+dir_sym_task.take_snapshot()
+dir_sym_task.call('run', {'command': 'python3 -c "import os; os.unlink(\'link\'); os.mkdir(\'link\'); open(\'link/a.txt\', \'w\').write(\'from_task\\n\')"'})
+dir_sym_task._record_post_state()
+dir_sym_task._save('unverified', 'done', [])
+# User adds link/importante.txt after task ended
+(dir_sym_root / 'link' / 'importante.txt').write_text('keep me!\n')
+rb_dir_sym = agent.rollback(dir_sym_job)
+ok((dir_sym_root / 'link').is_dir() and not (dir_sym_root / 'link').is_symlink()
+   and (dir_sym_root / 'link' / 'importante.txt').read_text() == 'keep me!\n'
+   and 'skipped (modified after job ended): link' in rb_dir_sym,
+   'rollback() skips replacement directory modified after task ends and preserves link/importante.txt')
+
+# 13. new symlink created by task via run() -> rollback() unlinks the new symlink
+new_sym_root = Path(tempfile.mkdtemp(dir=Path.home() if os.environ.get('TANDEM_TEST_IN_HOME') else None))
+(new_sym_root / 'real.txt').write_text('hello\n')
+new_sym_ws = sandbox.Workspace(new_sym_root, ['*'], [r'^ln\b'])
+new_sym_job, new_sym_folder = store.new_job('delegate')
+new_sym_task = agent.Task(new_sym_job, new_sym_folder, 'goal', new_sym_ws, [], 5, 0, '', '')
+new_sym_task.call('run', {'command': 'ln -s real.txt fresh_link.txt'})
+new_sym_task._record_post_state()
+new_sym_task._save('unverified', 'done', [])
+ok((new_sym_root / 'fresh_link.txt').is_symlink(), 'new symlink created by run()')
+rb_new_sym = agent.rollback(new_sym_job)
+ok(not (new_sym_root / 'fresh_link.txt').exists() and not (new_sym_root / 'fresh_link.txt').is_symlink()
+   and 'fresh_link.txt' in rb_new_sym and (new_sym_root / 'real.txt').read_text() == 'hello\n',
+   'rollback() unlinks newly created symlink without touching target')
+
+# 14. orphaned running job (simulating SIGKILL with missing post_state.json) -> rollback() cautiously skips modified files
+sigkill_root = Path(tempfile.mkdtemp(dir=Path.home() if os.environ.get('TANDEM_TEST_IN_HOME') else None))
+(sigkill_root / 'app.py').write_text('v1\n')
+sigkill_ws = sandbox.Workspace(sigkill_root, ['*'], [r'^python3\b'])
+sigkill_job, sigkill_folder = store.new_job('delegate')
+sigkill_task = agent.Task(sigkill_job, sigkill_folder, 'goal', sigkill_ws, [], 5, 0, '', '')
+sigkill_task.call('write_file', {'path': 'app.py', 'content': 'v2_from_task\n'})
+sigkill_task.call('write_file', {'path': 'new_after_kill.py', 'content': 'user_created\n'})
+sigkill_task._save('running', '', [])
+# Simulate user edit after SIGKILL (no post_state.json exists, state is still 'running')
+(sigkill_root / 'app.py').write_text('v3_user_edit\n')
+rb_sigkill = agent.rollback(sigkill_job)
+ok('skipped (no post-crash state recorded):' in rb_sigkill
+   and 'app.py' in rb_sigkill and 'new_after_kill.py' in rb_sigkill
+   and (sigkill_root / 'app.py').read_text() == 'v3_user_edit\n'
+   and (sigkill_root / 'new_after_kill.py').read_text() == 'user_created\n',
+   'rollback() cautiously skips modified/new files on orphaned running job without post_state.json')
+
+# 15. permission change (chmod +x / 0o755) via run() -> detected in stamp()/changes()/diff() and restored to 0o644 by rollback()
+chmod_root = Path(tempfile.mkdtemp(dir=Path.home() if os.environ.get('TANDEM_TEST_IN_HOME') else None))
+script_p = chmod_root / 'run.sh'
+script_p.write_text('#!/bin/sh\necho hi\n')
+os.chmod(script_p, 0o644)
+stamp_before = sandbox.stamp(chmod_root)
+chmod_ws = sandbox.Workspace(chmod_root, ['*'], [r'^chmod\b'])
+chmod_job, chmod_folder = store.new_job('delegate')
+chmod_task = agent.Task(chmod_job, chmod_folder, 'goal', chmod_ws, [], 5, 0, '', '')
+chmod_task.call('run', {'command': 'chmod 755 run.sh'})
+stamp_after = sandbox.stamp(chmod_root)
+ok(stamp_before['run.sh'] != stamp_after['run.sh'] and stamp_after['run.sh'][2] == 0o755,
+   'stamp() detects st_mode change')
+ok(('run.sh', 'changed', 0, 0) in chmod_task.changes() and 'mode 0o644 -> 0o755' in chmod_task.diff(),
+   'changes() and diff() report mode-only change')
+chmod_task._record_post_state()
+chmod_task._save('unverified', 'done', [])
+rb_chmod = agent.rollback(chmod_job)
+ok('run.sh' in rb_chmod and (script_p.stat().st_mode & 0o777) == 0o644,
+   'rollback() restores original file permissions (0o644)')
+
 print(f'{checks} checks, 0 failures')

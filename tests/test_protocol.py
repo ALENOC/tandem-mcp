@@ -199,6 +199,22 @@ rb_big = server.job_rollback(job)
 ok((root / 'big.bin').exists() and 'not undone (too large/skipped from snapshot): big.bin' in rb_big,
    'rollback preserves pre-existing >2MB file without snapshot backup')
 
+# chmod +x and new symlink via run() -> job_diff() shows mode change, job_rollback() restores mode & unlinks symlink
+root = project()
+os.chmod(root / 'calc.py', 0o644)
+job, data = run('Chmod and link.', root, [], [
+    ('run', {'command': 'chmod 755 calc.py; ln -s calc.py calc_link.py'}),
+    ('finish', {'summary': 'Done.'}),
+], fake, allow_run=['^chmod ', '^ln '])
+diff_mode = server.job_diff(job)
+ok('mode 0o644 -> 0o755' in diff_mode and (root / 'calc_link.py').is_symlink(),
+   'job_diff reports mode-only change and run created symlink')
+rb_mode = server.job_rollback(job)
+ok('calc.py' in rb_mode and 'calc_link.py' in rb_mode
+   and ((root / 'calc.py').stat().st_mode & 0o777) == 0o644
+   and not (root / 'calc_link.py').exists() and not (root / 'calc_link.py').is_symlink(),
+   'job_rollback restores st_mode and unlinks newly created symlink')
+
 # partially_backed status in receipt when >2 MB file and backed file are both in touched
 root = project()
 (root / 'big.bin').write_bytes(b'A' * 2_100_000)
