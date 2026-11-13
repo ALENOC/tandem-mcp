@@ -424,4 +424,48 @@ ok('removed' in res_un and 'tandem-mcp' not in cfg_data['mcpServers'] and 'other
    'uninstall_antigravity removes tandem-mcp only')
 ok(mcp_install.parse_env_pairs(['A=1', 'B=x=y']) == {'A': '1', 'B': 'x=y'}, 'parse_env_pairs handles = in values')
 
+# 9. _guard_files() catches immutable file beyond 2,000 files and restore_guard() reverts it
+imm_root = Path(tempfile.mkdtemp(dir=Path.home() if os.environ.get('TANDEM_TEST_IN_HOME') else None))
+for i in range(2200):
+    (imm_root / f'f_{i:04d}.txt').write_text('x\n')
+(imm_root / 'z_immutable.txt').write_text('original\n')
+imm_ws = sandbox.Workspace(imm_root, ['*'], [r'^python3\b'], immutable=['z_immutable.txt'])
+imm_job, imm_folder = store.new_job('delegate')
+imm_task = agent.Task(imm_job, imm_folder, 'goal', imm_ws, [], 5, 0, '', '')
+imm_task.take_guard()
+imm_task.take_snapshot()
+ok('z_immutable.txt' in imm_task.guard, '_guard_files() catches immutable file beyond 2,000 files')
+imm_task.call('run', {'command': 'python3 -c "open(\'z_immutable.txt\', \'w\').write(\'tampered\\n\')"'})
+imm_task.restore_guard()
+ok((imm_root / 'z_immutable.txt').read_text() == 'original\n',
+   'immutable file beyond 2,000 files modified by run() is reverted')
+
+# 10. nested SKIP_DIRS (e.g. frontend/node_modules) are --ro-binded in jail_command() and read-only under jail=True
+nested_root = Path(tempfile.mkdtemp(dir=Path.home() if os.environ.get('TANDEM_TEST_IN_HOME') else None))
+(nested_root / 'frontend' / 'node_modules').mkdir(parents=True)
+(nested_root / 'frontend' / 'node_modules' / 'pkg.js').write_text('module.exports = 1;\n')
+njcmd = sandbox.jail_command('true', nested_root)
+njcmd_pairs = list(zip(njcmd, njcmd[1:]))
+ok(('--ro-bind', str((nested_root / 'frontend' / 'node_modules').resolve())) in njcmd_pairs,
+   'jail_command() bind-mounts nested frontend/node_modules read-only')
+if sandbox.jail_available():
+    njcode, _ = sandbox.run('touch frontend/node_modules/x', nested_root, jail=True)
+    ok(njcode != 0 and not (nested_root / 'frontend' / 'node_modules' / 'x').exists(),
+       'writing to nested frontend/node_modules inside bwrap jail fails')
+
+# 11. internal symlink deleted and replaced by a regular file via run() is restored as a symlink by rollback()
+int_sym_root = Path(tempfile.mkdtemp(dir=Path.home() if os.environ.get('TANDEM_TEST_IN_HOME') else None))
+(int_sym_root / 'real.txt').write_text('target\n')
+os.symlink('real.txt', int_sym_root / 'link.txt')
+int_sym_ws = sandbox.Workspace(int_sym_root, ['*'], [r'^python3\b'])
+int_sym_job, int_sym_folder = store.new_job('delegate')
+int_sym_task = agent.Task(int_sym_job, int_sym_folder, 'goal', int_sym_ws, [], 5, 0, '', '')
+int_sym_task.take_snapshot()
+int_sym_task.call('run', {'command': 'python3 -c "import os; os.unlink(\'link.txt\'); open(\'link.txt\', \'w\').write(\'replaced\\n\')"'})
+int_sym_task._record_post_state()
+int_sym_task._save('unverified', 'done', [])
+rb_sym = agent.rollback(int_sym_job)
+ok((int_sym_root / 'link.txt').is_symlink() and os.readlink(int_sym_root / 'link.txt') == 'real.txt' and 'link.txt' in rb_sym,
+   'internal symlink replaced by regular file via run() is restored as a symlink by rollback()')
+
 print(f'{checks} checks, 0 failures')

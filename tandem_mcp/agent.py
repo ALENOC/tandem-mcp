@@ -174,6 +174,17 @@ def _safe_workspace_path(root, rel):
     return candidate
 
 
+def _safe_symlink_target_path(root, rel):
+    """Return root / rel if rel is a safe relative path whose parent dirs stay inside root without symlinks."""
+    rel_str = str(rel)
+    if not rel_str or os.path.isabs(rel_str) or Path(rel_str).is_absolute() or '..' in Path(rel_str).parts:
+        return None
+    parent = Path(rel_str).parent
+    if str(parent) not in ('', '.') and _safe_workspace_path(root, str(parent)) is None:
+        return None
+    return Path(root) / rel_str
+
+
 def _is_binary(data):
     """True when data contains a NUL byte in its first 4096 bytes."""
     return data is not None and b'\x00' in data[:4096]
@@ -265,28 +276,32 @@ class Task:
                             return '\n'.join(out) + '\n[more matches cut]'
             return '\n'.join(out) or '(no match)'
         if name == 'replace_in_file':
-            p = self.ws.writable(args['path'])
-            if not p.is_file():
-                return f'ERROR: {args["path"]} does not exist. Use write_file to create it.'
-            text = p.read_text(errors='replace')
-            old, new = str(args['old']), str(args['new'])
-            count = text.count(old) if old else 0
-            if count == 0 and new and new in text:
-                return ('ERROR: old text not found, and the file already holds the new text: this change is already made. '
-                        'Do not repeat it. Go on with the rest of the task, or call finish.')
-            if count != 1:
-                return f'ERROR: old text found {count} times, it must be found exactly once. Read the file and copy it exactly.'
-            self._remember(p)
-            p.write_text(text.replace(old, new))
-            return 'replaced'
+            run_ctx = self.ws.run_lock if self.ws.run_lock is not None else contextlib.nullcontext()
+            with run_ctx:
+                p = self.ws.writable(args['path'])
+                if not p.is_file():
+                    return f'ERROR: {args["path"]} does not exist. Use write_file to create it.'
+                text = p.read_text(errors='replace')
+                old, new = str(args['old']), str(args['new'])
+                count = text.count(old) if old else 0
+                if count == 0 and new and new in text:
+                    return ('ERROR: old text not found, and the file already holds the new text: this change is already made. '
+                            'Do not repeat it. Go on with the rest of the task, or call finish.')
+                if count != 1:
+                    return f'ERROR: old text found {count} times, it must be found exactly once. Read the file and copy it exactly.'
+                self._remember(p)
+                p.write_text(text.replace(old, new))
+                return 'replaced'
         if name == 'write_file':
-            p = self.ws.writable(args['path'])
-            if p.is_dir():
-                return f'ERROR: {args["path"]} is a folder'
-            self._remember(p)
-            p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_text(str(args['content']))
-            return f'written, {len(str(args["content"]).splitlines())} lines'
+            run_ctx = self.ws.run_lock if self.ws.run_lock is not None else contextlib.nullcontext()
+            with run_ctx:
+                p = self.ws.writable(args['path'])
+                if p.is_dir():
+                    return f'ERROR: {args["path"]} is a folder'
+                self._remember(p)
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text(str(args['content']))
+                return f'written, {len(str(args["content"]).splitlines())} lines'
         if name == 'run':
             command = str(args['command'])
             self.ws.check_command(command)
@@ -485,7 +500,7 @@ class Task:
             elif p.is_dir():
                 files.update(f'{rel}/{sub}' for sub in sandbox.walk(p, '*', limit=None))
         if self.ws.immutable:
-            for rel in sandbox.walk(self.ws.root, '*', 2000):
+            for rel in sandbox.walk(self.ws.root, '*', limit=None):
                 if self.ws._is_immutable(rel):
                     files.add(rel)
         return sorted(rel for rel in files if self.ws._is_immutable(rel) or not self.ws._in_globs(rel))
@@ -519,13 +534,51 @@ class Task:
                 blob.write_bytes(zlib.compress(data, level=3))
             manifest[rel] = digest_hex
         store.write_json(snap_path, manifest)
+        symlinks = {}
+        root_res = self.ws.root.resolve()
+        for dirpath, dirnames, filenames in os.walk(self.ws.root, followlinks=False):
+            keep = []
+            for name, is_dir in [(d, True) for d in dirnames] + [(f, False) for f in filenames]:
+                if name in sandbox.SKIP_DIRS:
+                    continue
+                p = Path(dirpath) / name
+                if p.is_symlink():
+                    rel = str(p.relative_to(self.ws.root))
+                    try:
+                        resolved = p.resolve()
+                        inside = (resolved == root_res or root_res in resolved.parents)
+                    except (OSError, RuntimeError):
+                        inside = False
+                    symlinks[rel] = os.readlink(p) if inside else None
+                elif is_dir:
+                    keep.append(name)
+            dirnames[:] = keep
+        store.write_json(self.folder / 'snapshot_symlinks.json', symlinks)
 
     def _revert_from_snapshot(self, rels):
         """Restore files modified by a command outside write_globs from the pre-task snapshot."""
         snapshot = store.read_json(self.folder / 'snapshot.json')
+        snapshot_symlinks = store.read_json(self.folder / 'snapshot_symlinks.json', {}) or {}
         blobs = self.folder / 'blobs'
         reverted, unbacked = [], []
         for rel in rels:
+            if rel in snapshot_symlinks:
+                target = snapshot_symlinks[rel]
+                if target is None:
+                    unbacked.append(rel)
+                    continue
+                p = _safe_symlink_target_path(self.ws.root, rel)
+                if p is None:
+                    unbacked.append(rel)
+                    continue
+                if p.is_symlink() or p.is_file():
+                    p.unlink()
+                elif p.is_dir():
+                    shutil.rmtree(p)
+                p.parent.mkdir(parents=True, exist_ok=True)
+                os.symlink(target, p)
+                reverted.append(rel)
+                continue
             p = _safe_workspace_path(self.ws.root, rel)
             if p is None:
                 unbacked.append(rel)
@@ -934,6 +987,7 @@ def rollback(job):
     journal = store.read_json(folder / 'journal.json', {}) or {}
     journal_bin = store.read_json(folder / 'journal_bin.json')
     snapshot = store.read_json(folder / 'snapshot.json')
+    snapshot_symlinks = store.read_json(folder / 'snapshot_symlinks.json', {}) or {}
     post_state_path = folder / 'post_state.json'
     post_state_exists = post_state_path.exists()
     post_state = store.read_json(post_state_path, {}) or {}
@@ -944,7 +998,7 @@ def rollback(job):
             return 'no journal for this job'
     root = Path(data['workspace'])
     blobs = folder / 'blobs'
-    done, skipped, no_post_state, unbacked, left = [], [], [], [], []
+    done, skipped, no_post_state, unbacked, left, ext_symlinks = [], [], [], [], [], []
 
     def user_modified(rel, p):
         if rel not in post_state:
@@ -996,6 +1050,26 @@ def rollback(job):
     for rel in touched:
         if rel in entries:
             continue
+        if rel in snapshot_symlinks:
+            target = snapshot_symlinks[rel]
+            if target is None:
+                ext_symlinks.append(rel)
+                continue
+            p = _safe_symlink_target_path(root, rel)
+            if p is None:
+                skipped.append(rel)
+                continue
+            if user_modified(rel, p):
+                skipped.append(rel)
+                continue
+            if p.is_symlink() or p.is_file():
+                p.unlink()
+            elif p.is_dir():
+                shutil.rmtree(p)
+            p.parent.mkdir(parents=True, exist_ok=True)
+            os.symlink(target, p)
+            done.append(rel)
+            continue
         p = _safe_workspace_path(root, rel)
         if p is None:
             skipped.append(rel)
@@ -1039,6 +1113,8 @@ def rollback(job):
         parts.append('not undone (too large/skipped from snapshot): ' + ', '.join(unbacked))
     if left:
         parts.append('not undone (no snapshot for command changes): ' + ', '.join(left))
+    if ext_symlinks:
+        parts.append('not undone (pre-existing external symlink): ' + ', '.join(ext_symlinks))
     return '\n'.join(parts)
 
 

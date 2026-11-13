@@ -310,14 +310,20 @@ def jail_command(command, root, allow_net=False):
         elif secret.is_file():
             args += ['--ro-bind', '/dev/null', str(secret)]
     args += ['--bind', str(root), str(root)]
-    if (root / '.git').is_dir():
-        args += ['--ro-bind', str(root / '.git'), str(root / '.git')]
-    for d in sorted(SKIP_DIRS):
-        if d == '.git':
-            continue
-        p = root / d
-        if p.is_dir() and not p.is_symlink():
-            args += ['--ro-bind', str(p), str(p)]
+    skip_mounts = []
+    for dirpath, dirnames, _ in os.walk(root, followlinks=False):
+        keep = []
+        for d in sorted(dirnames):
+            dp = Path(dirpath) / d
+            if dp.is_symlink():
+                continue
+            if d in SKIP_DIRS:
+                skip_mounts.append(str(dp))
+            else:
+                keep.append(d)
+        dirnames[:] = keep
+    for m in skip_mounts:
+        args += ['--ro-bind', m, m]
     if not allow_net and os.environ.get('TANDEM_SANDBOX_NET', '') != '1':
         args += ['--unshare-net']
     return args + ['--unshare-pid', '--die-with-parent', '--new-session', '--chdir', str(root), '/bin/sh', '-c', command]
@@ -428,6 +434,10 @@ def stamp(root, limit=None):
         for entry in entries:
             try:
                 if entry.is_symlink():
+                    if entry.name not in SKIP_DIRS:
+                        out[f'{prefix}{entry.name}'] = (-1, 'symlink:' + os.readlink(entry.path))
+                        if limit is not None and len(out) >= limit:
+                            return out
                     continue
                 if entry.is_dir(follow_symlinks=False):
                     if entry.name not in SKIP_DIRS:
