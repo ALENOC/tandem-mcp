@@ -19,7 +19,7 @@ Works with any OpenAI-compatible local server: **LM Studio**, **Ollama**, **llam
 >
 > **Why you can trust a small model here:** Tandem never takes the model's word for it. Before returning anything to the cloud orchestrator, the server runs deterministic Python checks (no LLM involved) to verify that every quote actually exists in the source, flag any invented numbers, check syntax on every modified file, and run your acceptance tests.
 
-**Jump to:** [Quick Start](#quick-start) · [Tools](#tools) · [Benchmarks](#benchmarks) · [Security](#security) · [Tests](#tests)
+**Jump to:** [Quick Start](#quick-start) · [How to use it](#how-to-use-it) · [Tools](#tools) · [Benchmarks](#benchmarks) · [Security](#security) · [Tests](#tests)
 
 ---
 
@@ -83,6 +83,34 @@ Manual stdio configuration (any MCP client):
 - **Ollama**: raise `OLLAMA_CONTEXT_LENGTH` for `delegate` tasks; reading tools (`digest_*`) work at any context length by chunking.
 - **Small contexts (< 8000 tokens)**: fine for `digest_*`, `extract_from_file`, and `ask`; tight for `delegate`.
 - **Reasoning models**: reasoning blocks are stripped; disabling verbose thinking on the server speeds up mechanical tasks.
+
+</details>
+
+---
+
+## How to use it
+
+Once `tandem-mcp` is registered, **restart your client** (Claude Code, Codex, or Antigravity) so it loads the MCP server.
+
+1. **Check the connection:** ask your agent `"Run executor_status"` — it should show your local server, loaded model, context length, and active sandbox.
+2. **Talk normally (or prompt explicitly):** you don't need special syntax; the cloud agent sees Tandem's tool descriptions and calls them automatically. Typical prompts:
+   - **Read large files / logs without burning cloud tokens:**
+     `"Use tandem-mcp to inspect server.log and list every error with line numbers."` (`digest_file`)
+   - **Survey a folder:**
+     `"Ask tandem-mcp what each Python module in src/ is responsible for."` (`digest_many`)
+   - **Delegate a bounded edit with tests:**
+     `"Delegate fixing the failing test in tests/test_auth.py to tandem-mcp, then show me job_diff."` (`delegate` -> `job_diff` -> `job_feedback` or `job_rollback`)
+   - **Check real savings:**
+     `"Show me ledger_report for the last 7 days."` (`ledger_report`)
+
+<details>
+<summary>Optional: add a rule to CLAUDE.md / AGENTS.md / GEMINI.md so your agent prefers Tandem automatically</summary>
+
+```markdown
+When `tandem-mcp` is available:
+- Use `digest_file` (with `grep` when searching) or `digest_many` to inspect large files, logs, and unfamiliar modules instead of reading them directly into cloud context.
+- Use `delegate` for bounded, test-verified mechanical edits, then review `job_diff` and close with `job_feedback` or `job_rollback`.
+```
 
 </details>
 
