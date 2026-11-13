@@ -186,17 +186,26 @@ Read this before pointing Tandem at a sensitive repository:
 
 Reproducible live suite: [benchmarks/run_benchmark.py](benchmarks/run_benchmark.py) · Full report: [benchmarks/RESULTS.md](benchmarks/RESULTS.md)
 
-Measured on `qwen3.8-27b@iq3_s` (LM Studio, `65536` ctx, ~11.1 tok/s, cache disabled, `3.6 chars/token`):
+Measured live on `qwen3.8-27b@iq3_s` (LM Studio, `65536` ctx, `11.1 tok/s`, cache disabled, `1 cloud tok ≈ 3.6 chars`):
 
-| Scenario | Tool | Source -> Cloud | Est. Cloud Saved | Time | Outcome |
-| --- | --- | --- | ---: | ---: | --- |
-| Doc QA (`README.md`) | `digest_file` | 20.8 KB -> 403 B | **~5,672 tok (98.1%)** | 24.0 s | 0/3 quotes (`unsupported`)* |
-| Grep QA (`agent.py`) | `digest_file` (`grep`) | 52.9 KB -> 682 B | **~14,508 tok (98.7%)** | 16.1 s | 2/2 quotes (`contested`) |
-| 8-file survey (`tandem_mcp/*.py`) | `digest_many` | 149.7 KB -> 1.6 KB | **~41,122 tok (98.9%)** | 473.8 s | 13/13 quotes |
-| Micro bugfix (6-line file) | `delegate` | 1.0 KB -> 422 B | **~174 tok (59.7%)** | 19.1 s | `VERIFIED` (3 steps) |
-| Multi-file bugfix (4 files) | `delegate` | 6.1 KB -> 469 B | **~1,562 tok (92.3%)** | 34.2 s | `VERIFIED` (4 steps) |
+**Reading & Evidence (`digest_file`, `digest_many`)**
 
-*\*Non-verbatim quotes from the local model were caught and dropped by the verifier rather than silently accepted.*
+| Task | Source → Cloud | Cloud Saved (est.) | Local Tokens | Time | Verification |
+| --- | --- | ---: | ---: | ---: | --- |
+| Full doc QA (`README.md`) | 20.8 KB → 403 B | **~5,672 tok (98.1%)** | 6,732 | 24.0 s | 0/3 quotes (`unsupported`)* |
+| Grep QA (`agent.py`, 7/1,065 lines) | 52.9 KB → 682 B | **~14,508 tok (98.7%)** | 532 | 16.1 s | 2/2 quotes (`contested`) |
+| 8-file survey (`tandem_mcp/*.py`) | 149.7 KB → 1.6 KB | **~41,122 tok (98.9%)** | 58,535 | 473.8 s | 13/13 quotes (`checked`) |
+
+**Delegated Coding (`delegate`)**
+
+| Task | Baseline → Receipt | Cloud Saved (est.) | Local Tokens | Time | Result |
+| --- | --- | ---: | ---: | ---: | --- |
+| Micro bugfix (1 file, 6 lines) | 1.0 KB → 422 B | **~174 tok (59.7%)** | 4,058 | 19.1 s | `VERIFIED` (3 steps, 0 repairs) |
+| Multi-file bugfix (4 files) | 6.1 KB → 469 B | **~1,562 tok (92.3%)** | 7,414 | 34.2 s | `VERIFIED` (4 steps, 0 repairs) |
+
+*\*In the `README.md` run, the local model paraphrased its quotes instead of copying them verbatim; Tandem's verifier dropped all 3 and flagged `unsupported` instead of passing unverified claims to the cloud model.*
+
+**Takeaway:** `digest_file` (especially with `grep`) and `digest_many` deliver **98%+** cloud input savings; `delegate` pays off on multi-file or test-repair tasks, while trivial 1-file edits save too few tokens to justify local latency.
 
 ---
 
