@@ -36,7 +36,35 @@ Baseline assumes the cloud orchestrator reads the workspace files plus a ~600 B 
 
 ---
 
-## 3. Honest Takeaways: When Tandem Pays Off (and When It Doesn't)
+## 3. Additional Live MCP Tool Benchmarks (`digest_command`, `extract_from_file`)
+
+Measured live via MCP calls against `qwen3.8-27b@iq3_s` on LM Studio:
+
+| Scenario | Tool | Input size | Returned to cloud | Est. cloud tokens saved | Wall time | Verification |
+| --- | --- | ---: | ---: | ---: | ---: | --- |
+| Recent git history (`git log -n 30 --stat`) | `digest_command` | 13,725 B (315 lines) | 1,648 B | **3,355 (88.0%)** | ~113 s | 12/12 quotes verified |
+| Project manifest (`pyproject.toml`) | `extract_from_file` | 686 B (23 lines) | 115 B | **159 (83.2%)** | ~12 s | JSON Schema validated |
+
+---
+
+## 4. Animation Generation A/B Comparison (Without vs. With Tandem MCP)
+
+Identical prompt: generate a self-contained single-file HTML5 `<canvas>` orbital particle simulation (`index.html`) with `requestAnimationFrame`, `devicePixelRatio` scaling, radial-gradient star with corona pulse, 5+ planets with moons and fading trails, 150+ twinkling stars, glassmorphism HUD (Play/Pause, Trails toggle, Reset, Speed `0.2x`–`3.0x`, live FPS/time/bursts), and click-to-spawn radial particle bursts.
+
+| Metric | Without Tandem (Cloud Direct) | With Tandem MCP (`delegate` → `qwen3.8-27b@iq3_s`) |
+| --- | --- | --- |
+| Output file | [`animation_without_tandem/index.html`](animation_without_tandem/index.html) | [`animation_with_tandem/index.html`](animation_with_tandem/index.html) |
+| Size / Lines | 10,343 B / 272 lines | 10,970 B / 364 lines |
+| Cloud tokens to write code | ~2,873 output tokens | ~130 receipt tokens (prompt + verify spec only) |
+| Local executor tokens | 0 | 17,449 tokens (`2` steps, `0` repairs) |
+| Wall time | Immediate (cloud turn) | 322.7 s |
+| JS syntax (`node --check`) | PASS | PASS |
+| DOM / feature check | PASS (5 planets, 3 moons, 180 stars) | PASS (6 planets, 3 moons, 180 stars) |
+| Side-by-side viewer | [`animation_comparison.html`](animation_comparison.html) | [`animation_comparison.html`](animation_comparison.html) |
+
+---
+
+## 5. Honest Takeaways: When Tandem Pays Off (and When It Doesn't)
 
 1. **Highest ROI (`digest_file` with `grep`, `digest_many`)**:
    - Targeted `grep` on a 53 KB source file saved **~14,508 cloud input tokens (98.7%)** in **16 s**.

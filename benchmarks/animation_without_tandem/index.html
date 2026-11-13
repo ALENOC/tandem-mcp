@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Orbital Particle Simulation — Without Tandem (Cloud)</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%; overflow: hidden;
+      background: #060913; color: #e2e8f0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    }
+    canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
+    .hud {
+      position: fixed; top: 14px; left: 14px; z-index: 10;
+      background: rgba(10, 16, 34, 0.78); backdrop-filter: blur(8px);
+      border: 1px solid rgba(148, 163, 184, 0.22); border-radius: 10px;
+      padding: 12px 14px; min-width: 250px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+    }
+    .hud h1 { font-size: 13px; font-weight: 600; letter-spacing: 0.04em; color: #93c5fd; margin-bottom: 8px; }
+    .stats { font-size: 12px; color: #cbd5e1; margin-bottom: 10px; display: flex; gap: 12px; }
+    .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    button {
+      background: #1e293b; color: #f8fafc; border: 1px solid #334155;
+      border-radius: 6px; padding: 5px 10px; font-size: 12px; cursor: pointer;
+    }
+    button:hover { background: #334155; }
+    label { font-size: 12px; color: #cbd5e1; display: flex; align-items: center; gap: 6px; }
+    input[type="range"] { width: 90px; accent-color: #60a5fa; }
+    .hint { margin-top: 8px; font-size: 11px; color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <canvas id="scene"></canvas>
+  <div class="hud">
+    <h1>Orbital Simulation (Cloud Direct)</h1>
+    <div class="stats">
+      <span id="fps">FPS: 0</span>
+      <span id="simTime">Time: 0.0s</span>
+      <span id="burstCount">Bursts: 0</span>
+    </div>
+    <div class="controls">
+      <button id="toggleBtn" type="button">Pause</button>
+      <button id="trailsBtn" type="button">Trails: ON</button>
+      <button id="resetBtn" type="button">Reset</button>
+      <label>Speed <input id="speedRange" type="range" min="0.2" max="3.0" step="0.1" value="1.0" /><span id="speedVal">1.0x</span></label>
+    </div>
+    <div class="hint">Click anywhere on space to spawn a particle burst.</div>
+  </div>
+  <script>
+    (() => {
+      const canvas = document.getElementById('scene');
+      const ctx = canvas.getContext('2d');
+      const fpsEl = document.getElementById('fps');
+      const timeEl = document.getElementById('simTime');
+      const burstEl = document.getElementById('burstCount');
+      const toggleBtn = document.getElementById('toggleBtn');
+      const trailsBtn = document.getElementById('trailsBtn');
+      const resetBtn = document.getElementById('resetBtn');
+      const speedRange = document.getElementById('speedRange');
+      const speedVal = document.getElementById('speedVal');
+
+      let width = 0, height = 0, dpr = 1;
+      let running = true, showTrails = true, speed = 1.0, simTime = 0;
+      let lastTs = performance.now(), fpsFrames = 0, fpsLast = performance.now(), currentFps = 60;
+      const stars = [], bursts = [];
+
+      const planetDefs = [
+        { orbit: 68, radius: 5, speed: 1.65, color: '#38bdf8', angle: 0.3, moon: null },
+        { orbit: 108, radius: 8, speed: 1.15, color: '#fbbf24', angle: 1.8, moon: { orbit: 16, radius: 2.2, speed: 4.5, color: '#e2e8f0' } },
+        { orbit: 156, radius: 10, speed: 0.82, color: '#34d399', angle: 3.1, moon: { orbit: 20, radius: 2.6, speed: 3.6, color: '#cbd5e1' } },
+        { orbit: 212, radius: 13, speed: 0.56, color: '#f472b6', angle: 4.7, moon: { orbit: 24, radius: 3.0, speed: 2.9, color: '#fde68a' } },
+        { orbit: 274, radius: 9, speed: 0.39, color: '#a78bfa', angle: 0.9, moon: null }
+      ];
+      let planets = [];
+
+      function initStars() {
+        stars.length = 0;
+        for (let i = 0; i < 180; i++) {
+          stars.push({
+            x: Math.random(), y: Math.random(),
+            r: 0.6 + Math.random() * 1.5,
+            phase: Math.random() * Math.PI * 2,
+            freq: 0.8 + Math.random() * 2.2
+          });
+        }
+      }
+
+      function resetSim() {
+        simTime = 0;
+        bursts.length = 0;
+        planets = planetDefs.map(d => ({
+          ...d,
+          curAngle: d.angle,
+          moonAngle: 0,
+          trail: []
+        }));
+      }
+
+      function resize() {
+        dpr = Math.min(window.devicePixelRatio || 1, 2);
+        width = window.innerWidth;
+        height = window.innerHeight;
+        canvas.width = Math.floor(width * dpr);
+        canvas.height = Math.floor(height * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+
+      function spawnBurst(x, y) {
+        const colors = ['#60a5fa', '#f472b6', '#fbbf24', '#34d399', '#c084fc'];
+        for (let i = 0; i < 28; i++) {
+          const a = (Math.PI * 2 * i) / 28 + Math.random() * 0.25;
+          const v = 35 + Math.random() * 110;
+          bursts.push({
+            x, y,
+            vx: Math.cos(a) * v,
+            vy: Math.sin(a) * v,
+            life: 1.0,
+            decay: 0.45 + Math.random() * 0.55,
+            r: 1.5 + Math.random() * 2.4,
+            color: colors[i % colors.length]
+          });
+        }
+      }
+
+      toggleBtn.addEventListener('click', () => {
+        running = !running;
+        toggleBtn.textContent = running ? 'Pause' : 'Play';
+      });
+      trailsBtn.addEventListener('click', () => {
+        showTrails = !showTrails;
+        trailsBtn.textContent = showTrails ? 'Trails: ON' : 'Trails: OFF';
+        if (!showTrails) planets.forEach(p => { p.trail.length = 0; });
+      });
+      resetBtn.addEventListener('click', resetSim);
+      speedRange.addEventListener('input', () => {
+        speed = parseFloat(speedRange.value);
+        speedVal.textContent = speed.toFixed(1) + 'x';
+      });
+      canvas.addEventListener('click', (e) => spawnBurst(e.clientX, e.clientY));
+      window.addEventListener('resize', resize);
+
+      function step(dt) {
+        simTime += dt;
+        const cx = width / 2, cy = height / 2;
+        const scale = Math.min(width, height) / 680;
+        for (const p of planets) {
+          p.curAngle += p.speed * dt;
+          if (p.moon) p.moonAngle += p.moon.speed * dt;
+          const px = cx + Math.cos(p.curAngle) * p.orbit * scale;
+          const py = cy + Math.sin(p.curAngle) * p.orbit * scale;
+          if (showTrails) {
+            p.trail.push({ x: px, y: py });
+            if (p.trail.length > 70) p.trail.shift();
+          }
+        }
+        for (let i = bursts.length - 1; i >= 0; i--) {
+          const b = bursts[i];
+          b.x += b.vx * dt;
+          b.y += b.vy * dt;
+          b.vx *= 0.985;
+          b.vy *= 0.985;
+          b.life -= b.decay * dt;
+          if (b.life <= 0) bursts.splice(i, 1);
+        }
+      }
+
+      function draw(now) {
+        ctx.fillStyle = '#060913';
+        ctx.fillRect(0, 0, width, height);
+
+        for (const s of stars) {
+          const alpha = 0.25 + 0.65 * (0.5 + 0.5 * Math.sin(now * 0.001 * s.freq + s.phase));
+          ctx.fillStyle = `rgba(226, 232, 240, ${alpha.toFixed(2)})`;
+          ctx.beginPath();
+          ctx.arc(s.x * width, s.y * height, s.r, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        const cx = width / 2, cy = height / 2;
+        const scale = Math.min(width, height) / 680;
+        const pulse = 1 + 0.06 * Math.sin(now * 0.003);
+
+        const corona = ctx.createRadialGradient(cx, cy, 4, cx, cy, 68 * scale * pulse);
+        corona.addColorStop(0, 'rgba(254, 240, 138, 1)');
+        corona.addColorStop(0.35, 'rgba(251, 146, 60, 0.7)');
+        corona.addColorStop(1, 'rgba(251, 146, 60, 0)');
+        ctx.fillStyle = corona;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 68 * scale * pulse, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#fef08a';
+        ctx.beginPath();
+        ctx.arc(cx, cy, 20 * scale, 0, Math.PI * 2);
+        ctx.fill();
+
+        for (const p of planets) {
+          ctx.strokeStyle = 'rgba(148, 163, 184, 0.14)';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.arc(cx, cy, p.orbit * scale, 0, Math.PI * 2);
+          ctx.stroke();
+
+          if (showTrails && p.trail.length > 1) {
+            for (let i = 1; i < p.trail.length; i++) {
+              const a = (i / p.trail.length) * 0.55;
+              ctx.strokeStyle = p.color;
+              ctx.globalAlpha = a;
+              ctx.lineWidth = 2;
+              ctx.beginPath();
+              ctx.moveTo(p.trail[i - 1].x, p.trail[i - 1].y);
+              ctx.lineTo(p.trail[i].x, p.trail[i].y);
+              ctx.stroke();
+            }
+            ctx.globalAlpha = 1;
+          }
+
+          const px = cx + Math.cos(p.curAngle) * p.orbit * scale;
+          const py = cy + Math.sin(p.curAngle) * p.orbit * scale;
+          ctx.fillStyle = p.color;
+          ctx.beginPath();
+          ctx.arc(px, py, p.radius * Math.max(0.6, scale), 0, Math.PI * 2);
+          ctx.fill();
+
+          if (p.moon) {
+            const mx = px + Math.cos(p.moonAngle) * p.moon.orbit * scale;
+            const my = py + Math.sin(p.moonAngle) * p.moon.orbit * scale;
+            ctx.fillStyle = p.moon.color;
+            ctx.beginPath();
+            ctx.arc(mx, my, p.moon.radius * Math.max(0.6, scale), 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+
+        for (const b of bursts) {
+          ctx.globalAlpha = Math.max(0, b.life);
+          ctx.fillStyle = b.color;
+          ctx.beginPath();
+          ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+      }
+
+      function frame(now) {
+        const dt = Math.min(0.05, (now - lastTs) / 1000);
+        lastTs = now;
+        if (running) step(dt * speed);
+        draw(now);
+        fpsFrames++;
+        if (now - fpsLast >= 500) {
+          currentFps = Math.round((fpsFrames * 1000) / (now - fpsLast));
+          fpsFrames = 0;
+          fpsLast = now;
+          fpsEl.textContent = 'FPS: ' + currentFps;
+        }
+        timeEl.textContent = 'Time: ' + simTime.toFixed(1) + 's';
+        burstEl.textContent = 'Bursts: ' + bursts.length;
+        requestAnimationFrame(frame);
+      }
+
+      initStars();
+      resize();
+      resetSim();
+      requestAnimationFrame(frame);
+    })();
+  </script>
+</body>
+</html>
