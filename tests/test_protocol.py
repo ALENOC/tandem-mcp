@@ -346,8 +346,9 @@ out = server.delegate_many([
     {'name': 'a', 'goal': 'TaskA', 'verify_commands': [], 'write_globs': ['shared.txt'], 'after': []},
     {'name': 'b', 'goal': 'TaskB', 'verify_commands': [], 'write_globs': ['shared.txt'], 'after': []},
 ], str(conflict_root), allow_run=[r'^python3\b'], workers=2, wait_seconds=60)
-ok((conflict_root / 'shared.txt').read_text() == 'owned-by-a\n' and 'BLOCKED' in out,
-   f'parallel delegate_many run() conflict: shared={ (conflict_root / "shared.txt").read_text()!r } out={out!r}')
+shared_text = (conflict_root / 'shared.txt').read_text()
+ok(shared_text == 'owned-by-a\n' and 'BLOCKED' in out,
+   f'parallel delegate_many run() conflict: shared={shared_text!r} out={out!r}')
 fake.policy = None
 
 # 11b. concurrent run (job A) + write_file (job B) in delegate_many(..., workers=2) preserves b.txt
