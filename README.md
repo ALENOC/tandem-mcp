@@ -232,15 +232,15 @@ Measured live on `qwen3.8-27b@iq3_s` (LM Studio, `65536` ctx, `11.1 tok/s`, cach
 
 **Animation A/B Comparison (Orbital Particle Simulation, identical spec)**
 
-| Without Tandem — Cloud Direct (`Antigravity / Gemini Hydrogen`) | With Tandem MCP — Local `qwen3.8-27b@iq3_s` (`LM Studio`, `delegate`) |
+| Without Tandem — `Gemini Hydrogen` (Cloud Direct) | With Tandem MCP — `Gemini Hydrogen` (Orchestrator) + `qwen3.8-27b@iq3_s` (Local) |
 | :---: | :---: |
-| ![Without Tandem — Cloud Direct (Antigravity / Gemini Hydrogen)](benchmarks/animation_without_tandem.gif) | ![With Tandem MCP — Local qwen3.8-27b@iq3_s](benchmarks/animation_with_tandem.gif) |
-| *Cloud Direct (`Antigravity / Gemini Hydrogen`) · 10.3 KB, 272 lines · ~2,873 cloud tokens* | *Local `qwen3.8-27b@iq3_s` (`delegate`, `65536` ctx) · 11.0 KB, 364 lines · ~130 cloud receipt tokens (`17,449` local tokens, `0` repairs)* |
+| <img src="benchmarks/animation_without_tandem.gif" alt="Without Tandem — Gemini Hydrogen (Cloud Direct)" width="420" height="268" /> | <img src="benchmarks/animation_with_tandem.gif" alt="With Tandem MCP — Gemini Hydrogen orchestrator + qwen3.8-27b@iq3_s local executor" width="420" height="268" /> |
+| *Cloud Direct: `Gemini Hydrogen` · 10.3 KB, 272 lines · ~2,873 cloud tokens* | *Orchestrator: `Gemini Hydrogen` · Local executor: `qwen3.8-27b@iq3_s` (`delegate`, `65536` ctx) · 11.0 KB, 364 lines · ~130 cloud receipt tokens (`17,449` local tokens, `0` repairs)* |
 
-| Variant | Model Used (Caption) | Output | Cloud Tokens | Local Tokens | Time | Verification |
+| Variant | Models Used (Caption) | Output | Cloud Tokens | Local Tokens | Time | Verification |
 | --- | --- | --- | ---: | ---: | ---: | --- |
-| **Without Tandem** | Cloud Direct (`Antigravity / Gemini Hydrogen`) | [`animation_without_tandem/index.html`](benchmarks/animation_without_tandem/index.html) (10.3 KB, 272 lines) | ~2,873 out | 0 | Immediate | `node --check` + DOM PASS |
-| **With Tandem MCP** | Local `qwen3.8-27b@iq3_s` (LM Studio, `delegate`) | [`animation_with_tandem/index.html`](benchmarks/animation_with_tandem/index.html) (11.0 KB, 364 lines) | ~130 receipt | 17,449 | 322.7 s | `VERIFIED` (2 steps, 0 repairs) + `node --check` PASS |
+| **Without Tandem** | `Gemini Hydrogen` (Cloud Direct) | [`animation_without_tandem/index.html`](benchmarks/animation_without_tandem/index.html) (10.3 KB, 272 lines) | ~2,873 out | 0 | Immediate | `node --check` + DOM PASS |
+| **With Tandem MCP** | Orchestrator: `Gemini Hydrogen` · Local: `qwen3.8-27b@iq3_s` (`LM Studio`, `delegate`) | [`animation_with_tandem/index.html`](benchmarks/animation_with_tandem/index.html) (11.0 KB, 364 lines) | ~130 receipt | 17,449 | 322.7 s | `VERIFIED` (2 steps, 0 repairs) + `node --check` PASS |
 
 Open [`benchmarks/animation_comparison.html`](benchmarks/animation_comparison.html) in a browser to run both interactive animations side-by-side.
 
