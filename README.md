@@ -244,6 +244,27 @@ Measured live on `qwen3.8-27b@iq3_s` (LM Studio, `65536` ctx, `11.1 tok/s`, cach
 
 Open [`benchmarks/animation_comparison.html`](benchmarks/animation_comparison.html) in a browser to run both interactive animations side-by-side.
 
+<details>
+<summary>Exact prompt used for both animations</summary>
+
+```text
+Create a single self-contained file index.html implementing an interactive full-viewport HTML5 Canvas orbital particle simulation in dark space (#060913):
+1. Responsive full-window <canvas> using requestAnimationFrame and devicePixelRatio scaling.
+2. Central glowing star using createRadialGradient and a subtle corona pulse.
+3. At least 5 orbiting planets with distinct orbital radii, speeds, colors, at least 3 moons/satellites, and fading orbital trails.
+4. Twinkling background starfield with at least 150 stars.
+5. Interactive glassmorphism HUD overlay with:
+   - Play/Pause toggle button
+   - Trails ON/OFF toggle button
+   - Reset button
+   - Speed range slider (<input type="range" min="0.2" max="3.0" step="0.1" value="1.0">) with live multiplier readout
+   - Live FPS, simulation time (s), and active burst particle count
+6. Clicking anywhere on the canvas spawns a radial burst of glowing particles with velocity damping and fade-out.
+Keep everything self-contained in index.html with zero external dependencies and valid JavaScript syntax.
+```
+
+</details>
+
 *\*In the `README.md` run, the local model paraphrased its quotes instead of copying them verbatim; Tandem's verifier dropped all 3 and flagged `unsupported` instead of passing unverified claims to the cloud model.*
 
 **Takeaway:** `digest_file` (especially with `grep`) and `digest_many` deliver **98%+** cloud input savings; `delegate` pays off on multi-file or test-repair tasks, while trivial 1-file edits save too few tokens to justify local latency.
