@@ -262,6 +262,8 @@ Measured live on `qwen3.8-27b@iq3_s` (LM Studio, `65536` ctx, `11.1 tok/s`, cach
 
 **[Open both 3D scenes side-by-side in your browser](https://alenoc.github.io/tandem-mcp/benchmarks/scene3d_comparison.html)** ([source](benchmarks/scene3d_comparison.html))
 
+> **Visual note:** both scenes were generated from the exact same specification with zero shared code. `Gemini Hydrogen` (left) produced a floating flat-platform monolith with a bright central core, while `qwen3.8-27b@iq3_s` under `Gemini Hydrogen` orchestration (right, after one visual-review pass) built a stepped obsidian pyramid with softer bokeh particles—illustrating both the **~89.7% cloud token savings** and the stylistic differences between a frontier cloud model and a local quantized 27B model.
+
 <details>
 <summary>Exact prompt used for 2D orbital animations</summary>
 
