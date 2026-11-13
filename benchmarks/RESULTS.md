@@ -64,20 +64,6 @@ Identical prompt: generate a self-contained single-file HTML5 `<canvas>` orbital
 
 ---
 
-## 5. 3D Procedural Scene A/B Comparison (`Gemini Hydrogen` vs. `Gemini Hydrogen + Tandem MCP`)
-
-Interactive 3D Neon Portal & Floating Monolith Island (custom 3D perspective projection, painter's-algorithm depth-sorted polygons, mouse drag orbit + wheel zoom, 6 orbiting octahedra crystals, volumetric radial-gradient core, counter-rotating 3D rings, 110 rising particles, cyber-grid floor, twinkling 3D starfield).
-
-| Metric | Without Tandem (`Gemini Hydrogen` Cloud Direct) | With Tandem MCP (`Gemini Hydrogen` orchestrator + `qwen3.8-27b@iq3_s` local) |
-| --- | --- | --- |
-| Output | **[Live 3D Demo](https://alenoc.github.io/tandem-mcp/benchmarks/scene3d_without_tandem/)** ([source](scene3d_without_tandem/index.html)) | **[Live 3D Demo](https://alenoc.github.io/tandem-mcp/benchmarks/scene3d_with_tandem/)** (4 modules: `index.html`, `style.css`, `engine3d.js`, `app.js`) |
-| Size / Lines | 13,234 B / 300 lines | 17,035 B / 618 lines |
-| Cloud tokens to write code | ~3,676 output tokens | ~380 receipt tokens (**~3,296 tok / 89.7% cloud output saved**) |
-| JS syntax (`node --check`) | PASS | PASS (`engine3d.js` + `app.js`) |
-| Side-by-side viewer | **[Live 3D Side-by-Side Demo](https://alenoc.github.io/tandem-mcp/benchmarks/scene3d_comparison.html)** ([source](scene3d_comparison.html)) | **[Live 3D Side-by-Side Demo](https://alenoc.github.io/tandem-mcp/benchmarks/scene3d_comparison.html)** ([source](scene3d_comparison.html)) |
-
----
-
 ## 5. Honest Takeaways: When Tandem Pays Off (and When It Doesn't)
 
 1. **Highest ROI (`digest_file` with `grep`, `digest_many`)**:
