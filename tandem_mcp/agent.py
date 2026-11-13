@@ -22,6 +22,7 @@ import re
 import shutil
 import stat
 import subprocess
+import tempfile
 import threading
 import time
 import zlib
@@ -140,6 +141,19 @@ def syntax_of(path):
         elif suffix in ('.js', '.mjs', '.cjs') and shutil.which('node'):
             done = subprocess.run(['node', '--check', str(path)], capture_output=True, text=True, timeout=30)
             return done.stderr.strip()[:300] if done.returncode else ''
+        elif suffix in ('.html', '.htm') and shutil.which('node'):
+            scripts = [m.group(1) for m in re.finditer(r'<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>', text, re.S | re.I)
+                       if m.group(1).strip()]
+            if not scripts:
+                return None
+            with tempfile.NamedTemporaryFile('w', suffix='.js', delete=False, encoding='utf-8') as tmp:
+                tmp.write('\n;\n'.join(scripts))
+                tmp_path = tmp.name
+            try:
+                done = subprocess.run(['node', '--check', tmp_path], capture_output=True, text=True, timeout=30)
+                return done.stderr.strip()[:300] if done.returncode else ''
+            finally:
+                Path(tmp_path).unlink(missing_ok=True)
         else:
             return None
     except SyntaxError as exc:
@@ -951,6 +965,11 @@ class Task:
                 state, summary = 'stuck', 'four replies in a row were not a tool call'
                 self.log.append({'step': self.steps, 'tool': '(none)', 'args': {}, 'result': str(messages[-2].get('content'))[:300]})
                 break
+            if not calls:
+                nudge = {'role': 'user', 'content': 'Do not narrate what you plan to do. Call a tool (read_file, write_file, replace_in_file, run, or finish) now.'}
+                messages.append(nudge)
+                self.outputs.append(nudge)
+                continue
             finished = None
             for call_id, name, args in calls:
                 if isinstance(args, str):

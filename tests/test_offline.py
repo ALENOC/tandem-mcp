@@ -616,4 +616,32 @@ rb_leg = agent.rollback(leg_job)
 ok('restored: note.txt' in rb_leg and leg_p.read_text() == 'v1\n',
    'rollback() remains compatible with legacy post_state.json bare sha256')
 
+# 18. HTML <script> syntax check and orchestrator quality-gate receipt cues
+import shutil as _shutil
+from tandem_mcp import server as _server
+html_dir = Path(tempfile.mkdtemp(dir=Path.home() if os.environ.get('TANDEM_TEST_IN_HOME') else None))
+good_html = html_dir / 'good.html'
+bad_html = html_dir / 'bad.html'
+good_html.write_text('<html><body><script>const x = 1 + 2;</script></body></html>')
+bad_html.write_text('<html><body><script>function broken( {</script></body></html>')
+if _shutil.which('node'):
+    ok(agent.syntax_of(good_html) == '', 'syntax_of() accepts valid inline <script> in HTML')
+    ok(bool(agent.syntax_of(bad_html)), 'syntax_of() catches JS syntax error in HTML <script>')
+
+qjob, _ = store.new_job('delegate')
+store.write_job(qjob, {
+    'kind': 'delegate', 'state': 'verified', 'steps': 2, 'repairs': 0, 'seconds': 1.0, 'tokens': 100,
+    'protocol': 'native tool calls', 'summary': 'ok', 'weak': False,
+    'changes': [['app.js', 'changed', 35, 10]],
+    'before': [{'command': 'test', 'exit': 1}], 'checks': [{'command': 'test', 'exit': 0, 'tail': ''}],
+})
+ok('Inspect job_diff' in _server._receipt(qjob), '_receipt() surfaces quality-gate reminder on non-trivial verified diff')
+
+sjob, _ = store.new_job('delegate')
+store.write_job(sjob, {
+    'kind': 'delegate', 'state': 'stuck', 'steps': 4, 'repairs': 0, 'seconds': 10.0, 'tokens': 500,
+    'protocol': 'native tool calls', 'summary': 'stuck', 'changes': [], 'before': [], 'checks': [],
+})
+ok('delegate_many' in _server._receipt(sjob), '_receipt() suggests delegate_many when stuck with no changes')
+
 print(f'{checks} checks, 0 failures')

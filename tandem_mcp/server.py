@@ -21,16 +21,17 @@ from mcp.server.mcpserver import MCPServer
 
 from . import __version__, agent, digest, engine, sandbox, store
 
-GUIDE = '''Local executor (a model on this machine, free to use). Prefer it for reading and mechanical work:
-- digest_file / digest_command / digest_many: ask a question about a file, a command output or many files
-  instead of reading them. Answers carry quotes checked against the source; numbers that are not in
-  the source are listed.
-- extract_from_file: structured data in a JSON schema, values not found in the source are listed.
-- delegate: a bounded task with checks (tests, build, grep). Review the receipt, job_diff if needed,
-  then job_feedback (accepted or not, with a lesson), job_continue (a hint, same conversation) or job_rollback.
-- delegate_many: several tasks with an order, each with its own checks and its own rollback.
-- ask: a text task; samples > 1 gives an agreement score, low agreement means do it yourself.
-Keep design decisions, irreversible actions and anything without an automatic check for yourself.
+GUIDE = '''Hybrid orchestration (cloud model = architect & reviewer, local model = reader & bounded executor, free to use):
+- Reading & extraction: use digest_file (with grep when possible), digest_command, digest_many, and extract_from_file
+  instead of reading large files/logs into cloud context. Quotes and numbers are checked against the source;
+  if a result is flagged unsupported/contested or ask(samples>1) shows agreement < 1.0, inspect only the cited lines.
+- Bounded coding: use delegate with tight write_globs and real verify_commands (tests, build, lint, syntax).
+  For multi-file or >150-line features, split into small modular tasks via delegate_many (with `after` dependencies)
+  rather than asking a small local model for one giant single-shot file.
+- Keep frontier quality: verify_commands prove code runs/parses, not design or visual polish. Review job_diff
+  (or rendered output for UI) on non-trivial changes; use job_continue(hint=...) for targeted fixes, job_rollback
+  to undo cleanly, and job_feedback / lesson_add so mistakes become standing project rules.
+- Skip delegation for trivial 1-line edits or purely open-ended design with no check.
 The executor is slow. If a call runs past the client timeout and moves to the background, do not cancel it
 or redo its work with the cloud model on your own: ask the user whether to keep waiting or to stop it.'''
 mcp = MCPServer('tandem', version=__version__, instructions=GUIDE)
@@ -288,6 +289,13 @@ def _receipt(job):
             lines.append('    ' + c['tail'][-500:].replace('\n', '\n    '))
     if data.get('weak') and data['state'] == 'verified':
         lines.append('NOTE: every check already passed before the job, so the checks do not prove this work. Read job_diff.')
+    elif data['state'] == 'verified' and data.get('changes'):
+        churn = sum(add + rem for _, _, add, rem in data['changes'])
+        if churn > 40:
+            lines.append(f'NOTE: non-trivial change ({churn} lines changed). Inspect job_diff for quality/edge cases before accepting, '
+                         'or use job_continue for targeted polish.')
+    if data['state'] in ('stuck', 'out_of_steps') and not data.get('changes'):
+        lines.append('HINT: no file was changed; if the task was too large for one shot, split it into smaller modules with delegate_many.')
     if data.get('restored'):
         lines.append('NOTE: the executor changed files of the checks through a command; they were put back: ' + ', '.join(data['restored']))
     if data.get('touched'):
