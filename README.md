@@ -239,12 +239,12 @@ Measured live on `qwen3.8-27b@iq3_s` (LM Studio, `65536` ctx, `11.1 tok/s`, cach
 
 | Variant | Models Used (Caption) | Output | Cloud Tokens | Cloud Saved (est.) | Local Tokens | Time | Verification |
 | --- | --- | --- | ---: | ---: | ---: | ---: | --- |
-| **Without Tandem** | `Gemini Hydrogen` (Cloud Direct) | [`animation_without_tandem/index.html`](benchmarks/animation_without_tandem/index.html) (10.3 KB, 272 lines) | ~2,873 out | — | 0 | Immediate | `node --check` + DOM PASS |
-| **With Tandem MCP** | Orchestrator: `Gemini Hydrogen` · Local: `qwen3.8-27b@iq3_s` (`LM Studio`, `delegate`) | [`animation_with_tandem/index.html`](benchmarks/animation_with_tandem/index.html) (11.0 KB, 364 lines) | ~130 receipt | **~2,743 tok (95.5%)** | 17,449 | 322.7 s | `VERIFIED` (2 steps, 0 repairs) + `node --check` PASS |
+| **Without Tandem** | `Gemini Hydrogen` (Cloud Direct) | **[Live Demo](https://alenoc.github.io/tandem-mcp/benchmarks/animation_without_tandem/)** ([source](benchmarks/animation_without_tandem/index.html), 10.3 KB, 272 lines) | ~2,873 out | — | 0 | Immediate | `node --check` + DOM PASS |
+| **With Tandem MCP** | Orchestrator: `Gemini Hydrogen` · Local: `qwen3.8-27b@iq3_s` (`LM Studio`, `delegate`) | **[Live Demo](https://alenoc.github.io/tandem-mcp/benchmarks/animation_with_tandem/)** ([source](benchmarks/animation_with_tandem/index.html), 11.0 KB, 364 lines) | ~130 receipt | **~2,743 tok (95.5%)** | 17,449 | 322.7 s | `VERIFIED` (2 steps, 0 repairs) + `node --check` PASS |
 
 > **Cloud token savings:** offloading the 364-line animation generation to `qwen3.8-27b@iq3_s` cut cloud output tokens from **~2,873** down to a **~130-token** verified receipt (**~95.5% saved**, `-2,743` cloud tokens).
 
-Open [`benchmarks/animation_comparison.html`](benchmarks/animation_comparison.html) in a browser to run both interactive animations side-by-side.
+**[Open both interactive animations side-by-side in your browser](https://alenoc.github.io/tandem-mcp/benchmarks/animation_comparison.html)** ([source](benchmarks/animation_comparison.html))
 
 <details>
 <summary>Exact prompt used for both animations</summary>

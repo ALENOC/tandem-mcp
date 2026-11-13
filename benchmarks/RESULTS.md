@@ -53,14 +53,14 @@ Identical prompt: generate a self-contained single-file HTML5 `<canvas>` orbital
 
 | Metric | Without Tandem (`Gemini Hydrogen` Cloud Direct) | With Tandem MCP (`Gemini Hydrogen` orchestrator + `qwen3.8-27b@iq3_s` local) |
 | --- | --- | --- |
-| Output file | [`animation_without_tandem/index.html`](animation_without_tandem/index.html) | [`animation_with_tandem/index.html`](animation_with_tandem/index.html) |
+| Output file | **[Live Demo](https://alenoc.github.io/tandem-mcp/benchmarks/animation_without_tandem/)** ([source](animation_without_tandem/index.html)) | **[Live Demo](https://alenoc.github.io/tandem-mcp/benchmarks/animation_with_tandem/)** ([source](animation_with_tandem/index.html)) |
 | Size / Lines | 10,343 B / 272 lines | 10,970 B / 364 lines |
 | Cloud tokens to write code | ~2,873 output tokens | ~130 receipt tokens (**~2,743 tok / 95.5% cloud output saved**) |
 | Local executor tokens | 0 | 17,449 tokens (`2` steps, `0` repairs) |
 | Wall time | Immediate (cloud turn) | 322.7 s |
 | JS syntax (`node --check`) | PASS | PASS |
 | DOM / feature check | PASS (5 planets, 3 moons, 180 stars) | PASS (6 planets, 3 moons, 180 stars) |
-| Side-by-side viewer | [`animation_comparison.html`](animation_comparison.html) | [`animation_comparison.html`](animation_comparison.html) |
+| Side-by-side viewer | **[Live Side-by-Side Demo](https://alenoc.github.io/tandem-mcp/benchmarks/animation_comparison.html)** ([source](animation_comparison.html)) | **[Live Side-by-Side Demo](https://alenoc.github.io/tandem-mcp/benchmarks/animation_comparison.html)** ([source](animation_comparison.html)) |
 
 ---
 
