@@ -215,13 +215,15 @@ Reproducible live suite: [benchmarks/run_benchmark.py](benchmarks/run_benchmark.
 
 Measured live on `qwen3.8-27b@iq3_s` (LM Studio, `65536` ctx, `11.1 tok/s`, cache disabled, `1 cloud tok ≈ 3.6 chars`):
 
-**Reading & Evidence (`digest_file`, `digest_many`)**
+**Reading, Command Digest & Extraction (`digest_file`, `digest_many`, `digest_command`, `extract_from_file`)**
 
 | Task | Source → Cloud | Cloud Saved (est.) | Local Tokens | Time | Verification |
 | --- | --- | ---: | ---: | ---: | --- |
 | Full doc QA (`README.md`) | 20.8 KB → 403 B | **~5,672 tok (98.1%)** | 6,732 | 24.0 s | 0/3 quotes (`unsupported`)* |
 | Grep QA (`agent.py`, 7/1,065 lines) | 52.9 KB → 682 B | **~14,508 tok (98.7%)** | 532 | 16.1 s | 2/2 quotes (`contested`) |
 | 8-file survey (`tandem_mcp/*.py`) | 149.7 KB → 1.6 KB | **~41,122 tok (98.9%)** | 58,535 | 473.8 s | 13/13 quotes (`checked`) |
+| Command output (`git log -n 30 --stat`) | 13.7 KB → 1.6 KB | **~3,355 tok (88.0%)** | — | ~113 s | 12/12 quotes verified |
+| JSON extraction (`pyproject.toml`) | 686 B → 115 B | **~159 tok (83.2%)** | — | ~12 s | JSON Schema validated |
 
 **Delegated Coding (`delegate`)**
 
@@ -261,7 +263,7 @@ Measured live on `qwen3.8-27b@iq3_s` (LM Studio, `65536` ctx, `11.1 tok/s`, cach
 **[Open both 3D scenes side-by-side in your browser](https://alenoc.github.io/tandem-mcp/benchmarks/scene3d_comparison.html)** ([source](benchmarks/scene3d_comparison.html))
 
 <details>
-<summary>Exact prompt used for both animations</summary>
+<summary>Exact prompt used for 2D orbital animations</summary>
 
 ```text
 Create a single self-contained file index.html implementing an interactive full-viewport HTML5 Canvas orbital particle simulation in dark space (#060913):
@@ -277,6 +279,21 @@ Create a single self-contained file index.html implementing an interactive full-
    - Live FPS, simulation time (s), and active burst particle count
 6. Clicking anywhere on the canvas spawns a radial burst of glowing particles with velocity damping and fade-out.
 Keep everything self-contained in index.html with zero external dependencies and valid JavaScript syntax.
+```
+
+</details>
+
+<details>
+<summary>Exact specification used for 3D Neon Portal scenes</summary>
+
+```text
+Interactive procedural 3D Neon Sci-Fi Portal & Floating Monolith Island using HTML5 Canvas 3D projection (zero external dependencies, zero CDN):
+1. Full-viewport <canvas> with devicePixelRatio scaling and requestAnimationFrame loop.
+2. 3D perspective camera with auto-orbit, mouse drag rotation (yaw/pitch), and wheel zoom.
+3. Cyber-grid 3D floor + twinkling 3D starfield (150+ stars).
+4. Painter's-algorithm depth-sorted 3D polygons with face shading: floating bobbing stepped obsidian island, twin monolith pillars, top lintel arch, and 6 orbiting levitating 3D octahedron crystals.
+5. Volumetric glowing portal core (createRadialGradient) in the arch center + 2 counter-rotating 3D energy rings + 100+ rising 3D energy particles.
+6. Glassmorphism HUD overlay with Play/Pause, Auto-Orbit ON/OFF, Reset camera, Speed slider (0.2x-3.0x), and live FPS, polygon count, and particle count.
 ```
 
 </details>
