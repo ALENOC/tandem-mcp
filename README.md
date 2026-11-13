@@ -232,12 +232,17 @@ Measured live on `qwen3.8-27b@iq3_s` (LM Studio, `65536` ctx, `11.1 tok/s`, cach
 
 **Animation A/B Comparison (Orbital Particle Simulation, identical spec)**
 
+| Without Tandem — Cloud Direct (`Antigravity / Gemini`) | With Tandem MCP — Local `qwen3.8-27b@iq3_s` (`LM Studio`, `delegate`) |
+| :---: | :---: |
+| ![Without Tandem — Cloud Direct (Antigravity / Gemini)](benchmarks/animation_without_tandem.gif) | ![With Tandem MCP — Local qwen3.8-27b@iq3_s](benchmarks/animation_with_tandem.gif) |
+| *Cloud Direct (`Antigravity / Gemini`) · 10.3 KB, 272 lines · ~2,873 cloud tokens* | *Local `qwen3.8-27b@iq3_s` (`delegate`, `65536` ctx) · 11.0 KB, 364 lines · ~130 cloud receipt tokens (`17,449` local tokens, `0` repairs)* |
+
 | Variant | Model Used (Caption) | Output | Cloud Tokens | Local Tokens | Time | Verification |
 | --- | --- | --- | ---: | ---: | ---: | --- |
 | **Without Tandem** | Cloud Direct (Antigravity / Gemini) | [`animation_without_tandem/index.html`](benchmarks/animation_without_tandem/index.html) (10.3 KB, 272 lines) | ~2,873 out | 0 | Immediate | `node --check` + DOM PASS |
 | **With Tandem MCP** | Local `qwen3.8-27b@iq3_s` (LM Studio, `delegate`) | [`animation_with_tandem/index.html`](benchmarks/animation_with_tandem/index.html) (11.0 KB, 364 lines) | ~130 receipt | 17,449 | 322.7 s | `VERIFIED` (2 steps, 0 repairs) + `node --check` PASS |
 
-Open [`benchmarks/animation_comparison.html`](benchmarks/animation_comparison.html) in a browser to run both animations side-by-side.
+Open [`benchmarks/animation_comparison.html`](benchmarks/animation_comparison.html) in a browser to run both interactive animations side-by-side.
 
 *\*In the `README.md` run, the local model paraphrased its quotes instead of copying them verbatim; Tandem's verifier dropped all 3 and flagged `unsupported` instead of passing unverified claims to the cloud model.*
 
