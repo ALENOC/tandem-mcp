@@ -51,7 +51,7 @@ Measured live via MCP calls against `qwen3.8-27b@iq3_s` on LM Studio:
 
 Identical prompt: generate a self-contained single-file HTML5 `<canvas>` orbital particle simulation (`index.html`) with `requestAnimationFrame`, `devicePixelRatio` scaling, radial-gradient star with corona pulse, 5+ planets with moons and fading trails, 150+ twinkling stars, glassmorphism HUD (Play/Pause, Trails toggle, Reset, Speed `0.2x`–`3.0x`, live FPS/time/bursts), and click-to-spawn radial particle bursts.
 
-| Metric | Without Tandem (Cloud Direct) | With Tandem MCP (`delegate` → `qwen3.8-27b@iq3_s`) |
+| Metric | Without Tandem (Cloud Direct: `Gemini Hydrogen`) | With Tandem MCP (`delegate` → `qwen3.8-27b@iq3_s`) |
 | --- | --- | --- |
 | Output file | [`animation_without_tandem/index.html`](animation_without_tandem/index.html) | [`animation_with_tandem/index.html`](animation_with_tandem/index.html) |
 | Size / Lines | 10,343 B / 272 lines | 10,970 B / 364 lines |
