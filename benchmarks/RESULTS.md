@@ -55,7 +55,7 @@ Identical prompt: generate a self-contained single-file HTML5 `<canvas>` orbital
 | --- | --- | --- |
 | Output file | [`animation_without_tandem/index.html`](animation_without_tandem/index.html) | [`animation_with_tandem/index.html`](animation_with_tandem/index.html) |
 | Size / Lines | 10,343 B / 272 lines | 10,970 B / 364 lines |
-| Cloud tokens to write code | ~2,873 output tokens | ~130 receipt tokens (prompt + verify spec only) |
+| Cloud tokens to write code | ~2,873 output tokens | ~130 receipt tokens (**~2,743 tok / 95.5% cloud output saved**) |
 | Local executor tokens | 0 | 17,449 tokens (`2` steps, `0` repairs) |
 | Wall time | Immediate (cloud turn) | 322.7 s |
 | JS syntax (`node --check`) | PASS | PASS |
