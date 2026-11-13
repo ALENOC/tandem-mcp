@@ -15,7 +15,9 @@ An MCP server that pairs a cloud orchestrator model with a local executor model.
 Works with any OpenAI-compatible local server: **LM Studio**, **Ollama**, **llama.cpp**, **vLLM**, **Jan**, **KoboldCpp**, **LocalAI**.
 
 > [!NOTE]
-> Most "ask a local model" tools only offload text generation. Most of an agent's cost is reading material (logs, sources, reports), and small models can hallucinate. Tandem checks every quote, number, syntax, and acceptance test on the server before returning to the orchestrator.
+> Most "ask a local model" tools only offload text generation. Most of an agent's cost is reading material (logs, sources, reports), and small local models often hallucinate details or make syntax mistakes.
+>
+> **Why you can trust a small model here:** Tandem never takes the model's word for it. Before returning anything to the cloud orchestrator, the server runs deterministic Python checks (no LLM involved) to verify that every quote actually exists in the source, flag any invented numbers, check syntax on every modified file, and run your acceptance tests.
 
 **Jump to:** [Quick Start](#quick-start) · [Tools](#tools) · [Benchmarks](#benchmarks) · [Security](#security) · [Tests](#tests)
 
