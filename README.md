@@ -251,10 +251,10 @@ Measured live on `qwen3.8-27b@iq3_s` (LM Studio, `65536` ctx, `11.1 tok/s`, cach
 
 | Model | Server | Context | Protocol | Result |
 | --- | --- | --- | --- | --- |
-| Qwen 27B (IQ3_S) | LM Studio | 65536 | native tool calls | 12 of 12 |
-| Qwen 27B (IQ3_S) | LM Studio | 65536 | JSON replies | 12 of 12 |
-| Gemma 5B (Q4_K_M) | Ollama | 4096 | native tool calls | 12 of 12 (1 repair) |
-| Gemma 5B (Q4_K_M) | Ollama | 4096 | JSON replies (prompt) | reading 7/7; fix verified 1/3 |
+| Qwen 3.8 27B (IQ3_S) (`qwen3.8-27b@iq3_s`) | LM Studio | 65536 | native tool calls | 12 of 12 |
+| Qwen 3.8 27B (IQ3_S) (`qwen3.8-27b@iq3_s`) | LM Studio | 65536 | JSON replies | 12 of 12 |
+| Gemma 4 E2B (Q4_K_M) (`gemma4:e2b`) | Ollama | 4096 | native tool calls | 12 of 12 (1 repair) |
+| Gemma 4 E2B (Q4_K_M) (`gemma4:e2b`) | Ollama | 4096 | JSON replies (prompt) | reading 7/7; fix verified 1/3 |
 
 **Repository layout:**
 - `tandem_mcp/server.py`: MCP tools and receipts

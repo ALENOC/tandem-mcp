@@ -213,7 +213,8 @@ class Task:
         self.journal = {}                  # relative path -> original text, None when the file was created
         self.journal_bin = {}              # relative path -> sha256 hex of original bytes, None when created
         self.journal_modes = {}            # relative path -> original st_mode (S_IMODE), None when created
-        self.guard = {}                    # protected path -> text the checks must keep seeing
+        self.guard = {}                    # protected path -> ('file', bytes, mode) or ('symlink', target, 0)
+        self.guard_dirs = {}               # protected directory -> st_mode
         self.touched = set()               # files changed by commands, outside the journal
         self.restored = []                 # protected files a command changed and the server put back
         self.before = []                   # the checks as they were before the work
@@ -533,19 +534,48 @@ class Task:
         self.syntax = found
         return found['bad']
 
+    def _guard_allowed(self, rel):
+        """True when rel is explicitly writable via write_globs and not immutable."""
+        return (not self.ws._is_immutable(rel)) and self.ws._in_globs(rel)
+
     def _guard_files(self):
         files = set()
         for rel in sorted(self.ws.protected):
             p = self.ws.root / rel
-            if p.is_file():
+            if p.is_symlink() or p.is_file():
                 files.add(rel)
             elif p.is_dir():
-                files.update(f'{rel}/{sub}' for sub in sandbox.walk(p, '*', limit=None))
+                for dirpath, dirnames, filenames in os.walk(p, followlinks=False):
+                    dirnames[:] = [d for d in dirnames if d not in sandbox.SKIP_DIRS]
+                    dp = Path(dirpath)
+                    for d in list(dirnames):
+                        sub = dp / d
+                        if sub.is_symlink():
+                            files.add(str(sub.relative_to(self.ws.root)))
+                            dirnames.remove(d)
+                    for name in filenames:
+                        files.add(str((dp / name).relative_to(self.ws.root)))
         if self.ws.immutable:
             for rel in sandbox.walk(self.ws.root, '*', limit=None):
                 if self.ws._is_immutable(rel):
                     files.add(rel)
-        return sorted(rel for rel in files if self.ws._is_immutable(rel) or not self.ws._in_globs(rel))
+            for dirpath, dirnames, filenames in os.walk(self.ws.root, followlinks=False):
+                dirnames[:] = [d for d in dirnames if d not in sandbox.SKIP_DIRS]
+                dp = Path(dirpath)
+                for d in list(dirnames):
+                    sub = dp / d
+                    if sub.is_symlink():
+                        rel = str(sub.relative_to(self.ws.root))
+                        if self.ws._is_immutable(rel):
+                            files.add(rel)
+                        dirnames.remove(d)
+                for name in filenames:
+                    fp = dp / name
+                    if fp.is_symlink():
+                        rel = str(fp.relative_to(self.ws.root))
+                        if self.ws._is_immutable(rel):
+                            files.add(rel)
+        return sorted(rel for rel in files if not self._guard_allowed(rel))
 
     def take_snapshot(self):
         """Capture pre-task workspace file hashes and compressed blobs when commands may run."""
@@ -668,30 +698,163 @@ class Task:
         store.write_json(self.folder / 'post_state.json', post)
 
     def take_guard(self):
+        """Snapshot protected files, symlinks, permissions, and protected directory trees."""
+        for rel in sorted(self.ws.protected):
+            if self._guard_allowed(rel):
+                continue
+            p = _safe_symlink_target_path(self.ws.root, rel)
+            if p is None or p.is_symlink() or not p.is_dir():
+                continue
+            try:
+                self.guard_dirs[rel] = stat.S_IMODE(p.stat(follow_symlinks=False).st_mode)
+                for dirpath, dirnames, filenames in os.walk(p, followlinks=False):
+                    keep = []
+                    dp = Path(dirpath)
+                    for d in dirnames:
+                        if d in sandbox.SKIP_DIRS:
+                            continue
+                        sub = dp / d
+                        if sub.is_symlink():
+                            continue
+                        sub_rel = str(sub.relative_to(self.ws.root))
+                        if not self._guard_allowed(sub_rel):
+                            self.guard_dirs[sub_rel] = stat.S_IMODE(sub.stat(follow_symlinks=False).st_mode)
+                        keep.append(d)
+                    dirnames[:] = keep
+            except OSError:
+                continue
         for rel in self._guard_files():
-            p = _safe_workspace_path(self.ws.root, rel)
+            p = _safe_symlink_target_path(self.ws.root, rel)
             if p is None:
                 continue
             try:
-                self.guard[rel] = p.read_bytes()
+                if p.is_symlink():
+                    self.guard[rel] = ('symlink', os.readlink(p), 0)
+                elif p.is_file():
+                    st = p.stat(follow_symlinks=False)
+                    self.guard[rel] = ('file', p.read_bytes(), stat.S_IMODE(st.st_mode))
             except OSError:
                 continue
 
     def restore_guard(self):
-        """Put back the files of the checks that a command of the executor changed or removed."""
+        """Restore protected files, symlinks, permissions, and directory structure changed by the executor."""
         back = []
-        for rel, before in self.guard.items():
-            p = _safe_workspace_path(self.ws.root, rel)
+        for rel_dir, before_mode in sorted(self.guard_dirs.items()):
+            p = _safe_symlink_target_path(self.ws.root, rel_dir)
             if p is None:
                 continue
             try:
-                same = p.read_bytes() == before
+                if p.is_symlink() or p.is_file():
+                    p.unlink()
+                    p.mkdir(parents=True, exist_ok=True)
+                    os.chmod(p, before_mode)
+                    back.append(rel_dir)
+                elif not p.exists():
+                    p.mkdir(parents=True, exist_ok=True)
+                    os.chmod(p, before_mode)
+                    back.append(rel_dir)
+                elif p.is_dir() and stat.S_IMODE(p.stat(follow_symlinks=False).st_mode) != before_mode:
+                    os.chmod(p, before_mode)
+                    back.append(rel_dir)
             except OSError:
-                same = False
-            if not same:
-                p.parent.mkdir(parents=True, exist_ok=True)
-                p.write_bytes(before)
-                back.append(rel)
+                continue
+        for rel, before in self.guard.items():
+            if self.ws.claims is not None and self.ws.claims.get(rel) not in (None, self.ws.name):
+                continue
+            p = _safe_symlink_target_path(self.ws.root, rel)
+            if p is None:
+                continue
+            kind, payload, before_mode = before
+            if kind == 'symlink':
+                try:
+                    same = p.is_symlink() and os.readlink(p) == payload
+                except OSError:
+                    same = False
+                if not same:
+                    if p.is_symlink() or p.is_file():
+                        p.unlink()
+                    elif p.is_dir():
+                        shutil.rmtree(p)
+                    p.parent.mkdir(parents=True, exist_ok=True)
+                    os.symlink(payload, p)
+                    back.append(rel)
+            else:
+                try:
+                    same = (not p.is_symlink() and p.is_file()
+                            and p.read_bytes() == payload
+                            and stat.S_IMODE(p.stat(follow_symlinks=False).st_mode) == before_mode)
+                except OSError:
+                    same = False
+                if not same:
+                    if p.is_symlink() or p.is_file():
+                        p.unlink()
+                    elif p.is_dir():
+                        shutil.rmtree(p)
+                    p.parent.mkdir(parents=True, exist_ok=True)
+                    p.write_bytes(payload)
+                    os.chmod(p, before_mode)
+                    back.append(rel)
+        for rel_dir in sorted(self.ws.protected):
+            if rel_dir not in self.guard_dirs:
+                continue
+            root_dir = _safe_symlink_target_path(self.ws.root, rel_dir)
+            if root_dir is None or not root_dir.is_dir() or root_dir.is_symlink():
+                continue
+            for dirpath, dirnames, filenames in os.walk(root_dir, topdown=True, followlinks=False):
+                dp = Path(dirpath)
+                keep = []
+                for d in dirnames:
+                    if d in sandbox.SKIP_DIRS:
+                        continue
+                    sub = dp / d
+                    if sub.is_symlink():
+                        sub_rel = str(sub.relative_to(self.ws.root))
+                        if (sub_rel not in self.guard
+                                and not self._guard_allowed(sub_rel)
+                                and (self.ws.claims is None or self.ws.claims.get(sub_rel) in (None, self.ws.name))):
+                            sub.unlink()
+                            back.append(sub_rel)
+                    else:
+                        keep.append(d)
+                dirnames[:] = keep
+                for name in filenames:
+                    fp = dp / name
+                    frel = str(fp.relative_to(self.ws.root))
+                    if (frel not in self.guard
+                            and not self._guard_allowed(frel)
+                            and (self.ws.claims is None or self.ws.claims.get(frel) in (None, self.ws.name))):
+                        try:
+                            fp.unlink()
+                            back.append(frel)
+                        except OSError:
+                            pass
+            for dirpath, dirnames, filenames in os.walk(root_dir, topdown=False, followlinks=False):
+                dp = Path(dirpath)
+                if dp == root_dir or dp.name in sandbox.SKIP_DIRS:
+                    continue
+                drel = str(dp.relative_to(self.ws.root))
+                if (drel not in self.guard_dirs
+                        and not self._guard_allowed(drel)
+                        and (self.ws.claims is None or self.ws.claims.get(drel) in (None, self.ws.name))):
+                    try:
+                        if not any(dp.iterdir()):
+                            dp.rmdir()
+                            back.append(drel)
+                    except OSError:
+                        pass
+        if self.ws.immutable:
+            for rel in sorted(self.touched | set(self.journal) | set(self.journal_bin)):
+                if rel in self.guard or not self.ws._is_immutable(rel):
+                    continue
+                if self.ws.claims is not None and self.ws.claims.get(rel) not in (None, self.ws.name):
+                    continue
+                p = _safe_symlink_target_path(self.ws.root, rel)
+                if p is not None and (p.is_symlink() or p.is_file()):
+                    try:
+                        p.unlink()
+                        back.append(rel)
+                    except OSError:
+                        pass
         self.restored += [rel for rel in back if rel not in self.restored]
         return back
 
@@ -1011,12 +1174,14 @@ def resume(job, hint, extra_steps=15):
 
 
 def _path_state_hash(path):
-    """Return a deterministic fingerprint for a symlink, regular file, or directory tree, or None if missing."""
+    """Return a deterministic fingerprint (including st_mode) for a symlink, regular file, or directory tree, or None if missing."""
     try:
         if path.is_symlink():
             return 'symlink:' + os.readlink(path)
         if path.is_file():
-            return hashlib.sha256(path.read_bytes()).hexdigest()
+            st = path.stat(follow_symlinks=False)
+            digest = hashlib.sha256(path.read_bytes()).hexdigest()
+            return f'file:{digest}:{stat.S_IMODE(st.st_mode):04o}'
         if path.is_dir():
             entries = []
             for dirpath, dirnames, filenames in os.walk(path, followlinks=False):
@@ -1025,24 +1190,38 @@ def _path_state_hash(path):
                     sub = dp / d
                     rel = str(sub.relative_to(path))
                     if sub.is_symlink():
-                        entries.append((rel, 'symlink', os.readlink(sub)))
+                        entries.append((rel, 'symlink', os.readlink(sub), 0))
                     else:
-                        entries.append((rel, 'dir', ''))
+                        entries.append((rel, 'dir', '', stat.S_IMODE(sub.stat(follow_symlinks=False).st_mode)))
                 for f in filenames:
                     fp = dp / f
                     rel = str(fp.relative_to(path))
                     if fp.is_symlink():
-                        entries.append((rel, 'symlink', os.readlink(fp)))
+                        entries.append((rel, 'symlink', os.readlink(fp), 0))
                     elif fp.is_file():
-                        entries.append((rel, 'file', hashlib.sha256(fp.read_bytes()).hexdigest()))
+                        st = fp.stat(follow_symlinks=False)
+                        entries.append((rel, 'file', hashlib.sha256(fp.read_bytes()).hexdigest(), stat.S_IMODE(st.st_mode)))
                     else:
-                        entries.append((rel, 'other', ''))
+                        entries.append((rel, 'other', '', 0))
             entries.sort()
             payload = json.dumps(entries, separators=(',', ':')).encode('utf-8')
             return 'dir:' + hashlib.sha256(payload).hexdigest()
     except OSError:
         return None
     return None
+
+
+def _state_matches(path, recorded):
+    """Compare current path state against a recorded _path_state_hash (supporting legacy bare sha256 hashes)."""
+    current = _path_state_hash(path)
+    if recorded is None or current is None:
+        return current == recorded
+    if recorded.startswith(('file:', 'dir:', 'symlink:')):
+        return current == recorded
+    if current.startswith('file:'):
+        parts = current.split(':', 2)
+        return len(parts) == 3 and parts[1] == recorded
+    return False
 
 
 def rollback(job):
@@ -1081,7 +1260,7 @@ def rollback(job):
     def user_modified(rel, p):
         if rel not in post_state:
             return False
-        return _path_state_hash(p) != post_state[rel]
+        return not _state_matches(p, post_state[rel])
 
     entries = journal_bin if journal_bin is not None else journal
     for rel, entry in entries.items():
@@ -1096,9 +1275,12 @@ def rollback(job):
             if entry is None:
                 no_post_state.append(rel)
                 continue
-            expected_hash = (entry if journal_bin is not None
-                             else hashlib.sha256(entry.encode('utf-8', errors='replace')).hexdigest())
-            if _path_state_hash(p) != expected_hash:
+            expected_digest = (entry if journal_bin is not None
+                               else hashlib.sha256(entry.encode('utf-8', errors='replace')).hexdigest())
+            expected_mode = journal_modes.get(rel)
+            expected_hash = (f'file:{expected_digest}:{expected_mode:04o}'
+                             if expected_mode is not None else expected_digest)
+            if not _state_matches(p, expected_hash):
                 no_post_state.append(rel)
                 continue
         if journal_bin is not None:
@@ -1170,8 +1352,14 @@ def rollback(job):
             left.append(rel)
             continue
         if cautious_crash and _path_state_hash(p) is not None:
-            expected_hash = snapshot.get(rel)
-            if expected_hash is None or _path_state_hash(p) != expected_hash:
+            expected_digest = snapshot.get(rel)
+            if expected_digest is None:
+                no_post_state.append(rel)
+                continue
+            expected_mode = snapshot_modes.get(rel)
+            expected_hash = (f'file:{expected_digest}:{expected_mode:04o}'
+                             if expected_mode is not None else expected_digest)
+            if not _state_matches(p, expected_hash):
                 no_post_state.append(rel)
                 continue
         if rel in snapshot:

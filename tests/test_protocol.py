@@ -486,6 +486,30 @@ ok('digest_file' in report and 'delegate' in report and 'quotes dropped' in repo
 ok(server.job_status('nope', 0) == 'unknown job nope' and server.job_rollback('nope') == 'unknown job nope'
    and server.job_diff('nope') == 'no diff for job nope', 'unknown job ids')
 ok(server.delegate('x', '/').startswith('ERROR') and server.delegate('x', '/nonexistent').startswith('ERROR'), 'bad workspace')
+
+# 15b. executor creates tests/conftest.py (with write_globs=[]) to bypass failing check -> rejected & removed
+conftest_root = Path(tempfile.mkdtemp(dir=Path.home() if os.environ.get('TANDEM_TEST_IN_HOME') else None))
+(conftest_root / 'tests').mkdir()
+(conftest_root / 'tests' / 'test_app.py').write_text(
+    'import os, unittest\n'
+    'class T(unittest.TestCase):\n'
+    '    def test_fail(self):\n'
+    '        if os.path.exists("tests/conftest.py"):\n'
+    '            return\n'
+    '        self.fail("must fail")\n'
+)
+bypass_cmd = f'{PY} -m unittest discover -s tests'
+fake.script = [
+    ('run', {'command': f'{PY} -c "open(\'tests/conftest.py\', \'w\').write(\'bypass = True\\n\')"'}),
+    ('finish', {'summary': 'all tests pass'}),
+]
+ct_job, ct_data = run('Make tests pass.', conftest_root, [bypass_cmd], fake.script, fake,
+                      write_globs=[], allow_run=[r'python'], max_repairs=0)
+ok(ct_data['state'] == 'checks_failed' and not (conftest_root / 'tests' / 'conftest.py').exists(),
+   f'creating tests/conftest.py with write_globs=[] is detected, removed, and cannot verify: {ct_data["state"]}')
+ok('tests/conftest.py' in ct_data.get('restored', []),
+   f'tests/conftest.py recorded in restored: {ct_data.get("restored")}')
+
 fake.close()
 
 # 16. the server speaks MCP -----------------------------------------------------------------------

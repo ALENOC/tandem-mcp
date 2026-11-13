@@ -542,4 +542,78 @@ rb_chmod = agent.rollback(chmod_job)
 ok('run.sh' in rb_chmod and (script_p.stat().st_mode & 0o777) == 0o644,
    'rollback() restores original file permissions (0o644)')
 
+# 16. full directory guard: new conftest.py, rename, chmod, symlink replacement, binary file, SKIP_DIRS, claims
+gdir_root = Path(tempfile.mkdtemp(dir=Path.home() if os.environ.get('TANDEM_TEST_IN_HOME') else None))
+(gdir_root / 'tests' / '__pycache__').mkdir(parents=True)
+(gdir_root / 'tests' / '__pycache__' / 'cached.pyc').write_bytes(b'\x00pyc')
+(gdir_root / 'tests' / 'test_a.py').write_text('def test_a():\n    assert False\n')
+os.chmod(gdir_root / 'tests' / 'test_a.py', 0o644)
+(gdir_root / 'tests' / 'fixture.bin').write_bytes(b'\x00\x01\xff\xfe')
+(gdir_root / 'tests' / 'other_task.py').write_text('# owned by other\n')
+gdir_ws = sandbox.Workspace(gdir_root, write_globs=[], allow_run=[r'^python3\b'])
+gdir_ws.name = 'task_a'
+gdir_ws.claims = {'tests/other_task.py': 'task_b'}
+gdir_ws.protect(['pytest -q'])
+gdir_job, gdir_folder = store.new_job('delegate')
+gdir_task = agent.Task(gdir_job, gdir_folder, 'goal', gdir_ws, ['pytest -q'], 5, 0, '', '')
+gdir_task.take_guard()
+# Simulate tampering: new conftest.py, rename, chmod, symlink replacement, binary corruption, new dir+symlink
+(gdir_root / 'tests' / 'conftest.py').write_text('def pytest_collection_modifyitems(items): items.clear()\n')
+(gdir_root / 'tests' / 'test_renamed.py').write_text('renamed\n')
+os.chmod(gdir_root / 'tests' / 'test_a.py', 0o444)
+(gdir_root / 'tests' / 'fixture.bin').unlink()
+os.symlink('/etc/passwd', gdir_root / 'tests' / 'fixture.bin')
+(gdir_root / 'tests' / 'sub').mkdir()
+os.symlink('/etc/hosts', gdir_root / 'tests' / 'sub' / 'evil_link')
+(gdir_root / 'tests' / 'other_task.py').write_text('# other task legitimate edit\n')
+bent_dir = gdir_task.restore_guard()
+ok('tests/conftest.py' in bent_dir and not (gdir_root / 'tests' / 'conftest.py').exists(),
+   'restore_guard() detects and removes newly created tests/conftest.py')
+ok('tests/test_renamed.py' in bent_dir and not (gdir_root / 'tests' / 'test_renamed.py').exists(),
+   'restore_guard() removes renamed/extra file inside protected tests/')
+ok('tests/test_a.py' in bent_dir and (gdir_root / 'tests' / 'test_a.py').stat().st_mode & 0o777 == 0o644,
+   'restore_guard() detects and restores permissions on protected test file')
+ok('tests/fixture.bin' in bent_dir and not (gdir_root / 'tests' / 'fixture.bin').is_symlink()
+   and (gdir_root / 'tests' / 'fixture.bin').read_bytes() == b'\x00\x01\xff\xfe',
+   'restore_guard() replaces symlink with original binary fixture byte-for-byte')
+ok('tests/sub/evil_link' in bent_dir and not (gdir_root / 'tests' / 'sub').exists(),
+   'restore_guard() removes unauthorized symlink and empty new subdir inside protected tests/')
+ok((gdir_root / 'tests' / '__pycache__' / 'cached.pyc').exists(),
+   'restore_guard() ignores SKIP_DIRS (__pycache__) inside protected tests/')
+ok((gdir_root / 'tests' / 'other_task.py').read_text() == '# other task legitimate edit\n',
+   'restore_guard() does not clobber file claimed by another parallel task')
+
+# 17. P2 permission integrity: 0644 -> 0755 -> 0700 (user edit after task) must NOT be overwritten by rollback
+pm_root = Path(tempfile.mkdtemp(dir=Path.home() if os.environ.get('TANDEM_TEST_IN_HOME') else None))
+pm_p = pm_root / 'run.sh'
+pm_p.write_text('#!/bin/sh\necho hi\n')
+os.chmod(pm_p, 0o644)
+pm_ws = sandbox.Workspace(pm_root, ['*'], [r'^chmod\b'])
+pm_job, pm_folder = store.new_job('delegate')
+pm_task = agent.Task(pm_job, pm_folder, 'goal', pm_ws, [], 5, 0, '', '')
+pm_task.call('run', {'command': 'chmod 755 run.sh'})
+pm_task._record_post_state()
+pm_task._save('unverified', 'done', [])
+os.chmod(pm_p, 0o700)
+rb_pm = agent.rollback(pm_job)
+ok('skipped (modified after job ended): run.sh' in rb_pm and (pm_p.stat().st_mode & 0o777) == 0o700,
+   'rollback() preserves post-task user permission change (0644 -> 0755 -> 0700)')
+
+# 17b. legacy post_state.json (bare sha256 without mode) remains compatible
+leg_root = Path(tempfile.mkdtemp(dir=Path.home() if os.environ.get('TANDEM_TEST_IN_HOME') else None))
+leg_p = leg_root / 'note.txt'
+leg_p.write_text('v1\n')
+leg_ws = sandbox.Workspace(leg_root, ['*'])
+leg_job, leg_folder = store.new_job('delegate')
+leg_task = agent.Task(leg_job, leg_folder, 'goal', leg_ws, [], 5, 0, '', '')
+leg_task.call('write_file', {'path': 'note.txt', 'content': 'v2\n'})
+leg_task._save('unverified', 'done', [])
+import hashlib as _hashlib
+store.write_json(leg_folder / 'post_state.json', {
+    'note.txt': _hashlib.sha256(b'v2\n').hexdigest(),
+})
+rb_leg = agent.rollback(leg_job)
+ok('restored: note.txt' in rb_leg and leg_p.read_text() == 'v1\n',
+   'rollback() remains compatible with legacy post_state.json bare sha256')
+
 print(f'{checks} checks, 0 failures')
