@@ -310,11 +310,11 @@ Using Tandem's **hybrid quality-preservation workflow** (non-vague contract `con
 **[Open both interactive 3D portals side-by-side in your browser](https://alenoc.github.io/tandem-mcp/benchmarks/scene3d_comparison.html)** ([source](benchmarks/scene3d_comparison.html))
 
 <details>
-<summary>Architectural spec & decomposition used for 3D Neon Portal</summary>
+<summary>Architectural spec &amp; decomposition used for 3D Neon Portal</summary>
 
-- `html_css` (`index.html`, 166 lines): full-viewport `<canvas id="c">`, dark radial gradient `#0d1633 -> #050814 -> #020309`, compact top-left glassmorphic `.hud` (`min-width: 220px`, `padding: 8px 10px`, `font-size: 11px`) with `#fps`, `#polys`, `#parts`, `#playBtn`, `#orbitBtn`, `#resetBtn`, `#spd`, `#spdVal`.
-- `engine3d` (`engine3d.js`, 394 lines): `window.PortalEngine(canvas, hudRefs)` with `yaw=0.55, pitch=0.34, dist=9.6, fov=580`, `y=-2.0` cyber-grid, floating stepped obsidian platform (`y=-1.25` and `y=-0.85`), twin pillars (`x=±1.25`), lintel (`y=1.95`) + crown cap (`y=2.32`), 6 alternating cyan/magenta octahedral crystals orbiting at `r=2.45`, directional lighting + painter's sort, radial-gradient portal core + 2 counter-rotating tilted rings, 180 twinkling stars, 110 rising neon particles, pointer drag-orbit & wheel zoom.
-- `app_loop` (`app.js`, 18 lines): binds `#c` and HUD refs, instantiates `PortalEngine`, calls `engine.start()`.
+- `html_css` (`index.html`, 64 lines): full-viewport `<canvas id="c">`, dark cosmic background `#0a0a1a`, bottom glassmorphic `.hud` with `#btnPause`, `#btnWire`, `#btnReset`, `#speed` slider (`0.2`–`3.0`), and `#stats` readout.
+- `engine3d` (`engine3d.js`, 673 lines): pure 2D-canvas software 3D engine exposed on `window.Engine3D` (`init`, `setSpeed`, `togglePause`, `toggleWireframe`, `reset`, `getStats`) with perspective projection, painter's-algorithm z-sorting, flat/specular shading, neon cyan/magenta perspective grid floor, multi-ring glowing neon portal, floating rotating faceted monolith with pulsing octahedral core, orbiting energy particles, starfield, mouse drag orbit, wheel zoom, and `devicePixelRatio` scaling.
+- `app_loop` (`app.js`, 41 lines): initializes `window.Engine3D.init(canvas)` and wires `#btnPause`, `#btnWire`, `#btnReset`, `#speed`, and periodic `#stats` updates (`FPS | polys`).
 
 </details>
 
@@ -327,8 +327,8 @@ Using Tandem's **hybrid quality-preservation workflow** (non-vague contract `con
 ## Tests
 
 ```sh
-.venv/bin/python tests/test_offline.py     # 156 checks: limits, evidence, journal, rollback, installer
-.venv/bin/python tests/test_protocol.py    # 149 checks: full loop against scripted server (no model)
+.venv/bin/python tests/test_offline.py     # 160 checks: limits, evidence, journal, rollback, installer
+.venv/bin/python tests/test_protocol.py    # 157 checks: full loop against scripted server (no model)
 .venv/bin/python tests/test_live.py        # live checks against your running local model
 .venv/bin/python tests/test_live.py --text # live checks via JSON-reply protocol
 ```
@@ -355,6 +355,8 @@ Using Tandem's **hybrid quality-preservation workflow** (non-vague contract `con
 
 </details>
 
-## License
+## License & Attribution
 
-MIT, see [LICENSE](LICENSE).
+MIT License — Copyright (c) 2026 **Alessandro Nocentini** ([@ALENOC](https://github.com/ALENOC)), see [LICENSE](LICENSE).
+
+If you fork this repository or build projects inspired by `tandem-mcp`'s architecture and ideas (cloud-orchestrator / local-executor pairing, lexical evidence verification, contract enforcement, and snapshot/rollback), please include clear attribution to **Alessandro Nocentini** and link to [github.com/ALENOC/tandem-mcp](https://github.com/ALENOC/tandem-mcp) (`@ALENOC`).

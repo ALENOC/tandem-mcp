@@ -9,7 +9,7 @@ description = "MCP server that pairs a cloud orchestrator model with any local e
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
-authors = [{ name = "ALENOC" }]
+authors = [{ name = "Alessandro Nocentini (ALENOC)" }]
 keywords = ["mcp", "local-llm", "lm-studio", "ollama", "llama.cpp", "agents"]
 dependencies = ["mcp>=2.3", "openai>=1.40"]
 
