@@ -17,9 +17,9 @@ Measured live with [`benchmarks/run_benchmark.py`](run_benchmark.py) (cache disa
 
 | Scenario | Tool | Source read | Returned to cloud | Cloud tokens (without → with) | Est. cloud tokens saved | Local tokens | Wall time | Evidence check |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| Full-file doc QA (`README.md`) | `digest_file` | 20,822 B (226/226 lines) | 403 B | 5,784 → 112 | **5,672 (98.1%)** | 6,732 | 23.97 s | `0` ok / `3` dropped (`unsupported`)* |
-| Targeted grep QA (`agent.py`) | `digest_file (grep)` | 52,912 B (7/1,065 lines) | 682 B | 14,698 → 189 | **14,508 (98.7%)** | 532 | 16.05 s | `2` ok / `0` dropped (`contested`) |
-| Multi-file survey (`tandem_mcp/*.py`) | `digest_many` (8 files) | 149,656 B (8 files) | 1,616 B | 41,571 → 449 | **41,122 (98.9%)** | 58,535 | 473.84 s | `13` ok / `0` dropped |
+| Full-file doc QA (`README.md`) | `digest_file` | 23,036 B (360/360 lines) | 491 B | 6,399 → 136 | **6,262 (97.9%)** | 9,141 | 66.24 s | `0` ok / `3` dropped (`unsupported`)* |
+| Targeted grep QA (`agent.py`) | `digest_file (grep)` | 75,402 B (7/1,500 lines) | 692 B | 20,945 → 192 | **20,753 (99.1%)** | 643 | 14.01 s | `3` ok / `0` dropped (`quote_only`) |
+| Multi-file survey (`tandem_mcp/*.py`) | `digest_many` (8 files) | 172,846 B (8 files) | 1,631 B | 48,013 → 453 | **47,560 (99.1%)** | 77,047 | 532.05 s | `12` ok / `0` dropped (`checked`) |
 
 *\*Note on `README.md`: the local model paraphrased its quotes instead of copying them verbatim, so Tandem's lexical evidence verifier dropped all 3 quotes and flagged `claim_supported = unsupported`. This is an intentional safety feature rather than a silent pass.*
 
@@ -31,8 +31,8 @@ Baseline assumes the cloud orchestrator reads the workspace files plus a ~600 B 
 
 | Scenario | Workspace size (+test out) | Receipt returned | Cloud tokens (without → with) | Est. cloud tokens saved | Local tokens | Wall time | Outcome |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| Micro bugfix (1 tiny file, 6 lines) | 1,047 B | 422 B | 291 → 117 | **174 (59.7%)** | 4,058 | 19.07 s | `VERIFIED` (3 steps, 0 repairs) |
-| Multi-file bugfix (`config_loader.py` + 3 files) | 6,094 B | 469 B | 1,693 → 130 | **1,562 (92.3%)** | 7,414 | 34.18 s | `VERIFIED` (4 steps, 0 repairs) |
+| Micro bugfix (1 tiny file, 6 lines) | 1,047 B | 438 B | 291 → 122 | **169 (58.2%)** | 5,581 | 24.28 s | `VERIFIED` (4 steps, 0 repairs) |
+| Multi-file bugfix (`config_loader.py` + 3 files) | 6,094 B | 469 B | 1,693 → 130 | **1,562 (92.3%)** | 7,432 | 34.66 s | `VERIFIED` (4 steps, 0 repairs) |
 
 ---
 
@@ -42,8 +42,8 @@ Measured live via MCP calls against `qwen3.8-27b@iq3_s` on LM Studio:
 
 | Scenario | Tool | Input size | Returned to cloud | Est. cloud tokens saved | Wall time | Verification |
 | --- | --- | ---: | ---: | ---: | ---: | --- |
-| Recent git history (`git log -n 30 --stat`) | `digest_command` | 13,725 B (315 lines) | 1,648 B | **3,355 (88.0%)** | ~113 s | 12/12 quotes verified |
-| Project manifest (`pyproject.toml`) | `extract_from_file` | 686 B (23 lines) | 115 B | **159 (83.2%)** | ~12 s | JSON Schema validated |
+| Recent git history (`git log -n 30 --stat`) | `digest_command` | 14,149 B (336 lines) | 1,422 B | **3,535 (90.0%)** | 147 s | 10/10 quotes verified |
+| Project manifest (`pyproject.toml`) | `extract_from_file` | 686 B (23 lines) | 143 B | **151 (79.2%)** | 12 s | JSON Schema validated |
 
 ---
 

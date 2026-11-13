@@ -219,18 +219,18 @@ Measured live on `qwen3.8-27b@iq3_s` (LM Studio, `65536` ctx, `11.1 tok/s`, cach
 
 | Task | Source → Cloud | Cloud Saved (est.) | Local Tokens | Time | Verification |
 | --- | --- | ---: | ---: | ---: | --- |
-| Full doc QA (`README.md`) | 20.8 KB → 403 B | **~5,672 tok (98.1%)** | 6,732 | 24.0 s | 0/3 quotes (`unsupported`)* |
-| Grep QA (`agent.py`, 7/1,065 lines) | 52.9 KB → 682 B | **~14,508 tok (98.7%)** | 532 | 16.1 s | 2/2 quotes (`contested`) |
-| 8-file survey (`tandem_mcp/*.py`) | 149.7 KB → 1.6 KB | **~41,122 tok (98.9%)** | 58,535 | 473.8 s | 13/13 quotes (`checked`) |
-| Command output (`git log -n 30 --stat`) | 13.7 KB → 1.6 KB | **~3,355 tok (88.0%)** | — | ~113 s | 12/12 quotes verified |
-| JSON extraction (`pyproject.toml`) | 686 B → 115 B | **~159 tok (83.2%)** | — | ~12 s | JSON Schema validated |
+| Full doc QA (`README.md`) | 23.0 KB → 491 B | **~6,262 tok (97.9%)** | 9,141 | 66.2 s | 0/3 quotes (`unsupported`)* |
+| Grep QA (`agent.py`, 7/1,500 lines) | 75.4 KB → 692 B | **~20,753 tok (99.1%)** | 643 | 14.0 s | 3/3 quotes (`quote_only`) |
+| 8-file survey (`tandem_mcp/*.py`) | 172.8 KB → 1.6 KB | **~47,560 tok (99.1%)** | 77,047 | 532.1 s | 12/12 quotes (`checked`) |
+| Command output (`git log -n 30 --stat`) | 14.1 KB → 1.4 KB | **~3,535 tok (90.0%)** | — | 147 s | 10/10 quotes verified |
+| JSON extraction (`pyproject.toml`) | 686 B → 143 B | **~151 tok (79.2%)** | — | 12 s | JSON Schema validated |
 
 **Delegated Coding (`delegate`)**
 
 | Task | Baseline → Receipt | Cloud Saved (est.) | Local Tokens | Time | Result |
 | --- | --- | ---: | ---: | ---: | --- |
-| Micro bugfix (1 file, 6 lines) | 1.0 KB → 422 B | **~174 tok (59.7%)** | 4,058 | 19.1 s | `VERIFIED` (3 steps, 0 repairs) |
-| Multi-file bugfix (4 files) | 6.1 KB → 469 B | **~1,562 tok (92.3%)** | 7,414 | 34.2 s | `VERIFIED` (4 steps, 0 repairs) |
+| Micro bugfix (1 file, 6 lines) | 1.0 KB → 438 B | **~169 tok (58.2%)** | 5,581 | 24.3 s | `VERIFIED` (4 steps, 0 repairs) |
+| Multi-file bugfix (4 files) | 6.1 KB → 469 B | **~1,562 tok (92.3%)** | 7,432 | 34.7 s | `VERIFIED` (4 steps, 0 repairs) |
 
 **Animation A/B Comparison (Orbital Particle Simulation, identical spec)**
 
