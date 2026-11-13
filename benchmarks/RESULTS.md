@@ -75,3 +75,18 @@ Identical prompt: generate a self-contained single-file HTML5 `<canvas>` orbital
    - Sending multiple heavy `digest_*` calls in parallel queues requests on a single local GPU and can hit the 3-minute MCP client timeout. Sequential calls or `grep` pre-filtering avoid this.
 4. **Verification catches local-model hallucinations**:
    - In the `README.md` run, the local model's non-verbatim quotes were caught and flagged (`0/3` verified) instead of being trusted blindly.
+
+---
+
+## 6. 3D Neon Portal & Floating Monolith (Quality-Preserved Hybrid Delegation)
+
+Re-tested after implementing Tandem's hybrid quality-preservation workflow (tight architectural specification, `delegate_many` module decomposition, orchestrator PNG visual inspection, and targeted `job_continue` polish).
+
+| Variant | Model(s) | Output | Cloud Output Tokens | Cloud Tokens Saved | Local Tokens | Verification |
+| :--- | :--- | :--- | ---: | ---: | ---: | :--- |
+| **Without Tandem** | `Gemini Hydrogen` (cloud direct) | [`scene3d_without_tandem/index.html`](scene3d_without_tandem/index.html) (403 lines, 15,724 B) | ~4,368 | — | — | `node --check` PASS, `60 FPS`, `84` polys |
+| **With Tandem MCP** | `Gemini Hydrogen` (orchestrator) + `qwen3.8-27b@iq3_s` (local) | [`scene3d_with_tandem/`](scene3d_with_tandem/index.html) (`index.html` 166 L / 3,728 B, `engine3d.js` 394 L / 13,482 B, `app.js` 18 L / 557 B — total 578 lines, 17,767 B) | ~650 | **~3,718 (85.1%)** | 314,126 (`6,876` + `282,803` + `24,447`) | All 3 jobs `VERIFIED` (`node --check` PASS), `job_feedback(accepted=True)`, `60 FPS`, `164` polys, visual PNG parity confirmed |
+
+- **2D Orbital Simulation GIFs**: Both `animation_without_tandem.gif` (390,921 B) and `animation_with_tandem.gif` (438,519 B) were re-rendered at `540x345` without synthetic mouse clicks so they faithfully show natural orbital motion.
+- **3D Neon Portal GIFs**: Both `scene3d_without_tandem.gif` (2,056,923 B) and `scene3d_with_tandem.gif` (2,049,532 B) were rendered at `540x345` from headless Chrome CDP.
+- **Side-by-side interactive comparison**: [`scene3d_comparison.html`](scene3d_comparison.html).

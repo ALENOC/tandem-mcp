@@ -269,6 +269,55 @@ Keep everything self-contained in index.html with zero external dependencies and
 
 </details>
 
+### 3D Neon Portal & Floating Monolith — Quality-Preserved Hybrid Delegation
+
+Using Tandem's **hybrid quality-preservation workflow** (tight architectural spec + `delegate_many` decomposition into `html_css`, `engine3d`, and `app_loop` + orchestrator visual PNG inspection + targeted `job_continue` polish), the local executor (`qwen3.8-27b@iq3_s`) matches the frontier cloud baseline (`Gemini Hydrogen`) in framing, geometry, lighting, and HUD layout while still cutting cloud output tokens by **~85.1%**:
+
+<table>
+  <thead>
+    <tr>
+      <th align="center">Without Tandem (Cloud Direct)</th>
+      <th align="center">With Tandem MCP (Hybrid Quality Control)</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td align="center">
+        <a href="https://alenoc.github.io/tandem-mcp/benchmarks/scene3d_without_tandem/">
+          <img src="benchmarks/scene3d_without_tandem.gif" alt="3D Neon Portal without Tandem (Cloud Direct)" width="360" height="230" />
+        </a><br />
+        <sub><b>Model:</b> <code>Gemini Hydrogen</code> (direct)</sub><br />
+        <sub>403 lines &middot; 15,724 B &middot; ~4,368 cloud output tokens</sub>
+      </td>
+      <td align="center">
+        <a href="https://alenoc.github.io/tandem-mcp/benchmarks/scene3d_with_tandem/">
+          <img src="benchmarks/scene3d_with_tandem.gif" alt="3D Neon Portal with Tandem MCP" width="360" height="230" />
+        </a><br />
+        <sub><b>Orchestrator:</b> <code>Gemini Hydrogen</code> + <b>Local:</b> <code>qwen3.8-27b@iq3_s</code></sub><br />
+        <sub>578 lines (3 files) &middot; 17,767 B &middot; ~650 cloud tokens (<b>85.1% saved</b>)</sub>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+| Variant | Model(s) | Output & Live Demo | Cloud Output Tokens | Cloud Tokens Saved | Local Tokens (`qwen3.8-27b@iq3_s`) | Verification |
+| :--- | :--- | :--- | ---: | ---: | ---: | :--- |
+| **Without Tandem** | `Gemini Hydrogen` (cloud direct) | **[Live Demo](https://alenoc.github.io/tandem-mcp/benchmarks/scene3d_without_tandem/)** ([source](benchmarks/scene3d_without_tandem/index.html), 15.7 KB, 403 lines) | ~4,368 | — | — | `node --check` PASS + headless Chrome PNG/FPS check (`60 FPS`, `84` polys) |
+| **With Tandem MCP** | Orchestrator: `Gemini Hydrogen` · Local: `qwen3.8-27b@iq3_s` (`LM Studio`, `delegate_many` + `delegate` + `job_continue`) | **[Live Demo](https://alenoc.github.io/tandem-mcp/benchmarks/scene3d_with_tandem/)** ([index.html](benchmarks/scene3d_with_tandem/index.html), [engine3d.js](benchmarks/scene3d_with_tandem/engine3d.js), [app.js](benchmarks/scene3d_with_tandem/app.js), 17.8 KB, 578 lines) | ~650 (specs + visual polish) | **~3,718 tok (85.1%)** | 314,126 | All 3 jobs `VERIFIED` (`node --check` PASS) + visual PNG parity check (`60 FPS`, `164` polys) |
+
+> **Cloud token savings & quality parity:** decomposing the 3D engine into 3 contracted modules (`html_css`, `engine3d`, `app_loop`) and running a single visual-inspection polish pass cut cloud output tokens from **~4,368** down to **~650** (**~85.1% saved**, `-3,718` cloud tokens) with **no visual degradation**.
+
+**[Open both interactive 3D portals side-by-side in your browser](https://alenoc.github.io/tandem-mcp/benchmarks/scene3d_comparison.html)** ([source](benchmarks/scene3d_comparison.html))
+
+<details>
+<summary>Architectural spec & decomposition used for 3D Neon Portal</summary>
+
+- `html_css` (`index.html`, 166 lines): full-viewport `<canvas id="c">`, dark radial gradient `#0d1633 -> #050814 -> #020309`, compact top-left glassmorphic `.hud` (`min-width: 220px`, `padding: 8px 10px`, `font-size: 11px`) with `#fps`, `#polys`, `#parts`, `#playBtn`, `#orbitBtn`, `#resetBtn`, `#spd`, `#spdVal`.
+- `engine3d` (`engine3d.js`, 394 lines): `window.PortalEngine(canvas, hudRefs)` with `yaw=0.55, pitch=0.34, dist=9.6, fov=580`, `y=-2.0` cyber-grid, floating stepped obsidian platform (`y=-1.25` and `y=-0.85`), twin pillars (`x=±1.25`), lintel (`y=1.95`) + crown cap (`y=2.32`), 6 alternating cyan/magenta octahedral crystals orbiting at `r=2.45`, directional lighting + painter's sort, radial-gradient portal core + 2 counter-rotating tilted rings, 180 twinkling stars, 110 rising neon particles, pointer drag-orbit & wheel zoom.
+- `app_loop` (`app.js`, 18 lines): binds `#c` and HUD refs, instantiates `PortalEngine`, calls `engine.start()`.
+
+</details>
+
 *\*In the `README.md` run, the local model paraphrased its quotes instead of copying them verbatim; Tandem's verifier dropped all 3 and flagged `unsupported` instead of passing unverified claims to the cloud model.*
 
 **Takeaway:** `digest_file` (especially with `grep`) and `digest_many` deliver **98%+** cloud input savings; `delegate` pays off on multi-file or test-repair tasks, while trivial 1-file edits save too few tokens to justify local latency.
