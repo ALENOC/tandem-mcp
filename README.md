@@ -213,7 +213,7 @@ Read this before pointing Tandem at a sensitive repository:
 
 Reproducible live suite: [benchmarks/run_benchmark.py](benchmarks/run_benchmark.py) · Full report: [benchmarks/RESULTS.md](benchmarks/RESULTS.md)
 
-Measured live on `qwen3.8-27b@iq3_s` (LM Studio, `65536` ctx, `11.1 tok/s`, cache disabled, `1 cloud tok ≈ 3.6 chars`):
+Measured live on `qwen3.8-27b@iq3_s` (LM Studio, `65536` ctx, `11.1 tok/s`, cache disabled, `1 cloud tok ≈ 3.6 chars`) on **Intel Core i9-9900K @ 3.60GHz (16 threads)**, **22 GiB RAM**, **AMD Radeon Navi 21 (RX 6800/6900 XT, 16 GiB VRAM)**, Linux x86_64:
 
 **Reading, Command Digest & Extraction (`digest_file`, `digest_many`, `digest_command`, `extract_from_file`)**
 

@@ -6,6 +6,7 @@ Measured live with [`benchmarks/run_benchmark.py`](run_benchmark.py) (cache disa
 
 - **Date**: 2026-11-13
 - **Platform**: Linux x86_64 / Python 3.13.17
+- **Hardware**: Intel Core i9-9900K @ 3.60GHz (16 threads) · 22 GiB RAM · AMD Radeon Navi 21 (RX 6800/6900 XT, 16 GiB VRAM)
 - **Local server**: LM Studio (`http://127.0.0.1:1234/v1`)
 - **Local model**: `qwen3.8-27b@iq3_s` (context `65536`, probed speed `11.1` tokens/s, native tool calls + reasoning stripped)
 - **Sandbox**: `bubblewrap` (machine read-only, workspace writable, credentials hidden, env secrets stripped, no network)

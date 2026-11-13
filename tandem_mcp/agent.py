@@ -219,11 +219,12 @@ def _is_binary(data):
 
 class Task:
     def __init__(self, job, folder, goal, workspace, verify, max_steps=30, max_repairs=2, model='', context='',
-                 baseline=True, max_seconds=0, checks_network=False, unjailed_checks=False):
+                 baseline=True, max_seconds=0, checks_network=False, unjailed_checks=False, constraints=None):
         self.job, self.folder, self.goal, self.ws = job, folder, goal, workspace
         self.verify, self.max_steps, self.max_repairs, self.model = list(verify), max_steps, max_repairs, model
         self.context, self.baseline, self.max_seconds = context, baseline, max_seconds
         self.checks_network, self.unjailed_checks = bool(checks_network), bool(unjailed_checks)
+        self.constraints = [str(c).strip() for c in (constraints or []) if str(c).strip()]
         self.journal = {}                  # relative path -> original text, None when the file was created
         self.journal_bin = {}              # relative path -> sha256 hex of original bytes, None when created
         self.journal_modes = {}            # relative path -> original st_mode (S_IMODE), None when created
@@ -895,6 +896,9 @@ class Task:
         if self.verify:
             rules.append('Checks that will run after finish: ' + ' ; '.join(self.verify))
         user = f'Task: {self.goal}\n\n' + '\n'.join(rules)
+        if self.constraints:
+            user += '\n\nContract constraints (every item MUST be satisfied):\n' + '\n'.join(
+                f'{i + 1}. {c}' for i, c in enumerate(self.constraints))
         if self.context:
             user += f'\n\nContext from the senior engineer:\n{self.context}'
         if self.verify and self.baseline:
@@ -1101,7 +1105,7 @@ class Task:
                     read_chars=self.read_chars, workspace=str(self.ws.root), goal=self.goal, context=self.context,
                     write_globs=self.ws.write_globs, allow_run=[r.pattern for r in self.ws.allow_run],
                     immutable=self.ws.immutable, checks_network=self.checks_network, unjailed_checks=self.unjailed_checks,
-                    verify=self.verify, model=self.model, used=self.used, max_steps=self.max_steps,
+                    verify=self.verify, constraints=self.constraints, model=self.model, used=self.used, max_steps=self.max_steps,
                     max_repairs=self.max_repairs, max_seconds=self.max_seconds,
                     protocol='native tool calls' if self.native else 'JSON replies',
                     before=[{'command': c['command'], 'exit': c['exit']} for c in self.before], weak=weak,
@@ -1145,10 +1149,10 @@ def _launch(task, body_of, release=None):
 
 
 def start(goal, workspace, verify, max_steps=30, max_repairs=2, model='', context='', baseline=True, max_seconds=0,
-          release=None, checks_network=False, unjailed_checks=False):
+          release=None, checks_network=False, unjailed_checks=False, constraints=None):
     job, folder = store.new_job('delegate')
     task = Task(job, folder, goal, workspace, verify, max_steps, max_repairs, model, context, baseline, max_seconds,
-                checks_network=checks_network, unjailed_checks=unjailed_checks)
+                checks_network=checks_network, unjailed_checks=unjailed_checks, constraints=constraints)
     task._save('running', '', [])
     _launch(task, task.run, release)
     return job
@@ -1170,7 +1174,8 @@ def resume(job, hint, extra_steps=15):
     ws = sandbox.Workspace(data['workspace'], data.get('write_globs'), data.get('allow_run'), data.get('immutable'))
     task = Task(job, folder, data['goal'], ws, data.get('verify', []), data.get('max_steps', 30), data.get('max_repairs', 2),
                 data.get('model', ''), data.get('context', ''), False, data.get('max_seconds', 0),
-                checks_network=data.get('checks_network', False), unjailed_checks=data.get('unjailed_checks', False))
+                checks_network=data.get('checks_network', False), unjailed_checks=data.get('unjailed_checks', False),
+                constraints=data.get('constraints'))
     task.journal = store.read_json(folder / 'journal.json', {}) or {}
     task.journal_bin = store.read_json(folder / 'journal_bin.json', {}) or {}
     task.journal_modes = store.read_json(folder / 'journal_modes.json', {}) or {}
@@ -1483,7 +1488,8 @@ def start_batch(tasks, workspace, allow_run, workers=1, max_steps=30, max_repair
                     row['job'] = start(spec['goal'], ws, spec.get('verify_commands', []), max_steps, max_repairs, model,
                                        spec.get('context') or context, baseline,
                                        checks_network=spec.get('checks_network', checks_network),
-                                       unjailed_checks=spec.get('unjailed_checks', unjailed_checks))
+                                       unjailed_checks=spec.get('unjailed_checks', unjailed_checks),
+                                       constraints=spec.get('constraints'))
                     running[row['name']] = RUNNING[row['job']][0]
                     row['state'] = state_of[row['name']] = 'running'
                 left = [r for r in rows if r['state'] in ('waiting', 'running')]

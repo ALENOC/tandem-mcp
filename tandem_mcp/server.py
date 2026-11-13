@@ -15,6 +15,7 @@ shape the tools:
 """
 import json
 import logging
+import re
 from pathlib import Path
 
 from mcp.server.mcpserver import MCPServer
@@ -287,13 +288,18 @@ def _receipt(job):
         lines.append(f'  check {"PASS" if c["exit"] == 0 else "FAIL"}  $ {c["command"]}{note}')
         if c['exit'] != 0:
             lines.append('    ' + c['tail'][-500:].replace('\n', '\n    '))
+    if data.get('constraints'):
+        lines.append('Contract constraints to inspect:')
+        for idx, c in enumerate(data['constraints'], 1):
+            lines.append(f'  - [ ] {idx}. {c}')
     if data.get('weak') and data['state'] == 'verified':
-        lines.append('NOTE: every check already passed before the job, so the checks do not prove this work. Read job_diff.')
+        lines.append('INSPECTION REQUIRED: every check already passed before the job, so the checks do not prove this work. '
+                     f'Inspect job_diff({job!r}) before job_feedback(accepted=True).')
     elif data['state'] == 'verified' and data.get('changes'):
         churn = sum(add + rem for _, _, add, rem in data['changes'])
-        if churn > 40:
-            lines.append(f'NOTE: non-trivial change ({churn} lines changed). Inspect job_diff for quality/edge cases before accepting, '
-                         'or use job_continue for targeted polish.')
+        if churn > 40 or data.get('constraints'):
+            lines.append(f'INSPECTION REQUIRED ({churn} lines changed): Inspect job_diff({job!r}) and verify all contract '
+                         'constraints before job_feedback(accepted=True), or use job_continue for targeted polish.')
     if data['state'] in ('stuck', 'out_of_steps') and not data.get('changes'):
         lines.append('HINT: no file was changed; if the task was too large for one shot, split it into smaller modules with delegate_many.')
     if data.get('restored'):
@@ -324,14 +330,32 @@ def _wait(job, seconds):
         entry[0].join(max(0.0, min(float(seconds), 1500.0)))
 
 
+_ANCHOR_RE = re.compile(r'[/\\`\'":=]|#[A-Za-z0-9_-]+|\.[A-Za-z0-9]{1,5}\b|\d')
+
+
+def _validate_contract(goal: str, constraints: list[str] | None, verify_commands: list[str] | None) -> list[str]:
+    clean_constraints = [str(c).strip() for c in (constraints or []) if str(c).strip()]
+    if not clean_constraints and not (verify_commands or []):
+        text = str(goal or '').strip()
+        words = [w for w in text.split() if w]
+        if len(text) < 25 or len(words) < 5 or not _ANCHOR_RE.search(text):
+            raise ValueError(
+                'vague goal refused: specify concrete targets (file paths, symbols, exact values/numbers), '
+                'a non-empty constraints list, or verify_commands'
+            )
+    return clean_constraints
+
+
 @mcp.tool()
 def delegate(goal: str, workspace: str, verify_commands: list[str] = [], write_globs: list[str] = [],
              allow_run: list[str] = [], immutable: list[str] = [], context: str = '', max_steps: int = 30,
              max_repairs: int = 2, wait_seconds: int = 240, model: str = '', baseline: bool = True,
-             max_seconds: int = 0, checks_network: bool = False, unjailed_checks: bool = False) -> str:
+             max_seconds: int = 0, checks_network: bool = False, unjailed_checks: bool = False,
+             constraints: list[str] = []) -> str:
     """Give the local executor a bounded task in a project and get a receipt.
 
-    goal: what to do, precise and self-contained (files, names, expected behaviour).
+    goal: what to do, precise and self-contained (files, names, exact values, expected behaviour).
+      Vague goals without concrete targets, constraints, or verify_commands are refused.
     workspace: absolute path of the project folder; the executor cannot leave it.
     verify_commands: shell commands that must exit 0 for the work to be accepted (tests, build,
       a grep that must find or not find something). They run after the executor finishes in an
@@ -343,6 +367,8 @@ def delegate(goal: str, workspace: str, verify_commands: list[str] = [], write_g
       part of a pipeline or chain must match one.
     immutable: files or globs relative to the workspace that are always read only.
     context: facts it needs and cannot find in the files.
+    constraints: explicit, checkable contract requirements (coordinates, selectors, invariants)
+      injected into the executor prompt and listed in the receipt for post-run inspection.
     wait_seconds: how long this call waits; a longer task keeps running, poll it with job_status.
     baseline: run the checks once before the work. The executor starts from their failures, and
       the receipt says when a check already passed, which means it proves nothing about this work.
@@ -357,9 +383,11 @@ def delegate(goal: str, workspace: str, verify_commands: list[str] = [], write_g
     with a change, renames. Poor tasks: design choices, anything without a check."""
     try:
         ws = sandbox.Workspace(workspace, write_globs, allow_run, immutable)
+        clean_constraints = _validate_contract(goal, constraints, verify_commands)
         job = agent.start(goal, ws, list(verify_commands), max(3, min(max_steps, 80)), max(0, min(max_repairs, 5)), model,
                           context, baseline, max(0, int(max_seconds)),
-                          checks_network=checks_network, unjailed_checks=unjailed_checks)
+                          checks_network=checks_network, unjailed_checks=unjailed_checks,
+                          constraints=clean_constraints)
         _wait(job, wait_seconds)
         return _saved('delegate', 0, _receipt(job))
     except Exception as exc:
@@ -375,9 +403,10 @@ def delegate_many(tasks: list[dict], workspace: str, allow_run: list[str] = [], 
 
     tasks: a list of objects with
       name             short unique name
-      goal             what to do, self-contained
+      goal             what to do, self-contained and non-vague
       verify_commands  checks of this task (list of shell commands)
       write_globs      files this task may write (list of globs)
+      constraints      explicit checkable requirements for this task (optional list)
       after            names of the tasks that must succeed first (list)
       context          facts for this task (optional)
       immutable        read-only files or globs for this task (optional)
@@ -392,9 +421,12 @@ def delegate_many(tasks: list[dict], workspace: str, allow_run: list[str] = [], 
         for n, t in enumerate(tasks):
             if not isinstance(t, dict) or not str(t.get('goal', '')).strip():
                 return _fail(f'task {n + 1} has no goal')
+            t_verify = list(t.get('verify_commands') or [])
+            t_constraints = _validate_contract(str(t['goal']), t.get('constraints'), t_verify)
             specs.append({'name': str(t.get('name') or f'task{n + 1}'), 'goal': str(t['goal']),
-                          'verify_commands': list(t.get('verify_commands') or []), 'write_globs': list(t.get('write_globs') or []),
+                          'verify_commands': t_verify, 'write_globs': list(t.get('write_globs') or []),
                           'immutable': list(t.get('immutable') or []),
+                          'constraints': t_constraints,
                           'checks_network': bool(t.get('checks_network', checks_network)),
                           'unjailed_checks': bool(t.get('unjailed_checks', unjailed_checks)),
                           'after': [str(a) for a in (t.get('after') or [])], 'context': str(t.get('context') or '')})
@@ -445,8 +477,12 @@ def job_diff(job_id: str, path: str = '', max_lines: int = 200) -> str:
         text = entry[1].diff(path)
     else:
         saved = store.JOBS / job_id / 'changes.diff'
-        if not store.read_job(job_id) or not saved.exists():
+        data = store.read_job(job_id)
+        if not data or not saved.exists():
             return f'no diff for job {job_id}'
+        if not data.get('diff_inspected'):
+            data['diff_inspected'] = True
+            store.write_job(job_id, data)
         text = saved.read_text()
         if path:
             blocks = ('\n' + text).split('\n--- ')
@@ -470,13 +506,22 @@ def job_rollback(job_id: str) -> str:
 
 
 @mcp.tool()
-def job_feedback(job_id: str, accepted: bool, lesson: str = '') -> str:
+def job_feedback(job_id: str, accepted: bool, lesson: str = '', constraints_verified: bool = False) -> str:
     """Your verdict on a delegated job. It feeds the acceptance statistics, and `lesson` (one
     sentence on what to do differently, or what was right) is given to the executor at its
-    next tasks in the same project. This is how the executor improves under your review."""
+    next tasks in the same project. For non-trivial changes, weak checks, or jobs with contract
+    constraints, `accepted=True` requires inspecting `job_diff(job_id)` first (and setting
+    `constraints_verified=True` when constraints were provided)."""
     data = store.read_job(job_id)
     if not data:
         return f'unknown job {job_id}'
+    if accepted:
+        churn = sum(add + rem for _, _, add, rem in (data.get('changes') or []))
+        needs_diff = bool(data.get('changes')) and (churn > 40 or bool(data.get('constraints')) or bool(data.get('weak')))
+        if needs_diff and not data.get('diff_inspected'):
+            return _fail(f'inspection required before accepting: call job_diff({job_id!r}) first to inspect the diff and verify constraints')
+        if data.get('constraints') and not constraints_verified:
+            return _fail('constraints verification required: confirm all contract constraints were inspected by passing constraints_verified=True')
     data['accepted'] = bool(accepted)
     store.write_job(job_id, data)
     store.log('feedback', kind='feedback', job=job_id, accepted=bool(accepted), state=data.get('state'),

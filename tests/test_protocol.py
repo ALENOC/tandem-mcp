@@ -343,8 +343,8 @@ def conflict_worker(body):
 
 fake.policy = conflict_worker
 out = server.delegate_many([
-    {'name': 'a', 'goal': 'TaskA', 'verify_commands': [], 'write_globs': ['shared.txt'], 'after': []},
-    {'name': 'b', 'goal': 'TaskB', 'verify_commands': [], 'write_globs': ['shared.txt'], 'after': []},
+    {'name': 'a', 'goal': 'TaskA: update shared.txt safely', 'constraints': ['update shared.txt'], 'verify_commands': [], 'write_globs': ['shared.txt'], 'after': []},
+    {'name': 'b', 'goal': 'TaskB: update shared.txt safely', 'constraints': ['update shared.txt'], 'verify_commands': [], 'write_globs': ['shared.txt'], 'after': []},
 ], str(conflict_root), allow_run=[r'^python3\b'], workers=2, wait_seconds=60)
 shared_text = (conflict_root / 'shared.txt').read_text()
 ok(shared_text == 'owned-by-a\n' and 'BLOCKED' in out,
@@ -372,8 +372,8 @@ def race_worker(body):
 
 fake.policy = race_worker
 race_out = server.delegate_many([
-    {'name': 'a', 'goal': 'RaceA', 'verify_commands': [], 'write_globs': ['a.txt'], 'after': []},
-    {'name': 'b', 'goal': 'RaceB', 'verify_commands': [], 'write_globs': ['b.txt'], 'after': []},
+    {'name': 'a', 'goal': 'RaceA: update a.txt via run', 'constraints': ['write from-a to a.txt'], 'verify_commands': [], 'write_globs': ['a.txt'], 'after': []},
+    {'name': 'b', 'goal': 'RaceB: update b.txt via write_file', 'constraints': ['write from-b to b.txt'], 'verify_commands': [], 'write_globs': ['b.txt'], 'after': []},
 ], str(race_root), allow_run=[r'^python3\b'], workers=2, wait_seconds=60)
 ok((race_root / 'a.txt').read_text() == 'from-a\n'
    and (race_root / 'b.txt').exists() and (race_root / 'b.txt').read_text() == 'from-b\n'
@@ -486,6 +486,31 @@ ok('digest_file' in report and 'delegate' in report and 'quotes dropped' in repo
 ok(server.job_status('nope', 0) == 'unknown job nope' and server.job_rollback('nope') == 'unknown job nope'
    and server.job_diff('nope') == 'no diff for job nope', 'unknown job ids')
 ok(server.delegate('x', '/').startswith('ERROR') and server.delegate('x', '/nonexistent').startswith('ERROR'), 'bad workspace')
+
+# 15a. intrinsic contract precision & post-inspection gates ----------------------------------------
+croot = project()
+ok('vague goal refused' in server.delegate('Make a cool 3D portal', str(croot)), 'vague goal without constraints or checks is refused')
+ok('vague goal refused' in server.delegate_many([{'name': 'x', 'goal': 'Build something nice'}], str(croot)), 'vague delegate_many task is refused')
+fake.requests.clear()
+fake.script = [
+    ('write_file', {'path': 'portal.js', 'content': 'const yaw = 0.55;\n'}),
+    ('finish', {'summary': 'wrote portal.js'}),
+]
+c_out = server.delegate(
+    'Create portal.js with camera yaw', str(croot),
+    verify_commands=['test -f portal.js'],
+    write_globs=['portal.js'],
+    constraints=['yaw=0.55 in portal.js', 'no external CDN'],
+    wait_seconds=60,
+)
+c_job = c_out.split()[1].rstrip(':')
+ok('Contract constraints to inspect:' in c_out and '1. yaw=0.55 in portal.js' in c_out and 'INSPECTION REQUIRED' in c_out, c_out)
+ok('Contract constraints (every item MUST be satisfied):' in fake.requests[0]['messages'][1]['content']
+   and '1. yaw=0.55 in portal.js' in fake.requests[0]['messages'][1]['content'], 'constraints injected into executor prompt')
+ok('inspection required before accepting' in server.job_feedback(c_job, True), 'cannot accept constrained job before job_diff')
+ok('yaw = 0.55' in server.job_diff(c_job), 'job_diff returns diff and marks diff_inspected')
+ok('constraints verification required' in server.job_feedback(c_job, True), 'cannot accept constrained job without constraints_verified=True')
+ok(server.job_feedback(c_job, True, constraints_verified=True) == 'recorded', 'accept succeeds after job_diff + constraints_verified=True')
 
 # 15b. executor creates tests/conftest.py (with write_globs=[]) to bypass failing check -> rejected & removed
 conftest_root = Path(tempfile.mkdtemp(dir=Path.home() if os.environ.get('TANDEM_TEST_IN_HOME') else None))
