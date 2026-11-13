@@ -508,9 +508,18 @@ ok('Contract constraints to inspect:' in c_out and '1. yaw=0.55 in portal.js' in
 ok('Contract constraints (every item MUST be satisfied):' in fake.requests[0]['messages'][1]['content']
    and '1. yaw=0.55 in portal.js' in fake.requests[0]['messages'][1]['content'], 'constraints injected into executor prompt')
 ok('inspection required before accepting' in server.job_feedback(c_job, True), 'cannot accept constrained job before job_diff')
-ok('yaw = 0.55' in server.job_diff(c_job), 'job_diff returns diff and marks diff_inspected')
+ok('full diff inspection required' in (server.job_diff(c_job, max_lines=1) and server.job_feedback(c_job, True, constraints_verified=True)),
+   'truncated job_diff cannot satisfy inspection gate')
+ok('yaw = 0.55' in server.job_diff(c_job), 'job_diff returns full diff and marks diff_inspected')
 ok('constraints verification required' in server.job_feedback(c_job, True), 'cannot accept constrained job without constraints_verified=True')
-ok(server.job_feedback(c_job, True, constraints_verified=True) == 'recorded', 'accept succeeds after job_diff + constraints_verified=True')
+ok(server.job_feedback(c_job, True, constraints_verified=True) == 'recorded', 'accept succeeds after full job_diff + constraints_verified=True')
+ok('vague constraint' in server.delegate('Update portal.js with yaw=0.55', str(croot), constraints=['looks good']),
+   'vague constraint without concrete anchor is refused')
+c_data = store.read_job(c_job)
+c_data['state'] = 'blocked'
+store.write_job(c_job, c_data)
+ok('cannot accept job in state' in server.job_feedback(c_job, True, constraints_verified=True),
+   'non-verified job cannot be accepted')
 
 # 15b. executor creates tests/conftest.py (with write_globs=[]) to bypass failing check -> rejected & removed
 conftest_root = Path(tempfile.mkdtemp(dir=Path.home() if os.environ.get('TANDEM_TEST_IN_HOME') else None))

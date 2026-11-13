@@ -334,9 +334,18 @@ _ANCHOR_RE = re.compile(r'[/\\`\'":=]|#[A-Za-z0-9_-]+|\.[A-Za-z0-9]{1,5}\b|\d')
 
 
 def _validate_contract(goal: str, constraints: list[str] | None, verify_commands: list[str] | None) -> list[str]:
+    text = str(goal or '').strip()
+    if not text:
+        raise ValueError('vague goal refused: describe the exact target, files, and expected behaviour')
     clean_constraints = [str(c).strip() for c in (constraints or []) if str(c).strip()]
+    for c in clean_constraints:
+        if len(c) < 10 or len(c.split()) < 2:
+            raise ValueError(f'vague constraint refused ({c!r}): each constraint must be a specific, checkable requirement')
+    if clean_constraints and not any(_ANCHOR_RE.search(c) for c in clean_constraints):
+        raise ValueError(
+            'vague constraints refused: include concrete anchors (file paths, selectors, symbols, or exact numbers)'
+        )
     if not clean_constraints and not (verify_commands or []):
-        text = str(goal or '').strip()
         words = [w for w in text.split() if w]
         if len(text) < 25 or len(words) < 5 or not _ANCHOR_RE.search(text):
             raise ValueError(
@@ -460,6 +469,11 @@ def job_continue(job_id: str, hint: str, extra_steps: int = 15, wait_seconds: in
     try:
         if not hint.strip():
             return _fail('give a hint: what the executor missed or should do next')
+        data = store.read_job(job_id)
+        if data:
+            data['diff_inspected'] = False
+            data['diff_truncated'] = False
+            store.write_job(job_id, data)
         agent.resume(job_id, hint, max(3, min(int(extra_steps), 60)))
         _wait(job_id, wait_seconds)
         return _saved('delegate', len(hint), _receipt(job_id))
@@ -475,20 +489,23 @@ def job_diff(job_id: str, path: str = '', max_lines: int = 200) -> str:
         return 'this is a batch: ask for the diff of one of its task jobs (job_status lists them)'
     if entry and entry[0].is_alive():
         text = entry[1].diff(path)
+        lines = text.splitlines()
+        truncated = len(lines) > max_lines
     else:
         saved = store.JOBS / job_id / 'changes.diff'
         data = store.read_job(job_id)
         if not data or not saved.exists():
             return f'no diff for job {job_id}'
-        if not data.get('diff_inspected'):
-            data['diff_inspected'] = True
-            store.write_job(job_id, data)
         text = saved.read_text()
         if path:
             blocks = ('\n' + text).split('\n--- ')
             text = '\n'.join('--- ' + b for b in blocks[1:] if len(b.splitlines()) > 1 and b.splitlines()[1].endswith('b/' + path))
-    lines = text.splitlines()
-    if len(lines) > max_lines:
+        lines = text.splitlines()
+        truncated = len(lines) > max_lines
+        data['diff_inspected'] = True
+        data['diff_truncated'] = truncated
+        store.write_job(job_id, data)
+    if truncated:
         lines = lines[:max_lines] + [f'[{len(lines) - max_lines} more lines: ask for one path or raise max_lines]']
     return _saved('job_diff', 0, '\n'.join(lines) or 'no change')
 
@@ -516,10 +533,14 @@ def job_feedback(job_id: str, accepted: bool, lesson: str = '', constraints_veri
     if not data:
         return f'unknown job {job_id}'
     if accepted:
+        if data.get('state') and data.get('state') != 'verified':
+            return _fail(f'cannot accept job in state {data.get("state")!r}: fix or job_continue until verified')
         churn = sum(add + rem for _, _, add, rem in (data.get('changes') or []))
         needs_diff = bool(data.get('changes')) and (churn > 40 or bool(data.get('constraints')) or bool(data.get('weak')))
         if needs_diff and not data.get('diff_inspected'):
             return _fail(f'inspection required before accepting: call job_diff({job_id!r}) first to inspect the diff and verify constraints')
+        if needs_diff and data.get('diff_truncated'):
+            return _fail(f'full diff inspection required: job_diff({job_id!r}) was truncated; inspect each file or raise max_lines before accepting')
         if data.get('constraints') and not constraints_verified:
             return _fail('constraints verification required: confirm all contract constraints were inspected by passing constraints_verified=True')
     data['accepted'] = bool(accepted)

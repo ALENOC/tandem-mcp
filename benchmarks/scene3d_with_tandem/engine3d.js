@@ -2,7 +2,15 @@
  * Pure HTML5 2D-canvas software 3D engine.
  * No WebGL, no external libraries.
  * Perspective projection + painter's algorithm z-sorting.
- * Flat/specular shading with a wireframe toggle.
+ * Flat shading with crisp neon wireframe edges.
+ *
+ * Scene: Neon Portal Monument (totem)
+ *   - cyber-grid floor
+ *   - two-tier stepped obsidian platform
+ *   - twin pillars + lintel beam + crown cap
+ *   - radial-gradient glowing portal core + 2 counter-rotating tilted rings
+ *   - 6 orbiting octahedral crystals (wireframe)
+ *   - twinkling stars + rising neon particles
  */
 (function () {
   'use strict';
@@ -15,6 +23,7 @@
     setSpeed: setSpeed,
     togglePause: togglePause,
     toggleWireframe: toggleWireframe,
+    toggleOrbit: toggleOrbit,
     reset: reset,
     getStats: getStats
   };
@@ -24,23 +33,25 @@
   // ---------------------------------------------------------------------------
   var canvas = null;
   var ctx = null;
-  var W = 0;      // CSS pixel width
-  var H = 0;      // CSS pixel height
+  var W = 0;
+  var H = 0;
   var dpr = 1;
 
   // Camera (orbit)
   var cam = {
-    yaw: 0.6,
-    pitch: 0.35,
-    dist: 14,
-    minDist: 5,
-    maxDist: 40,
-    focal: 0
+    yaw: 0.55,
+    pitch: 0.34,
+    dist: 9.6,
+    minDist: 4,
+    maxDist: 30,
+    fov: 580,
+    focal: 580
   };
 
   var speed = 1.0;
   var paused = false;
   var wireframe = false;
+  var autoOrbit = true;
 
   var simTime = 0;
   var lastTs = 0;
@@ -49,6 +60,7 @@
   // Stats
   var fps = 0;
   var polys = 0;
+  var parts = 0;
   var fpsAccum = 0;
   var fpsFrames = 0;
   var fpsTimer = 0;
@@ -61,10 +73,16 @@
   // Precomputed scene data
   var stars = [];
   var gridLines = [];
-  var portalRings = [];
-  var monolith = null;
-  var core = null;
+  var platform = null;
+  var pillars = null;
+  var lintel = null;
+  var crown = null;
+  var crystals = [];
   var particles = [];
+
+  // Neon palette
+  var CYAN = [0, 255, 255];
+  var MAGENTA = [255, 0, 200];
 
   // ---------------------------------------------------------------------------
   // Small math helpers
@@ -129,17 +147,57 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Geometry builders
+  // ---------------------------------------------------------------------------
+  // Axis-aligned box centered at (cx,cy,cz) with half-extents (hx,hy,hz).
+  // Returns { verts, faces } with outward-facing normals.
+  function makeBox(cx, cy, cz, hx, hy, hz) {
+    var v = [
+      { x: cx - hx, y: cy - hy, z: cz - hz },
+      { x: cx + hx, y: cy - hy, z: cz - hz },
+      { x: cx + hx, y: cy + hy, z: cz - hz },
+      { x: cx - hx, y: cy + hy, z: cz - hz },
+      { x: cx - hx, y: cy - hy, z: cz + hz },
+      { x: cx + hx, y: cy - hy, z: cz + hz },
+      { x: cx + hx, y: cy + hy, z: cz + hz },
+      { x: cx - hx, y: cy + hy, z: cz + hz }
+    ];
+    var faces = [
+      [0, 1, 2, 3], // back  (-z)
+      [5, 4, 7, 6], // front (+z)
+      [4, 0, 3, 7], // left  (-x)
+      [1, 5, 6, 2], // right (+x)
+      [3, 2, 6, 7], // top   (+y)
+      [4, 5, 1, 0]  // bottom(-y)
+    ];
+    return { verts: v, faces: faces };
+  }
+
+  // Octahedron centered at origin with radius r.
+  function makeOcta(r) {
+    var v = [
+      { x: r, y: 0, z: 0 }, { x: -r, y: 0, z: 0 },
+      { x: 0, y: r, z: 0 }, { x: 0, y: -r, z: 0 },
+      { x: 0, y: 0, z: r }, { x: 0, y: 0, z: -r }
+    ];
+    var faces = [
+      [0, 2, 4], [2, 1, 4], [1, 3, 4], [3, 0, 4],
+      [2, 0, 5], [1, 2, 5], [3, 1, 5], [0, 3, 5]
+    ];
+    return { verts: v, faces: faces };
+  }
+
+  // ---------------------------------------------------------------------------
   // Scene construction
   // ---------------------------------------------------------------------------
   function buildStars() {
     stars = [];
-    var n = 260;
+    var n = 180;
     for (var i = 0; i < n; i++) {
-      // Distribute on a large sphere shell
       var u = Math.random() * 2 - 1;
       var th = Math.random() * Math.PI * 2;
       var r = Math.sqrt(1 - u * u);
-      var rad = 60 + Math.random() * 40;
+      var rad = 55 + Math.random() * 45;
       stars.push({
         x: r * Math.cos(th) * rad,
         y: u * rad,
@@ -152,9 +210,9 @@
 
   function buildGrid() {
     gridLines = [];
-    var ext = 24;
+    var ext = 22;
     var step = 2;
-    var y = -4;
+    var y = -2.0;
     var i;
     for (i = -ext; i <= ext; i += step) {
       gridLines.push({ a: { x: i, y: y, z: -ext }, b: { x: i, y: y, z: ext }, major: (i % 8 === 0) });
@@ -162,75 +220,54 @@
     }
   }
 
-  function buildPortal() {
-    portalRings = [];
-    var segs = 64;
-    var radii = [3.2, 2.6, 2.0, 1.5];
-    var cols = [
-      [0, 255, 255],   // cyan
-      [255, 0, 200],   // magenta
-      [0, 255, 255],
-      [255, 0, 200]
+  function buildPlatform() {
+    // Two-tier stepped obsidian platform.
+    // Tier 1 (lower, wider) top at y=-1.25; Tier 2 (upper, narrower) top at y=-0.85.
+    platform = {
+      tier1: makeBox(0, -1.65, 0, 3.4, 0.4, 3.4), // top face at y=-1.25
+      tier2: makeBox(0, -1.05, 0, 2.5, 0.2, 2.5)  // top face at y=-0.85
+    };
+  }
+
+  function buildPillars() {
+    // Twin pillars at x=+-1.25 from y=-0.85 to y=1.85 (center y=0.5, half-height 1.35).
+    var py = 0.5, ph = 1.35, pw = 0.28;
+    pillars = [
+      makeBox(-1.25, py, 0, pw, ph, pw),
+      makeBox(1.25, py, 0, pw, ph, pw)
     ];
-    for (var r = 0; r < radii.length; r++) {
-      var pts = [];
-      for (var i = 0; i <= segs; i++) {
-        var a = (i / segs) * Math.PI * 2;
-        pts.push({
-          x: Math.cos(a) * radii[r],
-          y: Math.sin(a) * radii[r],
-          z: 0
-        });
-      }
-      portalRings.push({ pts: pts, col: cols[r], phase: r * 0.7, width: 3.5 - r * 0.5 });
+    // Lintel beam at y=1.95 spanning the pillars.
+    lintel = makeBox(0, 1.95, 0, 1.55, 0.22, 0.34);
+    // Crown cap at y=2.32.
+    crown = makeBox(0, 2.32, 0, 1.7, 0.18, 0.5);
+  }
+
+  function buildCrystals() {
+    crystals = [];
+    var n = 6;
+    for (var i = 0; i < n; i++) {
+      crystals.push({
+        ang: (i / n) * Math.PI * 2,
+        rad: 2.45,
+        y: 0.5 + Math.sin(i * 1.7) * 0.4,
+        spd: 0.5 + (i % 3) * 0.15,
+        r: 0.34,
+        hue: i % 2,
+        spin: i * 0.9
+      });
     }
-  }
-
-  // Faceted monolith: a beveled box (12 faces) built from 8 corner verts.
-  function buildMonolith() {
-    var hx = 1.1, hy = 2.2, hz = 0.5;
-    var v = [
-      { x: -hx, y: -hy, z: -hz }, { x: hx, y: -hy, z: -hz },
-      { x: hx, y: hy, z: -hz }, { x: -hx, y: hy, z: -hz },
-      { x: -hx, y: -hy, z: hz }, { x: hx, y: -hy, z: hz },
-      { x: hx, y: hy, z: hz }, { x: -hx, y: hy, z: hz }
-    ];
-    var faces = [
-      [0, 1, 2, 3], // back
-      [5, 4, 7, 6], // front
-      [4, 0, 3, 7], // left
-      [1, 5, 6, 2], // right
-      [3, 2, 6, 7], // top
-      [4, 5, 1, 0]  // bottom
-    ];
-    monolith = { verts: v, faces: faces, baseY: 0.4 };
-  }
-
-  function buildCore() {
-    // Glowing icosahedron-ish core: use an octahedron (6 verts, 8 faces)
-    var r = 0.55;
-    var v = [
-      { x: r, y: 0, z: 0 }, { x: -r, y: 0, z: 0 },
-      { x: 0, y: r, z: 0 }, { x: 0, y: -r, z: 0 },
-      { x: 0, y: 0, z: r }, { x: 0, y: 0, z: -r }
-    ];
-    var faces = [
-      [0, 2, 4], [2, 1, 4], [1, 3, 4], [3, 0, 4],
-      [2, 0, 5], [1, 2, 5], [3, 1, 5], [0, 3, 5]
-    ];
-    core = { verts: v, faces: faces };
   }
 
   function buildParticles() {
     particles = [];
-    var n = 40;
+    var n = 110;
     for (var i = 0; i < n; i++) {
       particles.push({
-        ang: (i / n) * Math.PI * 2,
-        rad: 4.2 + (i % 3) * 0.5,
-        y: Math.sin(i * 1.3) * 1.6,
-        spd: 0.4 + (i % 5) * 0.12,
-        size: 0.12 + (i % 4) * 0.05,
+        x: (Math.random() * 2 - 1) * 6,
+        z: (Math.random() * 2 - 1) * 6,
+        y: -2 + Math.random() * 5,
+        spd: 0.4 + Math.random() * 0.8,
+        size: 0.05 + Math.random() * 0.08,
         hue: i % 2
       });
     }
@@ -239,9 +276,9 @@
   function buildScene() {
     buildStars();
     buildGrid();
-    buildPortal();
-    buildMonolith();
-    buildCore();
+    buildPlatform();
+    buildPillars();
+    buildCrystals();
     buildParticles();
   }
 
@@ -251,7 +288,6 @@
   var drawList = [];
 
   function pushPoly(verts, col, opts) {
-    // verts: array of projected {x,y,z}
     var depth = 0;
     for (var i = 0; i < verts.length; i++) depth += verts[i].z;
     depth /= verts.length;
@@ -269,27 +305,55 @@
     drawList.push({ type: 'point', p: p, col: col, size: size, glow: glow, depth: p.z });
   }
 
-  // Flat + specular shading of a face given world-space normal and projected verts
-  function shadeFace(worldVerts, normal, baseCol, opts) {
-    var light = normalize({ x: -0.4, y: 0.8, z: 0.6 });
+  // Flat shading: ambient + diffuse from a fixed light, plus a small specular.
+  function shadeFace(normal, baseCol, opts) {
+    var light = normalize({ x: -0.4, y: 0.85, z: 0.55 });
     var ndl = dot(normal, light);
     if (ndl < 0) ndl = 0;
-    var ambient = 0.25;
+    var ambient = 0.22;
     var diff = ambient + (1 - ambient) * ndl;
-
-    // Specular (Blinn-ish) using view dir ~ (0,0,1) in camera space approx
     var view = { x: 0, y: 0, z: 1 };
     var half = normalize({
       x: light.x + view.x,
       y: light.y + view.y,
       z: light.z + view.z
     });
-    var spec = Math.pow(Math.max(0, dot(normal, half)), 24) * (opts.specular || 0.6);
-
+    var spec = Math.pow(Math.max(0, dot(normal, half)), 20) * (opts.specular || 0.5);
     var r = clamp(baseCol[0] * diff + 255 * spec, 0, 255) | 0;
     var g = clamp(baseCol[1] * diff + 255 * spec, 0, 255) | 0;
     var b = clamp(baseCol[2] * diff + 255 * spec, 0, 255) | 0;
     return [r, g, b];
+  }
+
+  // Draw a solid mesh (box / octahedron) with dark shaded faces + neon edges.
+  // All faces are emitted and depth-sorted by the painter's algorithm.
+  // mesh: { verts, faces } in world space.
+  function drawMesh(mesh, baseCol, edgeCol, opts) {
+    opts = opts || {};
+    var wv = [];
+    var pv = [];
+    for (var i = 0; i < mesh.verts.length; i++) {
+      var v = mesh.verts[i];
+      wv.push(v);
+      pv.push(toCamera(v));
+    }
+    for (var f = 0; f < mesh.faces.length; f++) {
+      var idx = mesh.faces[f];
+      var a = wv[idx[0]], b = wv[idx[1]], c = wv[idx[2]];
+      var n = normalize(cross({ x: b.x - a.x, y: b.y - a.y, z: b.z - a.z },
+                              { x: c.x - a.x, y: c.y - a.y, z: c.z - a.z }));
+
+      var cam = [pv[idx[0]], pv[idx[1]], pv[idx[2]]];
+      if (idx.length === 4) cam.push(pv[idx[3]]);
+      var ok = true;
+      for (var k = 0; k < cam.length; k++) if (cam[k].z <= 0.1) { ok = false; break; }
+      if (!ok) continue;
+
+      var col = shadeFace(n, baseCol, { specular: opts.specular || 0.4 });
+      var verts = cam.map(function (q) { return project(q); });
+      pushPoly(verts, col, { edge: edgeCol, glow: opts.glow });
+      polys++;
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -302,9 +366,9 @@
       if (cp.z <= 0.1) continue;
       var p = project(cp);
       if (p.x < -20 || p.x > W + 20 || p.y < -20 || p.y > H + 20) continue;
-      var tw = 0.6 + 0.4 * Math.sin(simTime * 2 + s.tw);
+      var tw = 0.55 + 0.45 * Math.sin(simTime * 2 + s.tw);
       var a = clamp(s.b * tw, 0, 1);
-      pushPoint(p, [255, 255, 255], 1 + s.b, a);
+      pushPoint(p, [255, 255, 255], 0.8 + s.b * 1.2, a);
     }
   }
 
@@ -316,135 +380,104 @@
       if (a.z <= 0.1 || b.z <= 0.1) continue;
       var pa = project(a);
       var pb = project(b);
-      // Fade with distance
-      var fade = clamp(1.4 - (a.z + b.z) * 0.5 / cam.dist, 0.15, 1);
-      var col = L.major ? [0, 255, 255] : [255, 0, 200];
-      var alpha = (L.major ? 0.55 : 0.3) * fade;
+      var fade = clamp(1.5 - (a.z + b.z) * 0.5 / cam.dist, 0.15, 1);
+      var col = L.major ? CYAN : MAGENTA;
+      var alpha = (L.major ? 0.6 : 0.32) * fade;
       pushLine(pa, pb, col, L.major ? 1.6 : 1, alpha);
     }
   }
 
-  function drawPortal() {
-    for (var r = 0; r < portalRings.length; r++) {
-      var ring = portalRings[r];
-      var spin = simTime * 0.5 + ring.phase;
-      var pts = ring.pts;
-      var prev = null;
-      for (var i = 0; i < pts.length; i++) {
-        var w = pts[i];
-        // Slowly rotate ring in its own plane for shimmer
-        var ca = Math.cos(spin), sa = Math.sin(spin);
-        var wx = w.x * ca - w.y * sa;
-        var wy = w.x * sa + w.y * ca;
-        var cp = toCamera({ x: wx, y: wy, z: w.z });
-        if (cp.z <= 0.1) { prev = null; continue; }
-        var p = project(cp);
-        if (prev) {
-          var pulse = 0.6 + 0.4 * Math.sin(simTime * 3 + i * 0.3 + ring.phase);
-          pushLine(prev, p, ring.col, ring.width, 0.5 + 0.5 * pulse);
-        }
-        prev = p;
+  function drawPlatform() {
+    // Dark obsidian fill with glowing cyan/magenta edges.
+    drawMesh(platform.tier1, [12, 18, 40], CYAN, { specular: 0.3 });
+    drawMesh(platform.tier2, [12, 18, 40], MAGENTA, { specular: 0.3 });
+  }
+
+  function drawPillars() {
+    for (var i = 0; i < pillars.length; i++) {
+      drawMesh(pillars[i], [14, 20, 44], i === 0 ? CYAN : MAGENTA, { specular: 0.35 });
+    }
+    drawMesh(lintel, [14, 20, 44], CYAN, { specular: 0.35 });
+    drawMesh(crown, [16, 22, 48], MAGENTA, { specular: 0.4 });
+  }
+
+  // Radial-gradient glowing portal core at (0, 0.5, 0) + 2 counter-rotating tilted rings.
+  function drawPortalCore() {
+    var cx = 0, cy = 0.5, cz = 0;
+    var cp = toCamera({ x: cx, y: cy, z: cz });
+    if (cp.z <= 0.1) return;
+    var p = project(cp);
+    var pulse = 0.85 + 0.15 * Math.sin(simTime * 3);
+    var rad = 1.4 * p.s * pulse;
+    drawList.push({ type: 'core', p: p, rad: rad, depth: cp.z, pulse: pulse });
+
+    // Two counter-rotating tilted neon rings.
+    drawRing(cx, cy, cz, 1.0, 0.5, simTime * 0.8, CYAN, 2.4);
+    drawRing(cx, cy, cz, 1.35, -0.35, -simTime * 0.6, MAGENTA, 2.0);
+  }
+
+  // A tilted neon ring (circle of radius r) centered at (cx,cy,cz).
+  // tiltX/tiltZ are fixed plane tilts; spin rotates the ring in its own plane.
+  function drawRing(cx, cy, cz, r, tiltX, spin, col, width) {
+    var segs = 48;
+    var ca = Math.cos(spin), sa = Math.sin(spin);
+    var tx = Math.cos(tiltX), sx = Math.sin(tiltX);
+    var prev = null;
+    for (var i = 0; i <= segs; i++) {
+      var a = (i / segs) * Math.PI * 2;
+      var lx = Math.cos(a) * r;
+      var ly = Math.sin(a) * r;
+      // Rotate in-plane (spin) then tilt around X
+      var rx = lx * ca - ly * sa;
+      var ry = lx * sa + ly * ca;
+      var wx = cx + rx;
+      var wy = cy + ry * tx;
+      var wz = cz + ry * sx;
+      var cp = toCamera({ x: wx, y: wy, z: wz });
+      if (cp.z <= 0.1) { prev = null; continue; }
+      var p = project(cp);
+      if (prev) {
+        var pulse = 0.6 + 0.4 * Math.sin(simTime * 3 + i * 0.3);
+        pushLine(prev, p, col, width, 0.5 + 0.5 * pulse);
       }
+      prev = p;
     }
   }
 
-  function drawMonolith() {
-    var rot = simTime * 0.7;
-    var cr = Math.cos(rot), sr = Math.sin(rot);
-    var bob = Math.sin(simTime * 1.2) * 0.25;
-
-    // Transform each vertex: rotate around Y, then lift, then camera transform
-    var wv = [];
-    var pv = [];
-    for (var i = 0; i < monolith.verts.length; i++) {
-      var v = monolith.verts[i];
-      var x = v.x * cr - v.z * sr;
-      var z = v.x * sr + v.z * cr;
-      var y = v.y + monolith.baseY + bob;
-      wv.push({ x: x, y: y, z: z });
-      pv.push(toCamera({ x: x, y: y, z: z }));
-    }
-
-    var camPos = cameraWorldPos();
-
-    for (var f = 0; f < monolith.faces.length; f++) {
-      var idx = monolith.faces[f];
-      var a = wv[idx[0]], b = wv[idx[1]], c = wv[idx[2]], d = wv[idx[3]];
-      var n = normalize(cross({ x: b.x - a.x, y: b.y - a.y, z: b.z - a.z },
-                              { x: c.x - a.x, y: c.y - a.y, z: c.z - a.z }));
-      // Backface cull: keep faces whose normal points toward the camera
-      var toCam = { x: camPos.x - a.x, y: camPos.y - a.y, z: camPos.z - a.z };
-      if (dot(n, toCam) <= 0) continue;
-
-      var cam = [pv[idx[0]], pv[idx[1]], pv[idx[2]], pv[idx[3]]];
-      var ok = true;
-      for (var k = 0; k < cam.length; k++) if (cam[k].z <= 0.1) { ok = false; break; }
-      if (!ok) continue;
-
-      var col = shadeFace(wv, n, [120, 140, 255], { specular: 0.7 });
-      var verts = cam.map(function (q) { return project(q); });
-      pushPoly(verts, col, { specular: true });
-      polys++;
-    }
-  }
-
-  function drawCore() {
-    var rot = simTime * 1.5;
-    var cr = Math.cos(rot), sr = Math.sin(rot);
-    var bob = Math.sin(simTime * 1.2) * 0.25;
-    var cy = monolith.baseY + bob;
-
-    var wv = [];
-    var pv = [];
-    for (var i = 0; i < core.verts.length; i++) {
-      var v = core.verts[i];
-      var x = v.x * cr - v.z * sr;
-      var z = v.x * sr + v.z * cr;
-      var y = v.y + cy;
-      wv.push({ x: x, y: y, z: z });
-      pv.push(toCamera({ x: x, y: y, z: z }));
-    }
-
-    var camPos = cameraWorldPos();
-
-    for (var f = 0; f < core.faces.length; f++) {
-      var idx = core.faces[f];
-      var a = wv[idx[0]], b = wv[idx[1]], c = wv[idx[2]];
-      var n = normalize(cross({ x: b.x - a.x, y: b.y - a.y, z: b.z - a.z },
-                              { x: c.x - a.x, y: c.y - a.y, z: c.z - a.z }));
-      var toCam = { x: camPos.x - a.x, y: camPos.y - a.y, z: camPos.z - a.z };
-      if (dot(n, toCam) <= 0) continue;
-
-      var cam = [pv[idx[0]], pv[idx[1]], pv[idx[2]]];
-      var ok = true;
-      for (var k = 0; k < cam.length; k++) if (cam[k].z <= 0.1) { ok = false; break; }
-      if (!ok) continue;
-
-      var pulse = 0.7 + 0.3 * Math.sin(simTime * 4);
-      var col = [
-        clamp(255 * pulse, 0, 255) | 0,
-        clamp(120 * pulse, 0, 255) | 0,
-        clamp(255 * pulse, 0, 255) | 0
-      ];
-      var verts = cam.map(function (q) { return project(q); });
-      pushPoly(verts, col, { glow: true });
-      polys++;
+  function drawCrystals() {
+    for (var i = 0; i < crystals.length; i++) {
+      var c = crystals[i];
+      var ang = c.ang + simTime * c.spd;
+      var cx = Math.cos(ang) * c.rad;
+      var cz = Math.sin(ang) * c.rad;
+      var cy = c.y + Math.sin(simTime * 1.5 + i) * 0.2;
+      // Build a spinning octahedron at the crystal position.
+      var base = makeOcta(c.r);
+      var cr = Math.cos(simTime * 1.2 + c.spin), sr = Math.sin(simTime * 1.2 + c.spin);
+      var verts = [];
+      for (var k = 0; k < base.verts.length; k++) {
+        var v = base.verts[k];
+        var x = v.x * cr - v.z * sr;
+        var z = v.x * sr + v.z * cr;
+        verts.push({ x: cx + x, y: cy + v.y, z: cz + z });
+      }
+      var col = c.hue ? CYAN : MAGENTA;
+      drawMesh({ verts: verts, faces: base.faces }, [10, 14, 30], col, { specular: 0.6, glow: true });
     }
   }
 
   function drawParticles() {
     for (var i = 0; i < particles.length; i++) {
       var p = particles[i];
-      var ang = p.ang + simTime * p.spd;
-      var x = Math.cos(ang) * p.rad;
-      var z = Math.sin(ang) * p.rad;
-      var y = p.y + Math.sin(simTime * 2 + i) * 0.3;
-      var cp = toCamera({ x: x, y: y, z: z });
+      var y = p.y + (simTime * p.spd) % 5;
+      if (y > 3) y -= 5;
+      var cp = toCamera({ x: p.x, y: y, z: p.z });
       if (cp.z <= 0.1) continue;
       var pr = project(cp);
-      var col = p.hue ? [0, 255, 255] : [255, 0, 200];
-      var size = p.size * pr.s * 0.5;
-      pushPoint(pr, col, size, 0.9);
+      var col = p.hue ? CYAN : MAGENTA;
+      var size = p.size * pr.s * 0.6;
+      pushPoint(pr, col, size, 0.85);
+      parts++;
     }
   }
 
@@ -454,12 +487,14 @@
   function render() {
     drawList.length = 0;
     polys = 0;
+    parts = 0;
 
     drawStars();
     drawGrid();
-    drawPortal();
-    drawMonolith();
-    drawCore();
+    drawPlatform();
+    drawPillars();
+    drawPortalCore();
+    drawCrystals();
     drawParticles();
 
     // Painter's algorithm: far to near
@@ -482,6 +517,8 @@
         drawLine(it);
       } else if (it.type === 'point') {
         drawPoint(it);
+      } else if (it.type === 'core') {
+        drawCore(it);
       }
     }
   }
@@ -502,15 +539,25 @@
 
     if (it.opts.glow) {
       ctx.shadowColor = 'rgb(' + it.col[0] + ',' + it.col[1] + ',' + it.col[2] + ')';
-      ctx.shadowBlur = 18;
+      ctx.shadowBlur = 14;
     }
     ctx.fillStyle = 'rgb(' + it.col[0] + ',' + it.col[1] + ',' + it.col[2] + ')';
     ctx.fill();
     ctx.shadowBlur = 0;
-    // subtle edge
-    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
-    ctx.lineWidth = 0.6;
-    ctx.stroke();
+
+    // Crisp neon edge
+    if (it.opts.edge) {
+      ctx.strokeStyle = 'rgba(' + it.opts.edge[0] + ',' + it.opts.edge[1] + ',' + it.opts.edge[2] + ',0.9)';
+      ctx.lineWidth = 1.4;
+      ctx.shadowColor = 'rgb(' + it.opts.edge[0] + ',' + it.opts.edge[1] + ',' + it.opts.edge[2] + ')';
+      ctx.shadowBlur = 8;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    } else {
+      ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+      ctx.lineWidth = 0.6;
+      ctx.stroke();
+    }
   }
 
   function drawLine(it) {
@@ -540,6 +587,20 @@
     ctx.shadowBlur = 0;
   }
 
+  function drawCore(it) {
+    var p = it.p;
+    var r = Math.max(4, it.rad);
+    var g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r);
+    g.addColorStop(0, 'rgba(255,255,255,' + (0.95 * it.pulse) + ')');
+    g.addColorStop(0.35, 'rgba(0,255,255,' + (0.7 * it.pulse) + ')');
+    g.addColorStop(0.7, 'rgba(255,0,200,' + (0.35 * it.pulse) + ')');
+    g.addColorStop(1, 'rgba(255,0,200,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
   // ---------------------------------------------------------------------------
   // Main loop
   // ---------------------------------------------------------------------------
@@ -560,7 +621,10 @@
       fpsTimer = 0;
     }
 
-    if (!paused) simTime += dt * speed;
+    if (!paused) {
+      simTime += dt * speed;
+      if (autoOrbit && !dragging) cam.yaw += dt * 0.25 * speed;
+    }
 
     render();
 
@@ -577,7 +641,7 @@
     canvas.width = Math.round(W * dpr);
     canvas.height = Math.round(H * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    cam.focal = Math.min(W, H) * 1.1;
+    cam.focal = cam.fov;
   }
 
   // ---------------------------------------------------------------------------
@@ -610,7 +674,6 @@
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
     canvas.addEventListener('wheel', onWheel, { passive: false });
-    // Touch support
     canvas.addEventListener('touchstart', function (e) {
       if (e.touches.length) { onDown({ clientX: e.touches[0].clientX, clientY: e.touches[0].clientY }); }
     }, { passive: true });
@@ -649,18 +712,24 @@
     return wireframe;
   }
 
+  function toggleOrbit() {
+    autoOrbit = !autoOrbit;
+    return autoOrbit;
+  }
+
   function reset() {
-    cam.yaw = 0.6;
-    cam.pitch = 0.35;
-    cam.dist = 14;
+    cam.yaw = 0.55;
+    cam.pitch = 0.34;
+    cam.dist = 9.6;
     simTime = 0;
     speed = 1.0;
     paused = false;
     wireframe = false;
+    autoOrbit = true;
   }
 
   function getStats() {
-    return { fps: fps, polys: polys };
+    return { fps: fps, polys: polys, parts: parts };
   }
 
   // Expose

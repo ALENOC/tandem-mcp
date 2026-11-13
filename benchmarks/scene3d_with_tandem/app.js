@@ -3,10 +3,13 @@
 
   var canvas = document.getElementById('c');
   var btnPause = document.getElementById('btnPause');
-  var btnWire = document.getElementById('btnWire');
+  var btnOrbit = document.getElementById('btnOrbit');
   var btnReset = document.getElementById('btnReset');
   var speedInput = document.getElementById('speed');
-  var stats = document.getElementById('stats');
+  var spdVal = document.getElementById('spdVal');
+  var fpsEl = document.getElementById('fps');
+  var polysEl = document.getElementById('polys');
+  var partsEl = document.getElementById('parts');
 
   function init() {
     window.Engine3D.init(canvas);
@@ -15,8 +18,8 @@
       window.Engine3D.togglePause();
     });
 
-    btnWire.addEventListener('click', function () {
-      window.Engine3D.toggleWireframe();
+    btnOrbit.addEventListener('click', function () {
+      window.Engine3D.toggleOrbit();
     });
 
     btnReset.addEventListener('click', function () {
@@ -24,13 +27,17 @@
     });
 
     speedInput.addEventListener('input', function () {
-      window.Engine3D.setSpeed(parseFloat(speedInput.value));
+      var v = parseFloat(speedInput.value);
+      window.Engine3D.setSpeed(v);
+      spdVal.textContent = v.toFixed(1) + 'x';
     });
 
     setInterval(function () {
       var s = window.Engine3D.getStats();
-      stats.textContent = s.fps + ' FPS | ' + s.polys + ' polys';
-    }, 250);
+      fpsEl.textContent = s.fps;
+      polysEl.textContent = s.polys;
+      partsEl.textContent = s.parts;
+    }, 200);
   }
 
   if (document.readyState === 'loading') {

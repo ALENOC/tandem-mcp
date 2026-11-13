@@ -271,7 +271,7 @@ Keep everything self-contained in index.html with zero external dependencies and
 
 ### 3D Neon Portal & Floating Monolith — Quality-Preserved Hybrid Delegation
 
-Using Tandem's **hybrid quality-preservation workflow** (non-vague contract `constraints` + `delegate_many` decomposition into `html_css`, `engine3d`, and `app_loop` + `job_diff` & orchestrator visual PNG inspection + targeted `job_continue` polish + `job_feedback`), the local executor (`qwen3.8-27b@iq3_s`) matches the frontier cloud baseline (`Gemini Hydrogen`) in framing, geometry, lighting, and HUD layout while cutting cloud output tokens by **~82.1%**:
+Using Tandem's **hybrid quality-preservation workflow** (non-vague contract `constraints` + `delegate_many` decomposition into `html_css`, `engine3d`, and `app_loop` + `job_diff` & orchestrator visual PNG inspection + targeted `job_continue` polish + `job_feedback`), the local executor (`qwen3.8-27b@iq3_s`) matches the frontier cloud baseline (`Gemini Hydrogen`) in framing, geometry, lighting, and HUD layout while cutting cloud output tokens by **~73.7%**:
 
 <table>
   <thead>
@@ -294,7 +294,7 @@ Using Tandem's **hybrid quality-preservation workflow** (non-vague contract `con
           <img src="benchmarks/scene3d_with_tandem.gif" alt="3D Neon Portal with Tandem MCP" width="360" height="230" />
         </a><br />
         <sub><b>Orchestrator:</b> <code>Gemini Hydrogen</code> + <b>Local:</b> <code>qwen3.8-27b@iq3_s</code></sub><br />
-        <sub>778 lines (3 files) &middot; 22,883 B &middot; ~780 cloud tokens (<b>82.1% saved</b>)</sub>
+        <sub>907 lines (3 files) &middot; 26,884 B &middot; ~1,150 cloud tokens (<b>73.7% saved</b>)</sub>
       </td>
     </tr>
   </tbody>
@@ -303,18 +303,18 @@ Using Tandem's **hybrid quality-preservation workflow** (non-vague contract `con
 | Variant | Model(s) | Output & Live Demo | Cloud Output Tokens | Cloud Tokens Saved | Local Tokens (`qwen3.8-27b@iq3_s`) | Verification |
 | :--- | :--- | :--- | ---: | ---: | ---: | :--- |
 | **Without Tandem** | `Gemini Hydrogen` (cloud direct) | **[Live Demo](https://alenoc.github.io/tandem-mcp/benchmarks/scene3d_without_tandem/)** ([source](benchmarks/scene3d_without_tandem/index.html), 15.7 KB, 403 lines) | ~4,368 | — | — | `node --check` PASS + headless Chrome PNG/FPS check (`60 FPS`, `84` polys) |
-| **With Tandem MCP** | Orchestrator: `Gemini Hydrogen` · Local: `qwen3.8-27b@iq3_s` (`LM Studio`, `delegate_many` + `job_continue`) | **[Live Demo](https://alenoc.github.io/tandem-mcp/benchmarks/scene3d_with_tandem/)** ([index.html](benchmarks/scene3d_with_tandem/index.html), [engine3d.js](benchmarks/scene3d_with_tandem/engine3d.js), [app.js](benchmarks/scene3d_with_tandem/app.js), 22.9 KB, 778 lines) | ~780 (specs + visual polish) | **~3,588 tok (82.1%)** | 199,095 | All 3 jobs `VERIFIED` (`node --check` PASS) + visual PNG parity check + `job_feedback(accepted=True)` |
+| **With Tandem MCP** | Orchestrator: `Gemini Hydrogen` · Local: `qwen3.8-27b@iq3_s` (`LM Studio`, `delegate_many` + `job_continue`) | **[Live Demo](https://alenoc.github.io/tandem-mcp/benchmarks/scene3d_with_tandem/)** ([index.html](benchmarks/scene3d_with_tandem/index.html), [engine3d.js](benchmarks/scene3d_with_tandem/engine3d.js), [app.js](benchmarks/scene3d_with_tandem/app.js), 26.9 KB, 907 lines) | ~1,150 (specs + visual polish) | **~3,218 tok (73.7%)** | 727,481 | All 3 jobs `VERIFIED` (`node --check` PASS) + visual PNG parity check (`84` polys) + `job_feedback(accepted=True)` |
 
-> **Cloud token savings & quality parity:** decomposing the 3D engine into 3 contracted modules (`html_css`, `engine3d`, `app_loop`) and running targeted `job_continue` polish passes after `job_diff` and PNG inspection cut cloud output tokens from **~4,368** down to **~780** (**~82.1% saved**, `-3,588` cloud tokens) with **no visual degradation**.
+> **Cloud token savings & quality parity:** decomposing the 3D engine into 3 contracted modules (`html_css`, `engine3d`, `app_loop`) and running targeted `job_continue` polish passes after `job_diff` and PNG inspection cut cloud output tokens from **~4,368** down to **~1,150** (**~73.7% saved**, `-3,218` cloud tokens) with **no visual degradation**.
 
 **[Open both interactive 3D portals side-by-side in your browser](https://alenoc.github.io/tandem-mcp/benchmarks/scene3d_comparison.html)** ([source](benchmarks/scene3d_comparison.html))
 
 <details>
 <summary>Architectural spec &amp; decomposition used for 3D Neon Portal</summary>
 
-- `html_css` (`index.html`, 64 lines): full-viewport `<canvas id="c">`, dark cosmic background `#0a0a1a`, bottom glassmorphic `.hud` with `#btnPause`, `#btnWire`, `#btnReset`, `#speed` slider (`0.2`–`3.0`), and `#stats` readout.
-- `engine3d` (`engine3d.js`, 673 lines): pure 2D-canvas software 3D engine exposed on `window.Engine3D` (`init`, `setSpeed`, `togglePause`, `toggleWireframe`, `reset`, `getStats`) with perspective projection, painter's-algorithm z-sorting, flat/specular shading, neon cyan/magenta perspective grid floor, multi-ring glowing neon portal, floating rotating faceted monolith with pulsing octahedral core, orbiting energy particles, starfield, mouse drag orbit, wheel zoom, and `devicePixelRatio` scaling.
-- `app_loop` (`app.js`, 41 lines): initializes `window.Engine3D.init(canvas)` and wires `#btnPause`, `#btnWire`, `#btnReset`, `#speed`, and periodic `#stats` updates (`FPS | polys`).
+- `html_css` (`index.html`, 117 lines): full-viewport `<canvas id="c">`, dark radial gradient `#0d1633 -> #050814 -> #020309`, compact top-left glassmorphic `.hud` (`NEON PORTAL 3D`, `TANDEM MCP` badge, `#fps`, `#polys`, `#parts`, `#btnPause`, `#btnOrbit`, `#btnReset`, `#speed` slider, `#spdVal`).
+- `engine3d` (`engine3d.js`, 742 lines): pure 2D-canvas software 3D engine exposed on `window.Engine3D` (`init`, `setSpeed`, `togglePause`, `toggleOrbit`, `toggleWireframe`, `reset`, `getStats`) with camera `yaw=0.55, pitch=0.34, dist=9.6, fov=580`, cyber-grid floor (`y=-2.0`), two-tier stepped obsidian platform (`y=-1.25` and `y=-0.85`), twin pillars (`x=±1.25`), lintel (`y=1.95`) + crown cap (`y=2.32`), radial-gradient portal core + 2 counter-rotating tilted rings, 6 alternating cyan/magenta octahedral crystals (`r=2.45`), 180 twinkling stars, and 110 rising neon particles.
+- `app_loop` (`app.js`, 48 lines): initializes `window.Engine3D.init(canvas)` and wires `#btnPause`, `#btnOrbit`, `#btnReset`, `#speed`/`#spdVal`, and periodic `#fps`, `#polys`, `#parts` updates.
 
 </details>
 
@@ -328,7 +328,7 @@ Using Tandem's **hybrid quality-preservation workflow** (non-vague contract `con
 
 ```sh
 .venv/bin/python tests/test_offline.py     # 160 checks: limits, evidence, journal, rollback, installer
-.venv/bin/python tests/test_protocol.py    # 157 checks: full loop against scripted server (no model)
+.venv/bin/python tests/test_protocol.py    # 160 checks: full loop against scripted server (no model)
 .venv/bin/python tests/test_live.py        # live checks against your running local model
 .venv/bin/python tests/test_live.py --text # live checks via JSON-reply protocol
 ```

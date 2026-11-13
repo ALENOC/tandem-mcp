@@ -3,60 +3,113 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Orbital Simulation</title>
+<title>Neon Portal 3D</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0a1a; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: radial-gradient(ellipse at center, #0d1633, #050814, #020309); }
   #c { display: block; width: 100vw; height: 100vh; }
   .hud {
     position: fixed;
-    bottom: 20px;
-    left: 50%;
-    transform: translateX(-50%);
+    top: 14px;
+    left: 14px;
+    min-width: 220px;
+    padding: 8px 10px;
+    font-size: 11px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.06);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+    font-family: system-ui, sans-serif;
+    color: #c8d0e0;
+  }
+  .hud-header {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 12px 24px;
-    border-radius: 16px;
-    background: rgba(255, 255, 255, 0.08);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-    font-family: system-ui, sans-serif;
-    color: #e0e0e0;
-    font-size: 14px;
+    justify-content: space-between;
+    margin-bottom: 6px;
   }
-  .hud button {
-    padding: 6px 14px;
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 8px;
-    background: rgba(255, 255, 255, 0.1);
-    color: #e0e0e0;
+  .hud-title {
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: 0.5px;
+    color: #fff;
+  }
+  .hud-badge {
+    font-size: 9px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(100, 140, 255, 0.2);
+    border: 1px solid rgba(100, 140, 255, 0.3);
+    color: #8ab4ff;
+  }
+  .stat-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 4px;
+    margin-bottom: 6px;
+  }
+  .stat-grid span {
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    color: #a0b8e0;
+  }
+  .btn-row {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 6px;
+  }
+  .btn-row button {
+    flex: 1;
+    padding: 4px 6px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 5px;
+    background: rgba(255, 255, 255, 0.08);
+    color: #c8d0e0;
     cursor: pointer;
-    font-size: 13px;
+    font-size: 10px;
     transition: background 0.2s;
   }
-  .hud button:hover { background: rgba(255, 255, 255, 0.2); }
-  .hud input[type="range"] {
-    width: 100px;
-    accent-color: #7b68ee;
+  .btn-row button:hover { background: rgba(255, 255, 255, 0.15); }
+  .speed-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
   }
-  #stats {
-    font-variant-numeric: tabular-nums;
-    min-width: 80px;
+  .speed-row input[type="range"] {
+    flex: 1;
+    accent-color: #6e8efb;
+  }
+  #spdVal {
+    min-width: 32px;
     text-align: right;
+    font-variant-numeric: tabular-nums;
+    color: #a0b8e0;
   }
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
 <div class="hud">
-  <button id="btnPause">Pause</button>
-  <button id="btnWire">Wire</button>
-  <button id="btnReset">Reset</button>
-  <input type="range" id="speed" min="0.2" max="3.0" step="0.1" value="1.0">
-  <span id="stats"></span>
+  <div class="hud-header">
+    <span class="hud-title">NEON PORTAL 3D</span>
+    <span class="hud-badge">TANDEM MCP</span>
+  </div>
+  <div class="stat-grid">
+    <span id="fps">0</span>
+    <span id="polys">0</span>
+    <span id="parts">0</span>
+  </div>
+  <div class="btn-row">
+    <button id="btnPause">Pause</button>
+    <button id="btnOrbit">Orbit</button>
+    <button id="btnReset">Reset</button>
+  </div>
+  <div class="speed-row">
+    <input type="range" id="speed" min="0.2" max="3.0" step="0.1" value="1.0">
+    <span id="spdVal">1.0x</span>
+  </div>
 </div>
 <script src="engine3d.js"></script>
 <script src="app.js"></script>
