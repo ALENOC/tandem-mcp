@@ -131,7 +131,8 @@ def ask(prompt: str, system_prompt: str = '', json_schema: str = '', samples: in
 # reading for the orchestrator ------------------------------------------------------------------
 def _evidence(result):
     return {'model': result.get('model', ''), 'quotes_ok': len(result['evidence']),
-            'quotes_bad': result['rejected'] + result.get('notes_dropped', 0), 'cached': bool(result.get('cached'))}
+            'quotes_bad': result['rejected'] + result.get('notes_dropped', 0), 'cached': bool(result.get('cached')),
+            'contested': result.get('claim_supported') == 'contested'}
 
 
 @mcp.tool()
@@ -150,7 +151,8 @@ def digest_file(path: str, question: str, max_words: int = 120, grep: str = '', 
         cut = sandbox.cut_note(Path(path).expanduser())
         if cut:
             out += '\n' + cut
-        return _saved('digest_file', len(text), out, executor_tokens=result['tokens'], **_evidence(result))
+        # an answer from the cache read nothing now: it is not counted as material saved again
+        return _saved('digest_file', 0 if result.get('cached') else len(text), out, executor_tokens=result['tokens'], **_evidence(result))
     except Exception as exc:
         return _fail(exc)
 
@@ -205,7 +207,7 @@ def digest_many(root: str, glob: str, question: str, max_files: int = 25, max_wo
             except Exception as exc:
                 lines.append(f'{rel}: (not read: {str(exc)[:120]})')
                 continue
-            total += len(text)
+            total += 0 if result.get('cached') else len(text)
             good += len(result['evidence'])
             bad += result['rejected']
             ev = result['evidence'][0] if result['evidence'] else None
@@ -470,7 +472,7 @@ def delegate_many(tasks: list[dict], workspace: str, allow_run: list[str] = [], 
 def job_status(job_id: str, wait_seconds: int = 120) -> str:
     """Receipt of a delegated job or batch, waiting up to wait_seconds if it is still running."""
     _wait(job_id, wait_seconds)
-    return _saved('delegate', 0, _receipt(job_id))
+    return _receipt(job_id)                              # a poll is not work: only delegate and job_continue enter the ledger
 
 
 @mcp.tool()
@@ -608,7 +610,8 @@ def ledger_report(days: float = 30.0) -> str:
     for r in rows:
         kind = r.get('kind')
         t = tools.setdefault(r['tool'], {'pt': 0, 'ct': 0, 'calls': 0, 'in': 0, 'out': 0})
-        m = per_model.setdefault(r.get('model') or 'default', {'ct': 0, 's': 0.0, 'ok': 0, 'bad': 0, 'jobs': {}, 'yes': 0, 'no': 0})
+        m = per_model.setdefault(r.get('model') or 'default', {'ct': 0, 's': 0.0, 'ok': 0, 'bad': 0, 'jobs': {}, 'yes': 0, 'no': 0,
+                                                              'answers': 0, 'contested': 0})
         if kind == 'llm':
             t['pt'] += r.get('prompt_tokens', 0)
             t['ct'] += r.get('completion_tokens', 0)
@@ -621,6 +624,9 @@ def ledger_report(days: float = 30.0) -> str:
             t['out'] += r.get('bytes_out', 0)
             m['ok'] += r.get('quotes_ok', 0)
             m['bad'] += r.get('quotes_bad', 0)
+            if 'contested' in r:
+                m['answers'] += 1
+                m['contested'] += bool(r['contested'])
         elif kind == 'job':
             t['in'] += r.get('bytes_in', 0)
             m['jobs'][r.get('state')] = m['jobs'].get(r.get('state'), 0) + 1
@@ -634,13 +640,16 @@ def ledger_report(days: float = 30.0) -> str:
         saved = max(0, round((t['in'] - t['out']) / store.CHARS_PER_TOKEN))
         total += saved
         lines.append(f'{name:17} {t["calls"]:5}  {t["pt"]:>9}/{t["ct"]:<9}        {t["in"]:>9} -> {t["out"]:<9}        {saved}')
-    lines.append(f'Estimated orchestrator input tokens saved: {total} (material the executor read for you, minus what it returned)')
+    lines.append(f'Estimated orchestrator input tokens saved: {total} (material the executor read for you, minus what it '
+                 'returned; cached answers and repeated reads of a file count once)')
     for name, m in sorted(per_model.items()):
         parts = []
         if m['s']:
             parts.append(f'{m["ct"] / m["s"]:.0f} tokens/s')
         if m['ok'] + m['bad']:
             parts.append(f'quotes dropped {m["bad"]} of {m["ok"] + m["bad"]} ({100 * m["bad"] // (m["ok"] + m["bad"])} %)')
+        if m['answers']:
+            parts.append(f'answers contested {m["contested"]} of {m["answers"]}')
         if m['jobs']:
             parts.append('jobs: ' + ', '.join(f'{k} {v}' for k, v in sorted(m['jobs'].items(), key=str)))
         if m['yes'] + m['no']:

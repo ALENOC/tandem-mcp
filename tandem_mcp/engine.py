@@ -165,10 +165,20 @@ def context_tokens(model=''):
     if forced and forced.isdigit():
         return int(forced)
     model = model or default_model()
-    for m in models():
-        if m['id'] == model and m['context']:
-            return int(m['context'])
-    return DEFAULT_CONTEXT.get(connect()['kind'], 8192)
+    fallback = DEFAULT_CONTEXT.get(connect()['kind'], 8192)
+
+    def row(refresh=False):
+        return next((m for m in models(refresh) if m['id'] == model), None)
+
+    found = row()
+    if found and found['loaded'] is False:
+        found = row(True)                                # it may have been loaded by the last call
+    if not found or not found['context']:
+        return fallback
+    if found['loaded'] is False:
+        # the server reports the most the model supports, not what it will be loaded with
+        return min(int(found['context']), fallback)
+    return int(found['context'])
 
 
 # one completion --------------------------------------------------------------------------------

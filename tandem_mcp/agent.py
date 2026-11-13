@@ -279,6 +279,7 @@ class Task:
         self.before = []                   # the checks as they were before the work
         self.syntax = {'ok': [], 'bad': [], 'unchecked': []}
         self.steps = self.tokens = self.read_chars = self.repairs = 0
+        self.read_by = {}                  # path -> most characters of it read in one call
         self.native = True
         self.used = ''                     # the model that did the work, once resolved
         self.budget = 30000
@@ -329,7 +330,9 @@ class Task:
             start = max(1, int(args.get('start') or 1))
             end = min(len(lines), int(args.get('end') or len(lines)))
             body = '\n'.join(f'{n}| {lines[n - 1]}' for n in range(start, end + 1))
-            self.read_chars += len(body)
+            seen = self.read_by.get(args['path'], 0)      # a file read again is not material read twice
+            self.read_chars += max(0, len(body) - seen)
+            self.read_by[args['path']] = max(seen, len(body))
             cap = max(2000, min(4 * OUT_CAP, self.budget // 3))
             if len(body) > cap:
                 shown = body[:cap].count('\n')
@@ -964,7 +967,7 @@ class Task:
         self.take_snapshot()
         self.used = self.model or engine.default_model()
         self.native = bool(engine.caps(self.used)['tools'])
-        context = engine.context_tokens(self.model)
+        context = engine.context_tokens(self.used)
         self.budget = int(context * 0.6 * 3.2)
         notes = store.lessons(store.scope_of(self.ws.root))
         system = SYSTEM + ('' if self.native else TEXT_PROTOCOL)
@@ -1282,7 +1285,7 @@ def resume(job, hint, extra_steps=15):
     task.take_guard()
     task.take_snapshot()
     task.native = data.get('protocol') != 'JSON replies'
-    task.budget = int(engine.context_tokens(task.model) * 0.6 * 3.2)
+    task.budget = int(engine.context_tokens(task.used) * 0.6 * 3.2)
     task.outputs = [m for m in messages if m['role'] == 'tool' or str(m.get('content', '')).startswith('Result of ')]
     messages.append({'role': 'user', 'content': 'The senior engineer looked at your work and says:\n' + hint.strip() +
                      '\nGo on from where you stopped and call finish when it is done.'})

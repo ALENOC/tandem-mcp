@@ -19,6 +19,7 @@ CACHE_TTL_DAYS = float(os.environ.get('TANDEM_CACHE_TTL_DAYS', 14))
 JOBS_KEEP = int(os.environ.get('TANDEM_JOBS_KEEP', 200))
 JOBS_TTL_DAYS = float(os.environ.get('TANDEM_JOBS_TTL_DAYS', 30))
 JOBS_PENDING_TTL_DAYS = float(os.environ.get('TANDEM_JOBS_PENDING_TTL_DAYS', 120))   # jobs with changes and no verdict
+LEDGER_KEEP_DAYS = float(os.environ.get('TANDEM_LEDGER_KEEP_DAYS', 180))
 _lock = threading.Lock()
 _last_cleanup = 0.0
 
@@ -245,10 +246,33 @@ def _trim_jobs(ttl_days, keep, preserve_pending=True):
     return removed
 
 
+def _trim_ledger(keep_days):
+    """Drop the ledger lines older than keep_days (0: keep all)."""
+    if keep_days <= 0 or not LEDGER.exists():
+        return 0
+    since = time.time() - keep_days * 86400
+    with _lock:
+        lines = LEDGER.read_text().splitlines()
+        kept = []
+        for line in lines:
+            try:
+                if json.loads(line).get('ts', 0) >= since:
+                    kept.append(line)
+            except (ValueError, AttributeError):
+                continue
+        if len(kept) == len(lines):
+            return 0
+        tmp = LEDGER.with_name(LEDGER.name + '.tmp')
+        tmp.write_text('\n'.join(kept) + ('\n' if kept else ''))
+        tmp.replace(LEDGER)
+    return len(lines) - len(kept)
+
+
 def cleanup(cache_ttl_days=None, cache_keep=None, jobs_ttl_days=None, jobs_keep=None, preserve_pending=True):
     """Apply retention policies to cached digest answers and persisted job folders."""
     c_ttl = CACHE_TTL_DAYS if cache_ttl_days is None else cache_ttl_days
     c_keep = CACHE_KEEP if cache_keep is None else cache_keep
     j_ttl = JOBS_TTL_DAYS if jobs_ttl_days is None else jobs_ttl_days
     j_keep = JOBS_KEEP if jobs_keep is None else jobs_keep
-    return {'cache_removed': _trim_cache(c_ttl, c_keep), 'jobs_removed': _trim_jobs(j_ttl, j_keep, preserve_pending=preserve_pending)}
+    return {'cache_removed': _trim_cache(c_ttl, c_keep), 'jobs_removed': _trim_jobs(j_ttl, j_keep, preserve_pending=preserve_pending),
+            'ledger_removed': _trim_ledger(LEDGER_KEEP_DAYS)}

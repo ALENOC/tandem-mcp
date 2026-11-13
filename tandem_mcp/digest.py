@@ -120,8 +120,7 @@ def check_evidence(evidence, lines):
 
 _NEGATIONS = re.compile(
     r"\b(?:not|no|never|none|neither|nor|cannot|can't|won't|wouldn't|shouldn't|couldn't|"
-    r"doesn't|don't|didn't|isn't|aren't|wasn't|weren't|hasn't|haven't|hadn't|without|"
-    r"disabled|disable|false|fail|failed|fails|missing|absent|unavailable|denied|refused)\b",
+    r"doesn't|don't|didn't|isn't|aren't|wasn't|weren't|hasn't|haven't|hadn't|without)\b",
     re.I,
 )
 _COMP_GT = re.compile(r'(?:>=|>|\b(?:above|over|more than|greater than|at least|exceeds?)\b)', re.I)
@@ -149,7 +148,7 @@ def check_claim_support(answer_text, evidence, lines, loose=()):
 
     warnings = []
     ans_neg = bool(_NEGATIONS.search(answer_text))
-    ev_neg = bool(_NEGATIONS.search(joined_ctx))
+    ev_neg = bool(_NEGATIONS.search(joined_quotes))       # the quotes, not the lines around them
     if ans_neg != ev_neg:
         warnings.append('polarity mismatch between answer and cited evidence (negation present in only one)')
 

@@ -15,12 +15,19 @@ import subprocess
 from pathlib import Path
 
 # Never run for the executor, whatever the allow list says.
-DENY = [r'\bsudo\b', r'\bsu\b\s', r'\bdoas\b', r'\brm\s+(-\w*\s+)*-\w*r\w*\s+(/|~|\$HOME)(\s|$)',
+# Refused wherever they stand in a command part.
+DENY = [r'\bsudo\b', r'\bdoas\b', r'\brm\s+(-\w*\s+)*-\w*r\w*\s+(/|~|\$HOME)(\s|$)',
         r'\bgit\s+(push|commit|reset|clean|checkout|rebase|merge|tag|restore|stash|config|remote)\b',
-        r'\bmkfs', r'\bdd\s+if=', r'\bshutdown\b', r'\breboot\b', r'\bcurl\b.*\|\s*(ba)?sh', r'\bwget\b.*\|\s*(ba)?sh',
-        r'\bchown\b', r'\bchmod\s+-R\b', r'>\s*/dev/sd', r'\bsystemctl\b', r'\bkill(all)?\b', r'\bpkill\b', r'\bssh\b', r'\bscp\b',
-        r'\brsync\b', r'\bnc\b', r'\bnpm\s+publish\b', r'\bpip3?\s+install\b', r'\bapt(-get)?\b', r'\bcrontab\b',
-        r'\beval\b', r'\bexec\b', r'\bsource\b']
+        r'\bmkfs', r'\bdd\s+if=', r'\bcurl\b.*\|\s*(ba)?sh', r'\bwget\b.*\|\s*(ba)?sh',
+        r'\bchmod\s+-R\b', r'>\s*/dev/sd', r'\bnpm\s+publish\b', r'\bpip3?\s+install\b']
+# Refused as the command of a part. As an argument they are plain words: `grep source x`, `cat docs/ssh.md`.
+DENY_COMMANDS = {'su', 'shutdown', 'reboot', 'chown', 'systemctl', 'kill', 'killall', 'pkill', 'ssh', 'scp', 'rsync', 'nc',
+                 'apt', 'apt-get', 'crontab', 'eval', 'exec', 'source', '.'}
+# Commands that run another command given as an argument: there the names above are looked up in the whole part.
+WRAPPERS = {'env', 'command', 'builtin', 'time', 'nice', 'ionice', 'nohup', 'timeout', 'xargs', 'stdbuf', 'setsid', 'watch',
+            'sh', 'bash', 'dash', 'zsh', 'ksh', 'find', 'parallel', 'strace', 'flock'}
+_DENY_NAMES = re.compile(r'(?<![\w./-])(?:' + '|'.join(re.escape(n) for n in sorted(DENY_COMMANDS - {'.'})) + r')(?![\w.-])')
+_ASSIGNMENT = re.compile(r'^[A-Za-z_]\w*=')
 SKIP_DIRS = {'.git', 'node_modules', '__pycache__', '.venv', 'venv', 'build', 'managed_components', '.history', 'dist', '.cache'}
 SECRETS = ['.ssh', '.gnupg', '.aws', '.azure', '.kube', '.docker', '.config/gh', '.config/gcloud', '.password-store',
            '.netrc', '.git-credentials', '.npmrc', '.pypirc']
@@ -99,6 +106,43 @@ class SandboxError(RuntimeError):
     pass
 
 
+def denied(part):
+    """True when one part of a command is on the safety list."""
+    if any(re.search(pattern, part) for pattern in DENY):
+        return True
+    try:
+        words = shlex.split(part)
+    except ValueError:
+        words = part.split()
+    while words and _ASSIGNMENT.match(words[0]):
+        words.pop(0)
+    if not words:
+        return False
+    head = os.path.basename(words[0])
+    if head in DENY_COMMANDS:
+        return True
+    return head in WRAPPERS and bool(_DENY_NAMES.search(part))
+
+
+def _system_folder(root):
+    """Why `root` cannot be a workspace, or ''."""
+    home = Path.home().resolve()
+    if root == Path(root.anchor) or root == home or root in home.parents:
+        return 'workspace must be a project folder, not / or the home folder'
+    for name in ('/usr', '/usr/local', '/var', '/var/tmp', '/opt', '/srv', '/run', '/root', '/home', '/mnt', '/media', '/tmp'):
+        if root == Path(name).resolve():
+            return f'workspace must be a project folder, not {name}'
+    for name in ('/etc', '/boot', '/dev', '/proc', '/sys', '/bin', '/sbin', '/lib', '/lib64', '/usr/bin', '/usr/sbin', '/usr/lib'):
+        system = Path(name).resolve()
+        if root == system or system in root.parents:
+            return f'workspace cannot be {name} or a folder inside it'
+    for name in SECRETS:
+        secret = home / name
+        if root == secret or secret in root.parents:
+            return f'workspace cannot be the credentials folder ~/{name} or a folder inside it'
+    return ''
+
+
 # the text of a command ---------------------------------------------------------------------------
 def split_command(command):
     """Parts of a shell command between ; && || | & and line ends, quotes respected.
@@ -167,8 +211,9 @@ class Workspace:
         self.root = Path(root).expanduser().resolve()
         if not self.root.is_dir():
             raise SandboxError(f'workspace is not a folder: {root}')
-        if self.root == Path(self.root.anchor) or self.root == Path.home().resolve():
-            raise SandboxError('workspace must be a project folder, not / or the home folder')
+        why = _system_folder(self.root)
+        if why:
+            raise SandboxError(why)
         self.write_globs = [g for g in (write_globs or []) if g.strip()]
         self.immutable = [g for g in (immutable or []) if g.strip()]
         try:
@@ -270,9 +315,8 @@ class Workspace:
         if not parts:
             raise SandboxError('empty command')
         for part in parts:
-            for pattern in DENY:
-                if re.search(pattern, part):
-                    raise SandboxError(f'command refused by the safety list: {part[:80]}')
+            if denied(part):
+                raise SandboxError(f'command refused by the safety list: {part[:80]}')
             if not any(r.search(part) for r in self.allow_run):
                 raise SandboxError(f'command not in the allow list of this task: {part[:80]}')
         for target in targets:
@@ -368,8 +412,6 @@ def jail_command(command, root, allow_net=False):
     args += _socket_masks()
     for name in SECRETS:
         secret = home / name
-        if root == secret or secret in root.parents:
-            continue
         if secret.is_dir():
             args += ['--tmpfs', str(secret)]
         elif secret.is_file():

@@ -1,4 +1,5 @@
 """Checks that need no model: sandbox limits, evidence check, journal and rollback, parsing."""
+import json
 import os
 import sys
 import tempfile
@@ -802,5 +803,67 @@ store.write_job(old_job, {'state': 'unverified', 'accepted': None, 'changes': [[
 os.utime(old_folder, (0, 0))
 store.cleanup(cache_keep=200, jobs_ttl_days=1, jobs_keep=500, preserve_pending=True)
 ok(not old_folder.exists(), 'a pending job older than TANDEM_JOBS_PENDING_TTL_DAYS is removed')
+
+# safety list by command name, system folders, ledger, accounting ---------------------------------
+dws = sandbox.Workspace(root, [], [r'.'])
+for allowed_cmd in ('grep -rn source src', 'cat docs/ssh.md', 'python -m pytest tests/test_exec.py -k kill', 'make nc-test'):
+    ok(not refused(dws.check_command, allowed_cmd), f'a denied name as an argument is a plain word: {allowed_cmd}')
+for denied_cmd in ('ssh host', '/usr/bin/ssh host', 'FOO=1 ssh host', 'env ssh host', 'xargs kill', 'sh -c "exec id"', '. ./env.sh',
+                   'find . -exec chown x {} +', 'source env.sh', 'su root'):
+    ok(refused(dws.check_command, denied_cmd), f'safety list: {denied_cmd}')
+
+for system_path in ('/etc', '/usr', '/home', '/tmp', '/usr/bin', '/proc/self'):
+    if Path(system_path).is_dir():
+        ok(refused(sandbox.Workspace, system_path), f'{system_path} is not a workspace')
+fake_home = Path(tempfile.mkdtemp())
+(fake_home / '.ssh' / 'keys').mkdir(parents=True)
+(fake_home / 'proj').mkdir()
+_real_home = os.environ.get('HOME')
+os.environ['HOME'] = str(fake_home)
+try:
+    ok(refused(sandbox.Workspace, fake_home / '.ssh') and refused(sandbox.Workspace, fake_home / '.ssh' / 'keys')
+       and refused(sandbox.Workspace, fake_home.parent) and sandbox.Workspace(fake_home / 'proj').root == (fake_home / 'proj').resolve(),
+       'credentials folders and the folders above the home are not workspaces, a project in the home is')
+    ok(['--tmpfs', str(fake_home / '.ssh')] == sandbox.jail_command('true', fake_home / 'proj')[10 + len(sandbox._socket_masks()):][:2],
+       'the jail hides the credentials folder')
+finally:
+    os.environ['HOME'] = _real_home
+
+store.LEDGER.write_text(json.dumps({'ts': 1.0, 'tool': 'old'}) + '\nnot json\n' + json.dumps({'ts': __import__('time').time(), 'tool': 'new'}) + '\n')
+ok(store._trim_ledger(30) == 2 and [r['tool'] for r in store.ledger(10000)] == ['new'] and store._trim_ledger(30) == 0
+   and 'ledger_removed' in store.cleanup(), 'old ledger lines are dropped, recent ones kept')
+
+sup_ctx = digest.check_claim_support('debug is enabled', [{'line': 2, 'quote': 'debug = True'}],
+                                     ['verbose = False', 'debug = True', '# not used'])
+ok(sup_ctx['claim_supported'] == 'quote_only', 'a negation next to the quoted line is not a polarity mismatch')
+
+rd_job, rd_folder = store.new_job('delegate')
+rd_task = agent.Task(rd_job, rd_folder, 'g', sandbox.Workspace(root), [])
+rd_task.call('read_file', {'path': 'src/a.txt'})
+once = rd_task.read_chars
+rd_task.call('read_file', {'path': 'src/a.txt'})
+rd_task.call('read_file', {'path': 'src/a.txt', 'start': 1, 'end': 1})
+ok(once > 0 and rd_task.read_chars == once, 'a file read again is counted once')
+
+_models = engine.models
+_connect = engine.connect
+engine.connect = lambda *a, **k: {'kind': 'lmstudio', 'url': 'http://x/v1'}
+engine.models = lambda refresh=False: [{'id': 'cold', 'loaded': False, 'type': 'llm', 'context': 262144},
+                                       {'id': 'warm', 'loaded': True, 'type': 'llm', 'context': 65536},
+                                       {'id': 'plain', 'loaded': None, 'type': 'llm', 'context': 32768}]
+_ctx_env = os.environ.pop('TANDEM_CONTEXT', None)
+try:
+    ok(engine.context_tokens('cold') == 8192 and engine.context_tokens('warm') == 65536 and engine.context_tokens('plain') == 32768,
+       'the context of a model that is not loaded is not taken from its maximum')
+finally:
+    engine.models, engine.connect = _models, _connect
+    if _ctx_env is not None:
+        os.environ['TANDEM_CONTEXT'] = _ctx_env
+
+import tomllib as _tomllib  # noqa: E402
+import tandem_mcp as _pkg  # noqa: E402
+_project = _tomllib.loads((Path(__file__).resolve().parents[1] / 'pyproject.toml').read_text())
+ok('version' in _project['project']['dynamic'] and _project['tool']['setuptools']['dynamic']['version']['attr'] == 'tandem_mcp.__version__'
+   and _pkg.__version__.count('.') == 2, 'the version lives in one place')
 
 print(f'{checks} checks, 0 failures')

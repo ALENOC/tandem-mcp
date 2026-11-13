@@ -80,6 +80,7 @@ Manual stdio configuration (any MCP client):
 | `TANDEM_HOME` | Ledger, lessons, caps, cache, and jobs folder | `~/.local/share/tandem-mcp` |
 | `TANDEM_MAX_PARTS` | Most parts one `digest_*` answer may read (one executor call each) | `60` |
 | `TANDEM_JOBS_PENDING_TTL_DAYS` | Days a job with changes and no verdict is kept | `120` |
+| `TANDEM_LEDGER_KEEP_DAYS` | Days of ledger lines kept (`0`: all) | `180` |
 
 **Model notes:**
 - **Ollama**: raise `OLLAMA_CONTEXT_LENGTH` for `delegate` tasks; reading tools (`digest_*`) work at any context length by chunking.
@@ -94,7 +95,7 @@ Manual stdio configuration (any MCP client):
 
 Once `tandem-mcp` is registered, **restart your client** (Claude Code, Codex, or Antigravity) so it loads the MCP server.
 
-1. **Check the connection:** ask your agent `"Run executor_status"` — it should show your local server, loaded model, context length, and active sandbox.
+1. **Check the connection:** ask your agent `"Run executor_status"`: it should show your local server, loaded model, context length, and active sandbox.
 2. **Talk normally (or prompt explicitly):** you don't need special syntax; the cloud agent sees Tandem's tool descriptions and calls them automatically. Typical prompts:
    - **Read large files / logs without burning cloud tokens:**
      `"Use tandem-mcp to inspect server.log and list every error with line numbers."` (`digest_file`)
@@ -206,7 +207,8 @@ Read this before pointing Tandem at a sensitive repository:
 - **Explicit exceptions**: pass `checks_network=True` or `unjailed_checks=True` on `delegate` only for checks that need network or host resources. `digest_command` runs the orchestrator's own command with the user's rights.
 - **Fail-closed mode**: on systems without `bubblewrap`, `TANDEM_SANDBOX=auto` falls back to command-text checks (`allow_run` + `DENY` list) with a warning in `executor_status`. Set `TANDEM_SANDBOX=require` to fail closed with `SandboxError` instead.
 - **Contract enforcement on shell commands**: `stamp()` hashes every workspace file with SHA-256 before and after `run` (no file-count cap, symlinks excluded). Any file modified outside `write_globs` or owned by another parallel task is reverted immediately. A generated folder (`build`, `dist`, `node_modules`, ...) that a command creates is removed when it lies outside `write_globs` or inside the files of the checks, otherwise it is listed in the receipt and removed by `job_rollback`.
-- **Allow list**: an `allow_run` pattern matches anywhere in a command part, so anchor it (`^pytest\b`). Shell comments are dropped before matching, and command substitution and `$'...'` quoting are refused.
+- **Allow list**: an `allow_run` pattern matches anywhere in a command part, so anchor it (`^pytest\b`). Shell comments are dropped before matching, and command substitution and `$'...'` quoting are refused. The safety list refuses `ssh`, `kill`, `source` and the like as the command of a part (also behind `env`, `xargs`, `sh -c`), not as a word among its arguments.
+- **Workspace**: `/`, the home folder and the folders above it, system folders (`/etc`, `/usr`, `/tmp` itself, ...) and credential folders (`~/.ssh`, ...) are refused as a workspace.
 - **API key**: `TANDEM_API_KEY` is sent only to the configured or selected server, never to the other local ports tried during discovery. The data folder is private to the user (`0700`).
 - **Safe rollback**: `journal_bin.json` + `snapshot.json` back up original bytes (up to 2 MB/file, 50 MB total). Pre-existing files larger than the cap are tracked as `None` so `job_rollback` preserves them instead of deleting them; `post_state.json` prevents overwriting later user edits.
 - **Hostile text**: file contents and command output are marked as data in prompts, and receipts/diffs should always be reviewed before accepting. See [SECURITY.md](SECURITY.md) to report vulnerabilities.
@@ -226,8 +228,8 @@ Measured live on `qwen3.8-27b@iq3_s` (LM Studio, `65536` ctx, `23.8 tok/s` probe
 | Full doc QA (`README.md`) | 23.2 KB → 557 B | **~6,281 tok (97.6%)** | 9,132 | 64.2 s | 0/3 quotes (`unsupported`)* |
 | Grep QA (`agent.py`, 7/1,506 lines) | 75.9 KB → 654 B | **~20,904 tok (99.1%)** | 878 | 22.9 s | 2/2 quotes (`quote_only`) |
 | 8-file survey (`tandem_mcp/*.py`) | 176.2 KB → 1.7 KB | **~48,479 tok (99.0%)** | 80,840 | 620.4 s | 16/16 quotes (`checked`) |
-| Command output (`git log -n 30 --stat`) | 13.9 KB → 2.0 KB | **~3,304 tok (85.7%)** | — | 118 s | 10/10 quotes verified |
-| JSON extraction (`pyproject.toml`) | 686 B → 241 B | **~124 tok (64.9%)** | — | 15 s | JSON Schema validated |
+| Command output (`git log -n 30 --stat`) | 13.9 KB → 2.0 KB | **~3,304 tok (85.7%)** | n/a | 118 s | 10/10 quotes verified |
+| JSON extraction (`pyproject.toml`) | 686 B → 241 B | **~124 tok (64.9%)** | n/a | 15 s | JSON Schema validated |
 
 **Delegated Coding (`delegate`)**
 
@@ -238,14 +240,14 @@ Measured live on `qwen3.8-27b@iq3_s` (LM Studio, `65536` ctx, `23.8 tok/s` probe
 
 **Animation A/B Comparison (Orbital Particle Simulation, identical spec)**
 
-| Without Tandem — `Gemini Hydrogen` (Cloud Direct) | With Tandem MCP — `Gemini Hydrogen` (Orchestrator) + `qwen3.8-27b@iq3_s` (Local) |
+| Without Tandem: `Gemini Hydrogen` (Cloud Direct) | With Tandem MCP: `Gemini Hydrogen` (Orchestrator) + `qwen3.8-27b@iq3_s` (Local) |
 | :---: | :---: |
-| <img src="benchmarks/animation_without_tandem.gif" alt="Without Tandem — Gemini Hydrogen (Cloud Direct)" width="360" height="230" /> | <img src="benchmarks/animation_with_tandem.gif" alt="With Tandem MCP — Gemini Hydrogen orchestrator + qwen3.8-27b@iq3_s local executor" width="360" height="230" /> |
+| <img src="benchmarks/animation_without_tandem.gif" alt="Without Tandem: Gemini Hydrogen (Cloud Direct)" width="360" height="230" /> | <img src="benchmarks/animation_with_tandem.gif" alt="With Tandem MCP: Gemini Hydrogen orchestrator + qwen3.8-27b@iq3_s local executor" width="360" height="230" /> |
 | *Cloud Direct: `Gemini Hydrogen` · 10.3 KB, 272 lines · **~2,873 cloud output tokens*** | *Orchestrator: `Gemini Hydrogen` · Local executor: `qwen3.8-27b@iq3_s` (`65536` ctx) · 10.2 KB, 333 lines · **~260 cloud spec + receipt tokens (~91.0% cloud output saved, -2,613 tok)** (`69,004` local tokens, `1` repair)* |
 
 | Variant | Models Used (Caption) | Output | Cloud Tokens | Cloud Saved (est.) | Local Tokens | Time | Verification |
 | --- | --- | --- | ---: | ---: | ---: | ---: | --- |
-| **Without Tandem** | `Gemini Hydrogen` (Cloud Direct) | **[Live Demo](https://alenoc.github.io/tandem-mcp/benchmarks/animation_without_tandem/)** ([source](benchmarks/animation_without_tandem/index.html), 10.3 KB, 272 lines) | ~2,873 out | — | 0 | Immediate | `node --check` + DOM PASS |
+| **Without Tandem** | `Gemini Hydrogen` (Cloud Direct) | **[Live Demo](https://alenoc.github.io/tandem-mcp/benchmarks/animation_without_tandem/)** ([source](benchmarks/animation_without_tandem/index.html), 10.3 KB, 272 lines) | ~2,873 out | n/a | 0 | Immediate | `node --check` + DOM PASS |
 | **With Tandem MCP** | Orchestrator: `Gemini Hydrogen` · Local: `qwen3.8-27b@iq3_s` (`LM Studio`, `delegate`) | **[Live Demo](https://alenoc.github.io/tandem-mcp/benchmarks/animation_with_tandem/)** ([source](benchmarks/animation_with_tandem/index.html), 10.2 KB, 333 lines) | ~260 spec+receipt | **~2,613 tok (91.0%)** | 69,004 | 819.7 s | `node --check` + PNG PASS + `job_feedback(accepted=True)` |
 
 > **Cloud token savings:** offloading the 333-line animation generation to `qwen3.8-27b@iq3_s` cut cloud output tokens from **~2,873** down to **~260** (**~91.0% saved**, `-2,613` cloud tokens).
@@ -273,7 +275,7 @@ Keep everything self-contained in index.html with zero external dependencies and
 
 </details>
 
-### 3D Neon Portal & Floating Monolith — Quality-Preserved Hybrid Delegation
+### 3D Neon Portal & Floating Monolith: Quality-Preserved Hybrid Delegation
 
 Using Tandem's **hybrid quality-preservation workflow** (non-vague contract `constraints` + `delegate_many` decomposition into `html_css`, `engine3d`, and `app_loop` + `job_diff` & orchestrator visual PNG inspection + targeted `job_continue` polish + `job_feedback`), the local executor (`qwen3.8-27b@iq3_s`) matches the frontier cloud baseline (`Gemini Hydrogen`) in framing, geometry, lighting, and HUD layout while cutting cloud output tokens by **~73.7%**:
 
@@ -306,7 +308,7 @@ Using Tandem's **hybrid quality-preservation workflow** (non-vague contract `con
 
 | Variant | Model(s) | Output & Live Demo | Cloud Output Tokens | Cloud Tokens Saved | Local Tokens (`qwen3.8-27b@iq3_s`) | Verification |
 | :--- | :--- | :--- | ---: | ---: | ---: | :--- |
-| **Without Tandem** | `Gemini Hydrogen` (cloud direct) | **[Live Demo](https://alenoc.github.io/tandem-mcp/benchmarks/scene3d_without_tandem/)** ([source](benchmarks/scene3d_without_tandem/index.html), 15.7 KB, 403 lines) | ~4,368 | — | — | `node --check` PASS + headless Chrome PNG/FPS check (`60 FPS`, `84` polys) |
+| **Without Tandem** | `Gemini Hydrogen` (cloud direct) | **[Live Demo](https://alenoc.github.io/tandem-mcp/benchmarks/scene3d_without_tandem/)** ([source](benchmarks/scene3d_without_tandem/index.html), 15.7 KB, 403 lines) | ~4,368 | n/a | n/a | `node --check` PASS + headless Chrome PNG/FPS check (`60 FPS`, `84` polys) |
 | **With Tandem MCP** | Orchestrator: `Gemini Hydrogen` · Local: `qwen3.8-27b@iq3_s` (`LM Studio`, `delegate_many` + `job_continue`) | **[Live Demo](https://alenoc.github.io/tandem-mcp/benchmarks/scene3d_with_tandem/)** ([index.html](benchmarks/scene3d_with_tandem/index.html), [engine3d.js](benchmarks/scene3d_with_tandem/engine3d.js), [app.js](benchmarks/scene3d_with_tandem/app.js), 26.9 KB, 907 lines) | ~1,150 (specs + visual polish) | **~3,218 tok (73.7%)** | 727,481 | All 3 jobs `VERIFIED` (`node --check` PASS) + visual PNG parity check (`84` polys) + `job_feedback(accepted=True)` |
 
 > **Cloud token savings & quality parity:** decomposing the 3D engine into 3 contracted modules (`html_css`, `engine3d`, `app_loop`) and running targeted `job_continue` polish passes after `job_diff` and PNG inspection cut cloud output tokens from **~4,368** down to **~1,150** (**~73.7% saved**, `-3,218` cloud tokens) with **no visual degradation**.
@@ -331,7 +333,7 @@ Using Tandem's **hybrid quality-preservation workflow** (non-vague contract `con
 ## Tests
 
 ```sh
-.venv/bin/python tests/test_offline.py     # 187 checks: limits, evidence, journal, rollback, installer
+.venv/bin/python tests/test_offline.py     # 214 checks: limits, evidence, journal, rollback, installer
 .venv/bin/python tests/test_protocol.py    # 160 checks: full loop against scripted server (no model)
 .venv/bin/python tests/test_live.py        # live checks against your running local model
 .venv/bin/python tests/test_live.py --text # live checks via JSON-reply protocol
@@ -361,6 +363,6 @@ Using Tandem's **hybrid quality-preservation workflow** (non-vague contract `con
 
 ## License & Attribution
 
-MIT License — Copyright (c) 2026 **Alessandro Nocentini** ([@ALENOC](https://github.com/ALENOC)), see [LICENSE](LICENSE).
+MIT License: Copyright (c) 2026 **Alessandro Nocentini** ([@ALENOC](https://github.com/ALENOC)), see [LICENSE](LICENSE).
 
 If you fork this repository or build projects inspired by `tandem-mcp`'s architecture and ideas (cloud-orchestrator / local-executor pairing, lexical evidence verification, contract enforcement, and snapshot/rollback), please include clear attribution to **Alessandro Nocentini** and link to [github.com/ALENOC/tandem-mcp](https://github.com/ALENOC/tandem-mcp) (`@ALENOC`).

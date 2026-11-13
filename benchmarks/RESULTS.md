@@ -1,4 +1,4 @@
-# Tandem MCP — Live Benchmark Results
+# Tandem MCP: Live Benchmark Results
 
 Measured live with [`benchmarks/run_benchmark.py`](run_benchmark.py) (cache disabled, isolated temporary `TANDEM_HOME`, sequential execution).
 
@@ -50,7 +50,7 @@ Measured live via MCP calls against `qwen3.8-27b@iq3_s` on LM Studio:
 
 ## 4. Animation Generation A/B Comparison (Without vs. With Tandem MCP)
 
-Identical prompt: generate a self-contained single-file HTML5 `<canvas>` orbital particle simulation (`index.html`) with `requestAnimationFrame`, `devicePixelRatio` scaling, radial-gradient star with corona pulse, 5+ planets with moons and fading trails, 150+ twinkling stars, glassmorphism HUD (Play/Pause, Trails toggle, Reset, Speed `0.2x`–`3.0x`, live FPS/time/bursts), and click-to-spawn radial particle bursts.
+Identical prompt: generate a self-contained single-file HTML5 `<canvas>` orbital particle simulation (`index.html`) with `requestAnimationFrame`, `devicePixelRatio` scaling, radial-gradient star with corona pulse, 5+ planets with moons and fading trails, 150+ twinkling stars, glassmorphism HUD (Play/Pause, Trails toggle, Reset, Speed `0.2x`-`3.0x`, live FPS/time/bursts), and click-to-spawn radial particle bursts.
 
 | Metric | Without Tandem (`Gemini Hydrogen` Cloud Direct) | With Tandem MCP (`Gemini Hydrogen` orchestrator + `qwen3.8-27b@iq3_s` local) |
 | --- | --- | --- |
@@ -85,8 +85,8 @@ Re-tested with Tandem's latest quality-preservation workflow (non-vague contract
 
 | Variant | Model(s) | Output | Cloud Output Tokens | Cloud Tokens Saved | Local Tokens | Verification |
 | :--- | :--- | :--- | ---: | ---: | ---: | :--- |
-| **Without Tandem** | `Gemini Hydrogen` (cloud direct) | [`scene3d_without_tandem/index.html`](scene3d_without_tandem/index.html) (403 lines, 15,724 B) | ~4,368 | — | — | `node --check` PASS, `60 FPS`, `84` polys |
-| **With Tandem MCP** | `Gemini Hydrogen` (orchestrator) + `qwen3.8-27b@iq3_s` (local) | [`scene3d_with_tandem/`](scene3d_with_tandem/index.html) (`index.html` 117 L / 2,899 B, `engine3d.js` 742 L / 22,630 B, `app.js` 48 L / 1,355 B — total 907 lines, 26,884 B) | ~1,150 | **~3,218 (73.7%)** | 727,481 (`17,788` + `686,830` + `22,863`) | All 3 jobs `VERIFIED` (`node --check` PASS), `job_feedback(accepted=True, constraints_verified=True)`, visual PNG parity confirmed (`84` polys) |
+| **Without Tandem** | `Gemini Hydrogen` (cloud direct) | [`scene3d_without_tandem/index.html`](scene3d_without_tandem/index.html) (403 lines, 15,724 B) | ~4,368 | n/a | n/a | `node --check` PASS, `60 FPS`, `84` polys |
+| **With Tandem MCP** | `Gemini Hydrogen` (orchestrator) + `qwen3.8-27b@iq3_s` (local) | [`scene3d_with_tandem/`](scene3d_with_tandem/index.html) (`index.html` 117 L / 2,899 B, `engine3d.js` 742 L / 22,630 B, `app.js` 48 L / 1,355 B: total 907 lines, 26,884 B) | ~1,150 | **~3,218 (73.7%)** | 727,481 (`17,788` + `686,830` + `22,863`) | All 3 jobs `VERIFIED` (`node --check` PASS), `job_feedback(accepted=True, constraints_verified=True)`, visual PNG parity confirmed (`84` polys) |
 
 - **2D Orbital Simulation GIFs**: Both `animation_without_tandem.gif` (390,921 B) and `animation_with_tandem.gif` (595,061 B) are rendered at `540x345` without synthetic mouse clicks so they faithfully show natural orbital motion.
 - **3D Neon Portal GIFs**: Both `scene3d_without_tandem.gif` (2,056,923 B) and `scene3d_with_tandem.gif` (2,809,303 B) are rendered at `540x345` from headless Chrome CDP.
