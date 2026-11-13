@@ -246,6 +246,20 @@ Measured live on `qwen3.8-27b@iq3_s` (LM Studio, `65536` ctx, `11.1 tok/s`, cach
 
 **[Open both interactive animations side-by-side in your browser](https://alenoc.github.io/tandem-mcp/benchmarks/animation_comparison.html)** ([source](benchmarks/animation_comparison.html))
 
+**3D Procedural Scene A/B Comparison (Neon Portal & Floating Monolith, zero external dependencies)**
+
+| Without Tandem — `Gemini Hydrogen` (Cloud Direct) | With Tandem MCP — `Gemini Hydrogen` (Orchestrator) + `qwen3.8-27b@iq3_s` (Local) |
+| :---: | :---: |
+| <img src="benchmarks/scene3d_without_tandem.gif" alt="3D Scene Without Tandem — Gemini Hydrogen" width="360" height="230" /> | <img src="benchmarks/scene3d_with_tandem.gif" alt="3D Scene With Tandem MCP — Gemini Hydrogen + qwen3.8-27b@iq3_s" width="360" height="230" /> |
+| *Cloud Direct: `Gemini Hydrogen` · 13.2 KB, 300 lines · **~3,676 cloud output tokens*** | *Orchestrator: `Gemini Hydrogen` (decomposed into 3 modules) · Local: `qwen3.8-27b@iq3_s` · 17.0 KB, 618 lines · **~380 cloud receipt tokens (~89.7% cloud output saved, -3,296 tok)*** |
+
+| Variant | Models Used (Caption) | Live Demo | Cloud Tokens | Cloud Saved (est.) | Verification |
+| --- | --- | --- | ---: | ---: | --- |
+| **Without Tandem** | `Gemini Hydrogen` (Cloud Direct) | **[Live 3D Demo](https://alenoc.github.io/tandem-mcp/benchmarks/scene3d_without_tandem/)** ([source](benchmarks/scene3d_without_tandem/index.html)) | ~3,676 out | — | `node --check` PASS |
+| **With Tandem MCP** | Orchestrator: `Gemini Hydrogen` · Local: `qwen3.8-27b@iq3_s` (`delegate_many` + `delegate`) | **[Live 3D Demo](https://alenoc.github.io/tandem-mcp/benchmarks/scene3d_with_tandem/)** ([source](benchmarks/scene3d_with_tandem/index.html)) | ~380 receipt | **~3,296 tok (89.7%)** | `node --check` + modular checks PASS |
+
+**[Open both 3D scenes side-by-side in your browser](https://alenoc.github.io/tandem-mcp/benchmarks/scene3d_comparison.html)** ([source](benchmarks/scene3d_comparison.html))
+
 <details>
 <summary>Exact prompt used for both animations</summary>
 

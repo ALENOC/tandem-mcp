@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>3D Neon Portal</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="hud">
+  <h1>3D Neon Portal — Gemini Hydrogen + Qwen3.8-27B</h1>
+  <div class="stats">
+    <span id="fps">0</span> FPS
+    <span id="polys">0</span> polys
+    <span id="parts">0</span> parts
+  </div>
+  <div class="controls">
+    <button id="playBtn">Pause</button>
+    <button id="orbitBtn">Orbit: ON</button>
+    <button id="resetBtn">Reset</button>
+  </div>
+  <div class="speed">
+    <label>Speed</label>
+    <input id="spd" type="range" min="0.2" max="3.0" step="0.1" value="1.0">
+    <span id="spdVal">1.0x</span>
+  </div>
+</div>
+<script src="engine3d.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
