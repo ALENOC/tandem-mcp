@@ -234,7 +234,7 @@ Measured live on `qwen3.8-27b@iq3_s` (LM Studio, `65536` ctx, `11.1 tok/s`, cach
 
 | Without Tandem — `Gemini Hydrogen` (Cloud Direct) | With Tandem MCP — `Gemini Hydrogen` (Orchestrator) + `qwen3.8-27b@iq3_s` (Local) |
 | :---: | :---: |
-| <img src="benchmarks/animation_without_tandem.gif" alt="Without Tandem — Gemini Hydrogen (Cloud Direct)" width="420" height="268" /> | <img src="benchmarks/animation_with_tandem.gif" alt="With Tandem MCP — Gemini Hydrogen orchestrator + qwen3.8-27b@iq3_s local executor" width="420" height="268" /> |
+| <img src="benchmarks/animation_without_tandem.gif" alt="Without Tandem — Gemini Hydrogen (Cloud Direct)" width="360" height="230" /> | <img src="benchmarks/animation_with_tandem.gif" alt="With Tandem MCP — Gemini Hydrogen orchestrator + qwen3.8-27b@iq3_s local executor" width="360" height="230" /> |
 | *Cloud Direct: `Gemini Hydrogen` · 10.3 KB, 272 lines · ~2,873 cloud tokens* | *Orchestrator: `Gemini Hydrogen` · Local executor: `qwen3.8-27b@iq3_s` (`delegate`, `65536` ctx) · 11.0 KB, 364 lines · ~130 cloud receipt tokens (`17,449` local tokens, `0` repairs)* |
 
 | Variant | Models Used (Caption) | Output | Cloud Tokens | Local Tokens | Time | Verification |
