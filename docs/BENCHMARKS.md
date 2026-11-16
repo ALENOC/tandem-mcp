@@ -1,0 +1,67 @@
+# Benchmarks
+
+> **Trade-off first.** Tandem can save cloud tokens on reading and test-driven fixes, at the cost of local execution time (which depends on your hardware). Writing brand-new code from a contract often uses similar or more total cloud tokens once contract authoring and inspection are counted.
+
+## 1. Live Validation & Micro-Benchmark (Tandem 3.5.1, Nov 2026)
+
+Measured on **LM Studio** (`http://127.0.0.1:1234/v1`) running **`qwen3.8-27b@iq3_s`** (`tools=true`, `schema=true`, `thinking=true`, probed `10.7 tok/s`):
+
+| Test / Scenario | Wall Time | Local Tokens | Outcome |
+| --- | ---: | ---: | --- |
+| `executor_probe` (schema + tools) | 7.75 s | - | `tools=true, schema=true, 10.7 tok/s` |
+| Code understanding (`digest_file` on `stats.py`) | 14.84 s | - | `quote_found=true` |
+| Direct LM Studio API bugfix (Scenario B, no sandbox/tests) | 8.46 s | 305 | `has_fix=true` (unverified) |
+| Tandem `delegate` bugfix (Scenario C, baseline + `unittest` + journal) | 23.78 s | 5,124 | `VERIFIED` (3 steps, 0 repairs, `fully_backed`, rollback verified) |
+| Failed task + guard + rollback (`delegate` with impossible test) | 13.27 s | - | `checks_failed`, `test_calc.py` intact, `calc.py` restored |
+| Multi-chunk extraction (`extract_from_file`, `TANDEM_CONTEXT=2500`) | 76.03 s | - | Validated merged JSON matching schema |
+
+*(Note: Scenario B measures only raw inference without contract validation, sandboxed test execution, or rollback; Scenario C includes the full baseline check, tool loop, post-edit verification, and journal/snapshot overhead.)*
+
+## 2. Historical Benchmark Suite (Tandem 3.1.0)
+
+Reproducible suite: [benchmarks/run_benchmark.py](../benchmarks/run_benchmark.py) · Full report: [benchmarks/RESULTS.md](../benchmarks/RESULTS.md)
+
+Orchestrator `Fable 5.2` (cloud) and executor `qwen3.8-27b@iq3_s` (LM Studio, `65536` ctx, `11.2 tok/s` probed), Tandem 3.1.0 with strict contract, cache disabled, `1 cloud tok = 3.6 chars`, on **Intel Core i9-9900K @ 3.60GHz (16 threads)**, **22 GiB RAM**, **AMD Radeon Navi 21 (RX 6800/6900 XT, 16 GiB VRAM)**, Linux x86_64.
+
+<details>
+<summary>LM Studio configuration used for the 3.1.0 executor</summary>
+
+| Load setting | Value | Inference setting | Value |
+| --- | --- | --- | --- |
+| Model file | `unsloth/Qwen3.8-27B-GGUF/Qwen3.8-27B-UD-IQ3_S.gguf` (12.04 GB, 27B, IQ3_S) | Temperature | 0.15 (Tandem sets 0.1, 0.7 for extra `ask` samples) |
+| Runtime | LM Studio 0.4.28, `llama.cpp` Vulkan (`2.73.0`) | Top K / Top P / Min P | 20 / 0.95 / 0.05 |
+| Context length | 65536 | Repeat penalty | 1 |
+| GPU offload | 65 layers (all) | Thinking | enabled, budget 1024 tokens |
+| Max concurrent predictions | 1 | Speculative decoding | MTP (4 draft tokens, 0.75) |
+
+</details>
+
+### Reading, Command Digest & Extraction
+
+| Task | Source -> Cloud | Cloud saved (est.) | Local tokens | Time | Evidence |
+| --- | --- | ---: | ---: | ---: | --- |
+| Full-file doc QA (`README.md`) | 27.9 KB -> 405 B | **~7,649 tok (98.6%)** | 10,298 | 66.2 s | 0 ok / 2 dropped (`unsupported`) |
+| Targeted grep QA (`agent.py`) | 85.9 KB -> 692 B | **~23,666 tok (99.2%)** | 643 | 14.1 s | 3 ok / 0 dropped (`quote_only`) |
+| Multi-file package survey (`tandem_mcp/*.py`) | 209.8 KB -> 1.5 KB | **~57,846 tok (99.3%)** | 108,207 | 800.3 s | 8 ok / 0 dropped (`checked`) |
+| Recent git history (`git log -n 30 --stat`) | 18.1 KB -> 1.4 KB | **~4,614 tok (92.0%)** | 18,528 | 109.9 s | 8 ok / 0 dropped |
+| Project manifest (`pyproject.toml`) | 786 B -> 113 B | **~187 tok (85.6%)** | 633 | 9.8 s | schema validated, 0 loose values |
+
+### Delegated Fixes with an Existing Test
+
+| Task | Baseline -> Receipt | Cloud saved (est.) | Local tokens | Time | Result |
+| --- | --- | ---: | ---: | ---: | --- |
+| Micro bugfix (1 tiny file, 6 lines) | 1.0 KB -> 432 B | **~171 tok (58.7%)** | 6,297 | 25.3 s | `VERIFIED` (4 steps, 0 repairs) |
+| Multi-file bugfix (`config_loader.py` + 3 files) | 6.1 KB -> 476 B | **~1,561 tok (92.2%)** | 8,066 | 32.8 s | `VERIFIED` (4 steps, 0 repairs) |
+
+### Generation From a Contract
+
+| Metric | Orbital animation (direct) | Orbital animation (Tandem) | 3D portal (direct) | 3D portal (Tandem) |
+| --- | ---: | ---: | ---: | ---: |
+| Output | 11,956 B, 272 lines | 12,499 B, 459 lines | 15,122 B, 327 lines | 18,243 B, 616 lines (4 files) |
+| Cloud output tokens saved | n/a | **29.4%** | n/a | **43.0%** |
+| Cloud input tokens to inspect | 0 | ~4,199 | 0 | ~7,814 |
+| Local tokens | 0 | 104,087 | 0 | 199,182 |
+| Wall time | 1 cloud turn | **1,121 s** (19 min) | 1 cloud turn | **1,890 s** (31 min) |
+| Constraints met on inspection | n/a | 46 of 46 | n/a | 67 of 69 |
+
+Live demos: [orbital comparison](https://alenoc.github.io/tandem-mcp/benchmarks/animation_comparison.html) · [3D portal comparison](https://alenoc.github.io/tandem-mcp/benchmarks/scene3d_comparison.html).
