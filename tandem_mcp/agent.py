@@ -293,7 +293,7 @@ class Task:
         self.restored = []                 # protected files a command changed and the server put back
         self.before = []                   # the checks as they were before the work
         self.syntax = {'ok': [], 'bad': [], 'unchecked': []}
-        self.steps = self.tokens = self.read_chars = self.repairs = 0
+        self.steps = self.tokens = self.read_chars = self.repairs = self.resumes = 0
         self.read_by = {}                  # path -> most characters of it read in one call
         self.native = True
         self.used = ''                     # the model that did the work, once resolved
@@ -1100,13 +1100,29 @@ class Task:
             self._shrink(messages)
             try:
                 calls = self._turn(messages)
-            except engine.ExecutorError:
+            except engine.ExecutorError as exc:
                 if stop_ev and stop_ev.is_set():
                     state, summary = 'stopped', 'stopped by request'
                     break
                 if self.max_seconds and time.time() - self.t0 >= self.max_seconds:
                     state = 'out_of_time'
                     break
+                if self.resumes < int(os.environ.get('TANDEM_JOB_AUTORESUME', 2)) and engine.transient_error(exc):
+                    self.steps -= 1
+                    self.resumes += 1
+                    self.log.append({'step': self.steps, 'tool': '(auto-resume)', 'args': {'attempt': self.resumes},
+                                     'result': f'auto-resume {self.resumes} after transient error: {str(exc)[:120]}'})
+                    store.write_json(self.folder / 'messages.json', messages)
+                    self._save('running', 'auto-resume after transient error', checks)
+                    waited = 0.0
+                    while waited < 15.0:
+                        if stop_ev and stop_ev.is_set():
+                            break
+                        if self.max_seconds and time.time() - self.t0 >= self.max_seconds:
+                            break
+                        time.sleep(0.5)
+                        waited += 0.5
+                    continue
                 raise
             if stop_ev and stop_ev.is_set():
                 state, summary = 'stopped', 'stopped by request'
@@ -1251,7 +1267,7 @@ class Task:
         weak = bool(checks) and bool(self.before) and all(c['exit'] == 0 for c in self.before)
         backup_status, unbacked_files = self._backup_status()
         data.update(state=state, summary=summary, checks=checks, repairs=self.repairs, steps=self.steps, tokens=self.tokens,
-                    read_chars=self.read_chars, workspace=str(self.ws.root), goal=self.goal, context=self.context,
+                    resumes=self.resumes, read_chars=self.read_chars, workspace=str(self.ws.root), goal=self.goal, context=self.context,
                     write_globs=self.ws.write_globs, allow_run=[r.pattern for r in self.ws.allow_run],
                     immutable=self.ws.immutable, checks_network=self.checks_network, unjailed_checks=self.unjailed_checks,
                     verify=self.verify, constraints=self.constraints, model=self.model, used=self.used, max_steps=self.max_steps,
@@ -1373,6 +1389,7 @@ def resume(job, hint, extra_steps=15):
     task.journal_modes = store.read_json(folder / 'journal_modes.json', {}) or {}
     task.log = store.read_json(folder / 'log.json', []) or []
     task.steps, task.tokens, task.read_chars = data.get('steps', 0), data.get('tokens', 0), data.get('read_chars', 0)
+    task.resumes = 0
     task.before = data.get('before', [])
     task.restored, task.touched = data.get('restored', []), set(data.get('touched', []))
     task.created_dirs = list(data.get('created_dirs', []))

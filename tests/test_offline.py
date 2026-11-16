@@ -1084,6 +1084,52 @@ finally:
         os.environ.pop('TANDEM_LLM_RETRIES', None)
     else:
         os.environ['TANDEM_LLM_RETRIES'] = old_retries
+
+# Auto-resume in Task.loop on transient ExecutorError
+ar_job, ar_folder = store.new_job('delegate')
+ar_ws = sandbox.Workspace(str(root), ['math_utils.py'])
+ar_task = agent.Task(ar_job, ar_folder, 'auto resume test', ar_ws, [], max_steps=5)
+ar_calls = 0
+
+
+def _ar_turn(_msgs):
+    global ar_calls
+    ar_calls += 1
+    if ar_calls == 1:
+        try:
+            raise _DummyHTTP(502, 'reloading')
+        except _DummyHTTP as e:
+            raise engine.ExecutorError('transient 502') from e
+    return [(None, 'finish', {'summary': 'recovered'})]
+
+
+ar_task._turn = _ar_turn
+old_ar_sleep = time.sleep
+old_ar_env = os.environ.get('TANDEM_JOB_AUTORESUME')
+try:
+    time.sleep = lambda _s: None
+    os.environ['TANDEM_JOB_AUTORESUME'] = '2'
+    ar_state = ar_task.loop([{'role': 'system', 'content': 's'}, {'role': 'user', 'content': 'u'}])
+    ok(ar_state != 'error' and ar_task.resumes == 1
+       and any('auto-resume' in str(entry) for entry in ar_task.log),
+       'Task.loop auto-resumes after transient ExecutorError')
+
+    ar_job0, ar_folder0 = store.new_job('delegate')
+    ar_task0 = agent.Task(ar_job0, ar_folder0, 'auto resume off', ar_ws, [], max_steps=5)
+    ar_calls = 0
+    ar_task0._turn = _ar_turn
+    os.environ['TANDEM_JOB_AUTORESUME'] = '0'
+    t_ar0 = agent._launch(ar_task0, lambda: ar_task0.loop([{'role': 'system', 'content': 's'}, {'role': 'user', 'content': 'u'}]))
+    t_ar0.join(timeout=10)
+    ok((store.read_job(ar_job0) or {}).get('state') == 'error', 'TANDEM_JOB_AUTORESUME=0 disables auto-resume')
+finally:
+    time.sleep = old_ar_sleep
+    agent.STOP.pop(ar_job0, None)
+    agent.RUNNING.pop(ar_job0, None)
+    if old_ar_env is None:
+        os.environ.pop('TANDEM_JOB_AUTORESUME', None)
+    else:
+        os.environ['TANDEM_JOB_AUTORESUME'] = old_ar_env
 ok(agent.request_stop('finished-job-id') is False and 'finished-job-id' not in agent.STOP,
    'request_stop on dead job returns False without poisoning STOP')
 stop_job, stop_folder = store.new_job('delegate')

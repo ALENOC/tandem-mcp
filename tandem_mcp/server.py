@@ -823,13 +823,15 @@ def ledger_report(days: float = 30.0) -> str:
         kind = r.get('kind')
         t = tools.setdefault(r['tool'], {'pt': 0, 'ct': 0, 'calls': 0, 'in': 0, 'out': 0})
         m = per_model.setdefault(r.get('model') or 'default', {'ct': 0, 's': 0.0, 'ok': 0, 'bad': 0, 'jobs': {}, 'yes': 0, 'no': 0,
-                                                              'answers': 0, 'contested': 0})
+                                                              'answers': 0, 'contested': 0, 'retries': 0})
         if kind == 'llm':
             t['pt'] += r.get('prompt_tokens', 0)
             t['ct'] += r.get('completion_tokens', 0)
             if r.get('seconds', 0) > 1:
                 m['ct'] += r.get('completion_tokens', 0)
                 m['s'] += r.get('seconds', 0)
+        elif kind == 'retry':
+            m['retries'] += 1
         elif kind == 'result':
             t['calls'] += 1
             t['in'] += r.get('bytes_in', 0)
@@ -866,6 +868,8 @@ def ledger_report(days: float = 30.0) -> str:
             parts.append('jobs: ' + ', '.join(f'{k} {v}' for k, v in sorted(m['jobs'].items(), key=str)))
         if m['yes'] + m['no']:
             parts.append(f'accepted by you {m["yes"]} of {m["yes"] + m["no"]}')
+        if m['retries']:
+            parts.append(f'transient retries {m["retries"]}')
         if parts:
             lines.append(f'{name}: ' + '; '.join(parts))
     return sandbox.redact_secrets('\n'.join(lines))
