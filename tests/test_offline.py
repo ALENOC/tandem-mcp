@@ -1241,6 +1241,55 @@ finally:
         os.environ.pop('TANDEM_SNAPSHOT_FILE_CAP', None)
     else:
         os.environ['TANDEM_SNAPSHOT_FILE_CAP'] = old_snap_cap
+
+# Invalid snapshot cap env falls back to default (8 MiB) without raising
+try:
+    os.environ['TANDEM_SNAPSHOT_FILE_CAP'] = '8MB'
+    inv_job, inv_folder = store.new_job('delegate')
+    inv_ws = sandbox.Workspace(str(cap_root), ['big.bin'], allow_run=['^echo'])
+    inv_task = agent.Task(inv_job, inv_folder, 'invalid cap test', inv_ws, [], max_steps=2)
+    inv_task.take_snapshot()
+    inv_manifest = store.read_json(inv_folder / 'snapshot.json')
+    ok(inv_manifest.get('big.bin') is not None, 'invalid TANDEM_SNAPSHOT_FILE_CAP falls back to default')
+finally:
+    if old_snap_cap is None:
+        os.environ.pop('TANDEM_SNAPSHOT_FILE_CAP', None)
+    else:
+        os.environ['TANDEM_SNAPSHOT_FILE_CAP'] = old_snap_cap
+
+# Default 8 MiB cap backs up a 3 MB file (above old 2 MB cap)
+import shutil
+big3_root = Path(tempfile.mkdtemp())
+old_total_cap = os.environ.get('TANDEM_SNAPSHOT_TOTAL_CAP')
+try:
+    (big3_root / 'three_mb.bin').write_bytes(b'Z' * (3 * 1024 * 1024))
+    os.environ.pop('TANDEM_SNAPSHOT_FILE_CAP', None)
+    os.environ.pop('TANDEM_SNAPSHOT_TOTAL_CAP', None)
+    b3_job, b3_folder = store.new_job('delegate')
+    b3_ws = sandbox.Workspace(str(big3_root), ['three_mb.bin'], allow_run=['^echo'])
+    b3_task = agent.Task(b3_job, b3_folder, '3mb default cap test', b3_ws, [], max_steps=2)
+    b3_task.take_snapshot()
+    b3_manifest = store.read_json(b3_folder / 'snapshot.json')
+    b3_task.touched.add('three_mb.bin')
+    b3_status = b3_task._backup_status()
+    b3_task._save('unverified', 'done', [])
+    b3_data = store.read_job(b3_job)
+    b3_receipt = _server._receipt(b3_job)
+    ok(b3_manifest.get('three_mb.bin') is not None
+       and b3_status == ('fully_backed', [])
+       and not (b3_data.get('unbacked_files') or [])
+       and 'TANDEM_SNAPSHOT_FILE_CAP' not in b3_receipt,
+       'default 8 MiB cap backs up 3 MB file without unbacked warning')
+finally:
+    shutil.rmtree(big3_root, ignore_errors=True)
+    if old_snap_cap is None:
+        os.environ.pop('TANDEM_SNAPSHOT_FILE_CAP', None)
+    else:
+        os.environ['TANDEM_SNAPSHOT_FILE_CAP'] = old_snap_cap
+    if old_total_cap is None:
+        os.environ.pop('TANDEM_SNAPSHOT_TOTAL_CAP', None)
+    else:
+        os.environ['TANDEM_SNAPSHOT_TOTAL_CAP'] = old_total_cap
 ok(agent.request_stop('finished-job-id') is False and 'finished-job-id' not in agent.STOP,
    'request_stop on dead job returns False without poisoning STOP')
 stop_job, stop_folder = store.new_job('delegate')

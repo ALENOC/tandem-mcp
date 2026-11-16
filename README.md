@@ -83,10 +83,12 @@ Manual stdio configuration (any MCP client):
 | `TANDEM_REDACT` | `0` disables secret redaction on tool outputs | `1` |
 | `TANDEM_SANDBOX_NET` | `1` allows network inside sandbox | off |
 | `TANDEM_ALLOW_OUTBOUND_SYMLINKS` | `1` allows unjailed `run` in workspaces with outbound symlinks | off |
-| `TANDEM_SNAPSHOT_FILE_CAP` | Max pre-task file size backed up by `take_snapshot` (bytes) | `8388608` |
-| `TANDEM_SNAPSHOT_TOTAL_CAP` | Max total pre-task snapshot size per job (bytes) | `268435456` |
+| `TANDEM_SNAPSHOT_FILE_CAP` | Max pre-task file size backed up by `take_snapshot` in bytes (`0` disables backup; affected files are reported as unbacked) | `8388608` |
+| `TANDEM_SNAPSHOT_TOTAL_CAP` | Max total pre-task snapshot size per job in bytes (`0` disables backup; affected files are reported as unbacked) | `268435456` |
 | `TANDEM_HOME` | Ledger, lessons, caps, cache, and jobs folder | `~/.local/share/tandem-mcp` |
 | `TANDEM_MAX_PARTS` | Most parts one `digest_*` answer may read (one executor call each) | `60` |
+| `TANDEM_JOBS_KEEP` | Max persisted job folders kept on disk | `200` |
+| `TANDEM_JOBS_TTL_DAYS` | Days persisted job folders are kept before pruning | `30` |
 | `TANDEM_JOBS_PENDING_TTL_DAYS` | Days a job with changes and no verdict is kept | `120` |
 | `TANDEM_LEDGER_KEEP_DAYS` | Days of ledger lines kept (`0`: all) | `180` |
 
@@ -94,6 +96,7 @@ Manual stdio configuration (any MCP client):
 - **Ollama**: raise `OLLAMA_CONTEXT_LENGTH` for `delegate` tasks; reading tools (`digest_*`) work at any context length by chunking.
 - **Small contexts (< 8000 tokens)**: fine for `digest_*`, `extract_from_file`, and `ask`; tight for `delegate`.
 - **Reasoning models**: reasoning blocks are stripped; disabling verbose thinking on the server speeds up mechanical tasks.
+- **macOS / Windows (no `bubblewrap`)**: unjailed `run` and `verify_commands` refuse workspaces containing symlinks pointing outside the workspace (for example, monorepo links like `packages/app/shared -> ../../shared`). Remove those symlinks, use `bubblewrap` on Linux, or set `TANDEM_ALLOW_OUTBOUND_SYMLINKS=1` (see [Security](#security) for the risk).
 
 </details>
 
@@ -235,7 +238,7 @@ Read this before pointing Tandem at a sensitive repository:
 - **Allow list**: an `allow_run` pattern matches anywhere in a command part, so anchor it (`^pytest\b`). Shell comments are dropped before matching, and command substitution and `$'...'` quoting are refused. The safety list refuses `ssh`, `kill`, `source` and the like as the command of a part (also behind `env`, `xargs`, `sh -c`), not as a word among its arguments.
 - **Workspace**: `/`, the home folder and the folders above it, system folders (`/etc`, `/usr`, `/tmp` itself, ...) and credential folders (`~/.ssh`, ...) are refused as a workspace.
 - **API key**: `TANDEM_API_KEY` is sent only to the configured or selected server, never to the other local ports tried during discovery. The data folder is private to the user (`0700`).
-- **Safe rollback**: `journal_bin.json` + `snapshot.json` back up original bytes (up to 8 MB/file, 256 MB total, configurable via `TANDEM_SNAPSHOT_FILE_CAP` and `TANDEM_SNAPSHOT_TOTAL_CAP`). Pre-existing files larger than the cap are tracked as `None` so `job_rollback` preserves them instead of deleting them; `post_state.json` prevents overwriting later user edits.
+- **Safe rollback**: `journal_bin.json` + `snapshot.json` back up original bytes (up to 8 MB/file, 256 MB total, configurable via `TANDEM_SNAPSHOT_FILE_CAP` and `TANDEM_SNAPSHOT_TOTAL_CAP`; `0` disables backup). Pre-existing files larger than the cap are tracked as `None` so `job_rollback` preserves them instead of deleting them; `post_state.json` prevents overwriting later user edits. Snapshot caps are per job, so aggregate disk usage can reach up to ~`TANDEM_JOBS_KEEP` x `TANDEM_SNAPSHOT_TOTAL_CAP` before retention pruning (`TANDEM_JOBS_TTL_DAYS` default 30, `TANDEM_JOBS_PENDING_TTL_DAYS` default 120); lower `TANDEM_JOBS_KEEP` or the snapshot caps to bound disk usage further. (Future improvement: blobs are already SHA-256 content-addressed, so a shared `DATA/blobs` store would deduplicate across jobs.)
 - **Transient outage resilience**: `engine.chat` retries connection errors and `408`/`409`/`429`/`5xx` server errors with exponential backoff (single retry layer; `OpenAI(..., max_retries=0)`), while a per-completion timeout (`APITimeoutError`) is not retried so a long hang is not multiplied (long hangs are covered by `max_seconds` and `job_continue`). Delegated jobs survive short local server outages via bounded auto-resume; longer outages finish as `error` and can be resumed with `job_continue`.
 - **Hostile text**: file contents and command output are marked as data in prompts, and receipts/diffs should always be reviewed before accepting. See [SECURITY.md](SECURITY.md) to report vulnerabilities.
 

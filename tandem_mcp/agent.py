@@ -271,8 +271,15 @@ def _is_binary(data):
     return data is not None and b'\x00' in data[:4096]
 
 
-SNAPSHOT_FILE_CAP = int(os.environ.get('TANDEM_SNAPSHOT_FILE_CAP', 8 * 1024 * 1024))
-SNAPSHOT_TOTAL_CAP = int(os.environ.get('TANDEM_SNAPSHOT_TOTAL_CAP', 256 * 1024 * 1024))
+def _snapshot_cap(env, default):
+    try:
+        return max(0, int(os.environ.get(env, default)))
+    except ValueError:
+        return default
+
+
+SNAPSHOT_FILE_CAP = _snapshot_cap('TANDEM_SNAPSHOT_FILE_CAP', 8 * 1024 * 1024)
+SNAPSHOT_TOTAL_CAP = _snapshot_cap('TANDEM_SNAPSHOT_TOTAL_CAP', 256 * 1024 * 1024)
 
 
 class Task:
@@ -737,8 +744,8 @@ class Task:
         manifest = {}
         modes = {}
         total_bytes = 0
-        file_cap = int(os.environ.get('TANDEM_SNAPSHOT_FILE_CAP', SNAPSHOT_FILE_CAP))
-        total_cap = int(os.environ.get('TANDEM_SNAPSHOT_TOTAL_CAP', SNAPSHOT_TOTAL_CAP))
+        file_cap = _snapshot_cap('TANDEM_SNAPSHOT_FILE_CAP', SNAPSHOT_FILE_CAP)
+        total_cap = _snapshot_cap('TANDEM_SNAPSHOT_TOTAL_CAP', SNAPSHOT_TOTAL_CAP)
         for rel in sandbox.walk(self.ws.root, '*', limit=None):
             p = _safe_workspace_path(self.ws.root, rel)
             if p is None:
