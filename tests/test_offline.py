@@ -2159,9 +2159,11 @@ ok(len(c_bool) == 1 and c_bool[0]['field'] == 'flag' and c_bool[0]['values'] == 
 # end-to-end mocked extract_from_file with multi-chunk conflicts
 old_chat_json = engine.chat_json
 old_chunk_chars = digest.chunk_chars
+old_default_model = engine.default_model
 ext_file = batch_ws_dir / 'datasheet.txt'
 ext_file.write_text(('line voltage 3.3 V\n' * 15) + ('line voltage 5.0 V\n' * 15))
 digest.chunk_chars = lambda _m='': 200
+engine.default_model = lambda _role='': 'mock-model'
 _chunk_idx = 0
 
 
@@ -2180,6 +2182,7 @@ try:
 finally:
     engine.chat_json = old_chat_json
     digest.chunk_chars = old_chunk_chars
+    engine.default_model = old_default_model
 
 # --- v3.6.0: read_globs enforcement (Fase 4) ---
 rg_ws_dir = Path(tempfile.mkdtemp())

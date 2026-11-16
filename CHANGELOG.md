@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.6.1
+
+### Testing
+- Mocked `engine.default_model` in the offline `extract_from_file` multi-chunk conflict test so `tests/test_offline.py` runs deterministically without a live LLM server in CI.
+
 ## 3.6.0
 
 ### Security & Permissions
