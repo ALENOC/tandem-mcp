@@ -1425,6 +1425,67 @@ finally:
         t_win.join(timeout=5)
     agent.STOP.pop(win_job, None)
     agent.RUNNING.pop(win_job, None)
+
+# --- P1: digest map-reduce correctness (fact collisions, omitted rows, capped notes) ---
+old_chat_json = engine.chat_json
+old_ctx_tokens = engine.context_tokens
+old_def_model = engine.default_model
+captured_reduce = []
+try:
+    engine.default_model = lambda: 'digest-test-m'
+    engine.context_tokens = lambda _m='': 3000    # chunk_chars -> 3000 * 0.42 * 3 = 3780 chars
+
+    # 1. Two notes with same quote and different facts -> both facts appear in reduce prompt
+    src_dup = '\n'.join([f'line {i}: alpha beta gamma delta ' + ('x' * 80) for i in range(1, 60)])
+
+    def _stub_dup(messages, schema, **_kw):
+        user_msg = str(messages[-1]['content'])
+        if 'Part 1 of' in user_msg:
+            return ({'relevant': True, 'notes': [
+                {'line': 1, 'quote': 'line 1: alpha beta gamma delta', 'fact': 'FACT_ONE'},
+                {'line': 1, 'quote': 'line 1: alpha beta gamma delta', 'fact': 'FACT_TWO'},
+            ]}, {'prompt': 10, 'completion': 5})
+        if 'Part ' in user_msg:
+            return ({'relevant': False, 'notes': []}, {'prompt': 10, 'completion': 5})
+        captured_reduce.append(user_msg)
+        return ({'answer': 'alpha', 'evidence': [{'line': 1, 'quote': 'line 1: alpha beta gamma delta'}]},
+                {'prompt': 10, 'completion': 5})
+
+    engine.chat_json = _stub_dup
+    res_dup = digest.answer(src_dup, 'what about line 1?', cache=False)
+    ok(captured_reduce and 'FACT_ONE' in captured_reduce[-1] and 'FACT_TWO' in captured_reduce[-1],
+       'digest.answer preserves multiple distinct facts for the same quote')
+
+    # 2. Long quotes force line-boundary omission + 3. >25 notes per chunk -> notes_capped > 0
+    long_lines = [f'item {i:02d}: ' + ('Q' * 220) for i in range(1, 45)]
+    src_many = '\n'.join(long_lines)
+    captured_reduce.clear()
+
+    def _stub_many(messages, schema, **_kw):
+        user_msg = str(messages[-1]['content'])
+        if 'Part 1 of' in user_msg:
+            notes_28 = [{'line': i, 'quote': long_lines[i - 1], 'fact': f'F{i}'} for i in range(1, 29)]
+            return ({'relevant': True, 'notes': notes_28}, {'prompt': 10, 'completion': 5})
+        if 'Part ' in user_msg:
+            return ({'relevant': False, 'notes': []}, {'prompt': 10, 'completion': 5})
+        captured_reduce.append(user_msg)
+        return ({'answer': 'items found', 'evidence': [{'line': 1, 'quote': long_lines[0]}]},
+                {'prompt': 10, 'completion': 5})
+
+    engine.chat_json = _stub_many
+    res_many = digest.answer(src_many, 'list items', cache=False)
+    rendered_many = digest.render(res_many, 'src.txt')
+    reduce_body = captured_reduce[-1].split('Verified extracts of the material (line| quote :: fact):\n', 1)[1]
+    reduce_body = reduce_body.split('\n\nAnswer in at most', 1)[0]
+    ok(res_many['notes_capped'] == 3 and '3 note(s) exceeded the per-chunk cap' in rendered_many,
+       'digest.answer counts notes_capped > 0 and render reports it')
+    ok(res_many['notes_omitted'] > 0 and 'did not fit the reduce prompt' in rendered_many
+       and all(':: F' in ln for ln in reduce_body.splitlines()),
+       'digest.answer omits whole rows cleanly without mid-line truncation and render reports notes_omitted')
+finally:
+    engine.chat_json = old_chat_json
+    engine.context_tokens = old_ctx_tokens
+    engine.default_model = old_def_model
 ok(agent.request_stop('finished-job-id') is False and 'finished-job-id' not in agent.STOP,
    'request_stop on dead job returns False without poisoning STOP')
 stop_job, stop_folder = store.new_job('delegate')

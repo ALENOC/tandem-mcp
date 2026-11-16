@@ -220,7 +220,7 @@ def answer(text, question, max_words=120, grep='', tool='digest', model='', cach
         raise engine.ExecutorError(f'material too large for one answer ({len(parts)} parts of {size} characters, '
                                    f'the limit is {MAX_PARTS}): narrow it with grep')
     read_lines = sum(1 for part in parts for line in part.splitlines() if line != '...')
-    tokens = dropped = 0
+    tokens = dropped = capped = omitted = 0
     if len(parts) > 1:                                   # map: notes per chunk, reduce: answer from the notes
         notes = []
         for k, part in enumerate(parts):
@@ -232,16 +232,30 @@ def answer(text, question, max_words=120, grep='', tool='digest', model='', cach
                 NOTES, tool=tool, model=model, max_tokens=1500)
             tokens += used['prompt'] + used['completion']
             if data.get('relevant') and isinstance(data.get('notes'), list):
-                notes += [n for n in data['notes'] if isinstance(n, dict)][:25]
+                ns = [n for n in data['notes'] if isinstance(n, dict)]
+                capped += max(0, len(ns) - 25)
+                notes += ns[:25]
         if not notes:
             return {'answer': 'The material does not answer the question.', 'evidence': [], 'rejected': 0, 'loose': [],
+                    'notes_dropped': 0, 'notes_capped': capped, 'notes_omitted': 0,
                     'quote_found': False, 'claim_supported': 'unsupported', 'claim_warnings': [],
                     'truncated_lines': truncated_lines, 'chunks': len(parts), 'read_lines': read_lines,
                     'lines': len(lines), 'tokens': tokens, 'model': model}
         kept, dropped = check_evidence(notes, lines)
-        facts = {squash(str(n.get('quote', ''))): str(n.get('fact', '')) for n in notes}
-        rows = [f'{e["line"]}| {e["quote"]}  :: {facts.get(squash(e["quote"]), "")}' for e in kept]
-        material = '\n'.join(rows)[:size]
+        facts = {}
+        for n in notes:
+            k, f = squash(str(n.get('quote', '')).strip()[:160]), str(n.get('fact', '')).strip()
+            if f and f not in facts.setdefault(k, []):
+                facts[k].append(f)
+        rows = [f'{e["line"]}| {e["quote"]}  :: {" / ".join(facts.get(squash(e["quote"]), []))}' for e in kept]
+        material_lines, used_chars = [], 0
+        for row in rows:
+            if used_chars + len(row) + 1 > size:
+                break                                    # deterministic prefix, order preserved
+            material_lines.append(row)
+            used_chars += len(row) + 1
+        material = '\n'.join(material_lines)
+        omitted = len(rows) - len(material_lines)
         prompt = f'Question: {question}\n\nVerified extracts of the material (line| quote :: fact):\n{material}'
     else:
         prompt = f'Question: {question}\n\nMaterial:\n{parts[0] if parts else ""}'
@@ -255,6 +269,7 @@ def answer(text, question, max_words=120, grep='', tool='digest', model='', cach
     loose = loose_numbers(reply, text, question, good)
     support = check_claim_support(reply, good, lines, loose)
     result = {'answer': reply, 'evidence': good, 'rejected': bad, 'notes_dropped': dropped,
+              'notes_capped': capped, 'notes_omitted': omitted,
               'loose': loose, 'quote_found': support['quote_found'], 'claim_supported': support['claim_supported'],
               'claim_warnings': support['warnings'], 'truncated_lines': truncated_lines,
               'chunks': len(parts), 'read_lines': read_lines, 'lines': len(lines), 'tokens': tokens, 'model': model}
@@ -282,6 +297,10 @@ def render(result, source=''):
         out.append('(no evidence given)')
     if result.get('truncated_lines'):
         out.append(f'NOTE: {result["truncated_lines"]} long line(s) exceeded 2000 chars and were truncated.')
+    if result.get('notes_capped'):
+        out.append(f'NOTE: {result["notes_capped"]} note(s) exceeded the per-chunk cap and were skipped.')
+    if result.get('notes_omitted'):
+        out.append(f'NOTE: {result["notes_omitted"]} verified extract(s) did not fit the reduce prompt and were omitted.')
     if result.get('lines') and result.get('read_lines', 0) < result['lines']:
         out.append(f'Read {result["read_lines"]} of {result["lines"]} lines (narrowed by grep).')
     if result.get('cached'):
