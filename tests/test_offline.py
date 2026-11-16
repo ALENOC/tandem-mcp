@@ -252,6 +252,9 @@ try:
     ok(refused(sandbox.run, 'echo hi', root, 5, True), 'TANDEM_SANDBOX=secure fails closed in run(jail=True)')
     os.environ['TANDEM_SANDBOX'] = 'invalid_profile'
     ok(refused(sandbox.jail_available), 'unknown TANDEM_SANDBOX profile fails closed')
+    os.environ.pop('TANDEM_SANDBOX', None)
+    if sandbox.sys.platform.startswith('linux'):
+        ok(refused(sandbox.jail_available), 'Linux default without TANDEM_SANDBOX fails closed when bwrap is unavailable')
 finally:
     sandbox._jail = saved_jail
     if saved_mode is None:
@@ -1882,10 +1885,77 @@ try:
     ok(n_parts >= 2 and merged_obj == {'part': 'LM317', 'voltage': 3.3, 'tags': ['reg', 'ldo', '3v3']}
        and not engine.problem(merged_obj, ex_schema),
        'chunked digest.extract merges object chunks deterministically and validates against schema')
+
+    # Nested object + contradictory scalar + array schema + schema violation error
+    ex_idx = 0
+
+    def _ex_nested(_msgs, _sc, **_kw):
+        global ex_idx
+        ex_idx += 1
+        if ex_idx == 1:
+            return ({'meta': {'author': None, 'rev': 'A'}, 'voltage': 3.3, 'items': ['x', 'y']}, {'prompt': 5, 'completion': 3})
+        return ({'meta': {'author': 'ALENOC', 'rev': 'B'}, 'voltage': 5.0, 'items': ['y', 'z']}, {'prompt': 5, 'completion': 3})
+
+    engine.chat_json = _ex_nested
+    nested_sc = {'type': 'object', 'required': ['meta', 'voltage', 'items'],
+                 'properties': {'meta': {'type': 'object', 'properties': {'author': {'type': 'string'}, 'rev': {'type': 'string'}}},
+                                'voltage': {'type': 'number'}, 'items': {'type': 'array', 'items': {'type': 'string'}}}}
+    merged_nested, _, _ = digest.extract(ex_src, nested_sc, 'nested')
+    ok(merged_nested == {'meta': {'author': 'ALENOC', 'rev': 'A'}, 'voltage': 3.3, 'items': ['x', 'y', 'z']},
+       'chunked extract merges nested objects and resolves scalar conflicts deterministically')
+
+    arr_calls = [0]
+    engine.chat_json = lambda _m, _s, **_kw: (['a', 'b'] if (arr_calls.__setitem__(0, arr_calls[0] + 1) or arr_calls[0]) == 1 else ['b', 'c'], {'prompt': 1, 'completion': 1})
+    arr_sc = {'type': 'array', 'items': {'type': 'string'}}
+    merged_arr, _, _ = digest.extract(ex_src, arr_sc, 'array')
+    ok(merged_arr == ['a', 'b', 'c'], 'chunked extract merges and deduplicates array schema')
+
+    engine.chat_json = lambda _m, _s, **_kw: ({'part': 'X'}, {'prompt': 1, 'completion': 1})
+    strict_sc = {'type': 'object', 'required': ['part', 'voltage'], 'properties': {'part': {'type': 'string'}, 'voltage': {'type': 'number'}}}
+    got_schema_err = False
+    try:
+        digest.extract(ex_src, strict_sc, 'missing required')
+    except engine.ExecutorError:
+        got_schema_err = True
+    ok(got_schema_err, 'chunked extract raises ExecutorError when merged result violates schema')
 finally:
     engine.chat_json = old_ex_cj
     engine.context_tokens = old_ex_ctx
     engine.default_model = old_ex_mod
+
+# --- FASE 3: TANDEM_REQUIRE_FULL_BACKUP=1 and partial_rollback state ---
+rfb_root = Path(tempfile.mkdtemp())
+(rfb_root / 'huge.bin').write_bytes(b'H' * 4096)
+old_rfb = os.environ.get('TANDEM_REQUIRE_FULL_BACKUP')
+old_rfb_cap = os.environ.get('TANDEM_SNAPSHOT_FILE_CAP')
+try:
+    os.environ['TANDEM_REQUIRE_FULL_BACKUP'] = '1'
+    os.environ['TANDEM_SNAPSHOT_FILE_CAP'] = '1024'
+    rfb_job, rfb_folder = store.new_job('delegate')
+    rfb_ws = sandbox.Workspace(str(rfb_root), ['huge.bin'], allow_run=['^echo\\b'])
+    rfb_task = agent.Task(rfb_job, rfb_folder, 'full backup gate', rfb_ws, [], max_steps=2)
+    ok(refused(rfb_task.call, 'run', {'command': 'echo x'}),
+       'TANDEM_REQUIRE_FULL_BACKUP=1 refuses run when workspace has unbacked files')
+
+    ok('TANDEM_REQUIRE_FULL_BACKUP=1' in _server.job_feedback(ub_job, True),
+       'TANDEM_REQUIRE_FULL_BACKUP=1 blocks accepting job with unbacked changes even after job_diff')
+
+    # partial_rollback state when unbacked file cannot be undone
+    store.write_job(rfb_job, {'id': rfb_job, 'kind': 'delegate', 'state': 'verified', 'workspace': str(rfb_root),
+                              'touched': ['huge.bin'], 'changes': [], 'before': []})
+    rfb_rb = agent.rollback(rfb_job)
+    ok('not undone' in rfb_rb and store.read_job(rfb_job)['state'] == 'partial_rollback',
+       'incomplete rollback sets state to partial_rollback')
+finally:
+    shutil.rmtree(rfb_root, ignore_errors=True)
+    if old_rfb is None:
+        os.environ.pop('TANDEM_REQUIRE_FULL_BACKUP', None)
+    else:
+        os.environ['TANDEM_REQUIRE_FULL_BACKUP'] = old_rfb
+    if old_rfb_cap is None:
+        os.environ.pop('TANDEM_SNAPSHOT_FILE_CAP', None)
+    else:
+        os.environ['TANDEM_SNAPSHOT_FILE_CAP'] = old_rfb_cap
 ok(agent.request_stop('finished-job-id') is False and 'finished-job-id' not in agent.STOP,
    'request_stop on dead job returns False without poisoning STOP')
 stop_job, stop_folder = store.new_job('delegate')

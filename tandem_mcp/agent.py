@@ -286,6 +286,10 @@ SNAPSHOT_FILE_CAP = _snapshot_cap('TANDEM_SNAPSHOT_FILE_CAP', 8 * 1024 * 1024)
 SNAPSHOT_TOTAL_CAP = _snapshot_cap('TANDEM_SNAPSHOT_TOTAL_CAP', 256 * 1024 * 1024)
 
 
+def _require_full_backup():
+    return os.environ.get('TANDEM_REQUIRE_FULL_BACKUP', '').strip().lower() in ('1', 'true', 'yes', 'on')
+
+
 def _rg_enabled():
     return os.environ.get('TANDEM_USE_RG', '').strip().lower() in ('1', 'true', 'yes', 'on')
 
@@ -553,6 +557,14 @@ class Task:
             run_ctx = self.ws.run_lock if self.ws.run_lock is not None else contextlib.nullcontext()
             with run_ctx:
                 self.take_snapshot()
+                if _require_full_backup():
+                    snap_manifest = store.read_json(self.folder / 'snapshot.json', {}) or {}
+                    unbacked_snap = [rel for rel, val in snap_manifest.items() if val is None]
+                    if unbacked_snap:
+                        raise sandbox.SandboxError(
+                            'TANDEM_REQUIRE_FULL_BACKUP=1: workspace has unbacked files exceeding snapshot caps '
+                            f'({", ".join(unbacked_snap[:5])})'
+                        )
                 pre_run_claimed = {}
                 if self.ws.claims:
                     for crel in list(self.ws.claims):
@@ -1780,7 +1792,8 @@ def rollback(job):
         shutil.rmtree(p, ignore_errors=True)
         done.append(rel + '/')
 
-    data['state'] = 'rolled_back'
+    partial = bool(unbacked or left or no_post_state or ext_symlinks)
+    data['state'] = 'partial_rollback' if partial else 'rolled_back'
     store.write_job(job, data)
     parts = ['restored: ' + (', '.join(done) or 'nothing')]
     if skipped:

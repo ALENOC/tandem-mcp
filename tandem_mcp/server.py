@@ -280,6 +280,7 @@ HINTS = {'verified': 'Checks passed. Read job_diff if the change is delicate, th
          'out_of_steps': 'Step limit reached. job_continue gives more steps; job_rollback undoes the partial work.',
          'out_of_time': 'Time limit reached. job_continue gives more steps; job_rollback undoes the partial work.',
          'stopped': 'Stopped on request. job_continue resumes from here, or job_rollback undoes the partial work.',
+         'partial_rollback': 'Some files could not be undone (see job_rollback output).',
          'error': 'The run broke. job_rollback undoes any partial change.'}
 
 
@@ -801,6 +802,8 @@ def job_feedback(job_id: str, accepted: bool, lesson: str = '', constraints_veri
             return _fail(f'cannot accept job in state {data.get("state")!r}: fix or job_continue until verified')
         churn = sum(add + rem for _, _, add, rem in (data.get('changes') or []))
         unbacked = bool(data.get('unbacked_files')) or data.get('backup_status') in ('partially_backed', 'unbacked')
+        if unbacked and agent._require_full_backup():
+            return _fail('TANDEM_REQUIRE_FULL_BACKUP=1: cannot accept job with unbacked changes; inspect job_diff and roll back or unset TANDEM_REQUIRE_FULL_BACKUP')
         needs_diff = unbacked or (bool(data.get('changes')) and (churn > 40 or bool(data.get('constraints')) or bool(data.get('weak'))
                                                                 or data.get('state') == 'unverified'     # no check ran: the diff is the only proof
                                                                 or strict()))                            # strict: a verdict is given on a diff that was read

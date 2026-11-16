@@ -382,10 +382,11 @@ _jail = None
 
 def _sandbox_profile():
     """Return normalized sandbox profile: 'secure', 'compatible', or 'trusted'."""
-    raw = os.environ.get('TANDEM_SANDBOX', 'auto').strip().lower()
+    default = 'secure' if sys.platform.startswith('linux') else 'compatible'
+    raw = os.environ.get('TANDEM_SANDBOX', '').strip().lower() or default
     if raw in ('secure', 'require'):
         return 'secure'
-    if raw in ('compatible', 'auto', ''):
+    if raw in ('compatible', 'auto'):
         return 'compatible'
     if raw in ('trusted', 'off'):
         return 'trusted'

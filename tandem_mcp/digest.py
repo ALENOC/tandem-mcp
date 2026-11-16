@@ -375,16 +375,26 @@ def _merge_dicts(base, nxt):
 
 def _merge_extractions(results, schema):
     if len(results) == 1:
-        return results[0]
+        merged = results[0]
+        why = engine.problem(merged, schema)
+        if why:
+            raise engine.ExecutorError(f'extracted data does not match schema: {why}')
+        return merged
     if (isinstance(schema, dict) and schema.get('type') == 'array') or all(isinstance(r, list) for r in results):
         merged = _merge_lists([x for r in results if isinstance(r, list) for x in r])
-        return merged if not engine.problem(merged, schema) else results
+        why = engine.problem(merged, schema)
+        if why:
+            raise engine.ExecutorError(f'merged extraction does not match schema: {why}')
+        return merged
     if all(isinstance(r, dict) for r in results):
         merged = results[0]
         for r in results[1:]:
             merged = _merge_dicts(merged, r)
-        return merged if not engine.problem(merged, schema) else results
-    return results
+        why = engine.problem(merged, schema)
+        if why:
+            raise engine.ExecutorError(f'merged extraction does not match schema: {why}')
+        return merged
+    raise engine.ExecutorError('merged extraction produced incompatible chunk types for schema')
 
 
 def extract(text, schema, instructions, grep='', tool='extract', model=''):
