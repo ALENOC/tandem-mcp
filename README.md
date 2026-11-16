@@ -89,6 +89,7 @@ Manual stdio configuration (any MCP client):
 | `TANDEM_MAX_PARTS` | Most parts one `digest_*` answer may read (one executor call each) | `60` |
 | `TANDEM_DIGEST_WORKERS` | Concurrent map calls per wave in `digest_*` (`1` = sequential) | `1` |
 | `TANDEM_DIGEST_MIN_NOTES` | Early-stop map threshold in `digest_*` (`0` = full map) | `0` |
+| `TANDEM_USE_RG` | `1` accelerates executor `search` with `rg --json` inside an equivalence envelope (`sandbox.walk` file set; Python fallback for PDFs, >600 KB files, and lookaround/backreference regexes; NUL checked up to 600 KB vs 4096 bytes) | `0` |
 | `TANDEM_JOBS_KEEP` | Max persisted job folders kept on disk | `200` |
 | `TANDEM_JOBS_TTL_DAYS` | Days persisted job folders are kept before pruning | `30` |
 | `TANDEM_JOBS_PENDING_TTL_DAYS` | Days a job with changes and no verdict is kept | `120` |
