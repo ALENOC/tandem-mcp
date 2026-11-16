@@ -1587,6 +1587,116 @@ finally:
         os.environ.pop('TANDEM_DIGEST_MIN_NOTES', None)
     else:
         os.environ['TANDEM_DIGEST_MIN_NOTES'] = old_dmn
+
+# --- P1 #10B: rg --json search accelerator (Equivalence Envelope) ---
+rg_root = Path(tempfile.mkdtemp())
+old_use_rg = os.environ.get('TANDEM_USE_RG')
+old_which = agent.shutil.which
+old_sub_run = agent.subprocess.run
+old_read_text = sandbox.read_text
+rg_seen_cmds = []
+try:
+    (rg_root / '.gitignore').write_text('ignored.txt\n')
+    (rg_root / 'ignored.txt').write_text('needle in gitignored\n')
+    (rg_root / '.hidden_file').write_text('needle in hidden\n')
+    (rg_root / 'node_modules').mkdir()
+    (rg_root / 'node_modules' / 'skip.txt').write_text('needle in skip dir\n')
+    (rg_root / 'a_std.txt').write_text('first needle\nother\nsecond needle   \n')
+    (rg_root / 'sub').mkdir()
+    (rg_root / 'sub' / 'a.txt').write_text('needle in sub\n')
+    (rg_root / 'b_pdf.pdf').write_bytes(b'%PDF-1.4 fake')
+    big_head = b'early needle\n' + ((b'x' * 99 + b'\n') * 6200) + b'late needle\n'
+    (rg_root / 'c_big.txt').write_bytes(big_head)
+    for k in range(6):
+        (rg_root / f'd_{k:02d}.txt').write_text(f'needle d{k} line1\nneedle d{k} line2\n')
+
+    def _fake_read_text(path, limit=4_000_000):
+        if Path(path).suffix.lower() == '.pdf':
+            return 'pdf needle line\n'[:limit]
+        return old_read_text(path, limit)
+
+    def _fake_rg_run(cmd, cwd=None, **_kw):
+        rg_seen_cmds.append(list(cmd))
+        pat = cmd[cmd.index('-e') + 1]
+        files_arg = cmd[cmd.index('--') + 1:]
+        if '(?=' in pat or r'\1' in pat:
+            return types.SimpleNamespace(returncode=2, stdout='', stderr='lookaround/backref unsupported')
+        rx_s = re.compile(pat)
+        lines_json = []
+        # Emit matches in reverse file order to verify deterministic re-sorting
+        for rel in reversed(files_arg):
+            txt = old_read_text(Path(cwd) / rel, 600_000)
+            for ln_no, ln in enumerate(txt.splitlines(), 1):
+                if rx_s.search(ln):
+                    emit_rel = rel.replace('/', '\\') if rel == 'sub/a.txt' else rel
+                    lines_json.append(json.dumps({
+                        'type': 'match',
+                        'data': {
+                            'path': {'text': emit_rel},
+                            'lines': {'text': ln + '\n'},
+                            'line_number': ln_no,
+                        },
+                    }))
+        rc = 0 if lines_json else 1
+        return types.SimpleNamespace(returncode=rc, stdout='\n'.join(lines_json), stderr='')
+
+    sandbox.read_text = _fake_read_text
+
+    # Baseline Python-only results
+    os.environ.pop('TANDEM_USE_RG', None)
+    py_plain = agent._search_workspace(rg_root, 'needle', '*')
+    py_capped = agent._search_workspace(rg_root, 'needle', '*', max_matches=5)
+    py_look = agent._search_workspace(rg_root, r'foo(?=bar)', '*')
+    py_back = agent._search_workspace(rg_root, r'(\w+)\s+\1', '*')
+    py_none = agent._search_workspace(rg_root, 'NOMATCH_XYZ_123', '*')
+
+    # Add lookahead and backreference targets
+    (rg_root / 'a_std.txt').write_text('first needle\nfoobar\nhello hello\n')
+    py_look = agent._search_workspace(rg_root, r'foo(?=bar)', '*')
+    py_back = agent._search_workspace(rg_root, r'(\w+)\s+\1', '*')
+    py_plain = agent._search_workspace(rg_root, 'needle', '*')
+    py_capped = agent._search_workspace(rg_root, 'needle', '*', max_matches=5)
+
+    # Enable rg --json accelerator via stubbed rg binary
+    os.environ['TANDEM_USE_RG'] = '1'
+    agent.shutil.which = lambda name: '/usr/bin/rg' if name == 'rg' else old_which(name)
+    agent.subprocess.run = _fake_rg_run
+
+    rg_plain = agent._search_workspace(rg_root, 'needle', '*')
+    rg_capped = agent._search_workspace(rg_root, 'needle', '*', max_matches=5)
+    rg_look = agent._search_workspace(rg_root, r'foo(?=bar)', '*')
+    rg_back = agent._search_workspace(rg_root, r'(\w+)\s+\1', '*')
+    rg_none = agent._search_workspace(rg_root, 'NOMATCH_XYZ_123', '*')
+
+    ok(rg_plain == py_plain and 'ignored.txt' in rg_plain and '.hidden_file' in rg_plain
+       and 'skip.txt' not in rg_plain and 'b_pdf.pdf:1: pdf needle line' in rg_plain
+       and 'late needle' not in rg_plain and 'c_big.txt:1: early needle' in rg_plain,
+       'rg --json equivalence matches Python across hidden, gitignored, SKIP_DIRS, >600KB and PDF')
+    ok(rg_capped == py_capped, 'rg --json + py_files ordering and cap match Python bit-for-bit')
+    ok(rg_look == py_look and 'a_std.txt:2: foobar' in rg_look
+       and rg_back == py_back and 'a_std.txt:3: hello hello' in rg_back,
+       'rg exit code 2 on lookahead/backreference falls back transparently to Python')
+    ok(rg_none == py_none == '(no match)', 'rg exit code 1 returns (no match)')
+    first_cmd = rg_seen_cmds[0]
+    passed_files = first_cmd[first_cmd.index('--') + 1:]
+    ok('--no-config' in first_cmd and '--no-ignore' in first_cmd and '--hidden' in first_cmd
+       and 'b_pdf.pdf' not in passed_files and 'c_big.txt' not in passed_files,
+       'rg receives safety flags and excludes .pdf and >600KB files')
+    ok('sub/a.txt:1: needle in sub' in rg_plain, 'Windows backslash paths from rg are normalized')
+    if old_which('rg'):
+        agent.shutil.which = old_which
+        agent.subprocess.run = old_sub_run
+        ok(agent._search_workspace(rg_root, 'needle', '*') == py_plain,
+           'real rg binary matches Python output end-to-end')
+finally:
+    sandbox.read_text = old_read_text
+    agent.shutil.which = old_which
+    agent.subprocess.run = old_sub_run
+    if old_use_rg is None:
+        os.environ.pop('TANDEM_USE_RG', None)
+    else:
+        os.environ['TANDEM_USE_RG'] = old_use_rg
+    shutil.rmtree(rg_root, ignore_errors=True)
 ok(agent.request_stop('finished-job-id') is False and 'finished-job-id' not in agent.STOP,
    'request_stop on dead job returns False without poisoning STOP')
 stop_job, stop_folder = store.new_job('delegate')

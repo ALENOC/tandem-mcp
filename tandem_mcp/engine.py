@@ -477,6 +477,8 @@ def remember(model, **changes):
     return data
 
 
+# probe() must keep using chat(), never chat_json(): chat_json() calls caps() -> probe()
+# and would deadlock on this non-reentrant lock.
 _probe_lock = threading.Lock()
 
 

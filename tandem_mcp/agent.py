@@ -13,6 +13,7 @@ What keeps a small model honest here:
 - a call repeated with the same result is noticed and the task stops instead of burning steps;
 - a model without native tool calling gets the same tools through a JSON reply protocol."""
 import ast
+import base64
 import contextlib
 import difflib
 import hashlib
@@ -282,6 +283,126 @@ SNAPSHOT_FILE_CAP = _snapshot_cap('TANDEM_SNAPSHOT_FILE_CAP', 8 * 1024 * 1024)
 SNAPSHOT_TOTAL_CAP = _snapshot_cap('TANDEM_SNAPSHOT_TOTAL_CAP', 256 * 1024 * 1024)
 
 
+def _rg_enabled():
+    return os.environ.get('TANDEM_USE_RG', '').strip().lower() in ('1', 'true', 'yes', 'on')
+
+
+def _search_rg(root, pattern, rg_files, walk_order, rg_bin):
+    """Run rg --json on explicit relative files. Returns list of (walk_idx, line_no, formatted)
+    or None to fall back to Python (e.g. unsupported regex dialect, exit code 2, parse error).
+    Note: Python checks NUL (\\x00) only in the first 4096 bytes, while rg checks NUL across the
+    full file buffer (up to 600 KB)."""
+    if '\n' in pattern or '\\n' in pattern:
+        return None
+    matches = []
+    for i in range(0, len(rg_files), 500):
+        batch = [rel for rel, _ in rg_files[i:i + 500]]
+        cmd = [rg_bin, '--json', '--no-config', '--no-ignore', '--hidden', '--color=never',
+               '-e', pattern, '--', *batch]
+        try:
+            done = subprocess.run(cmd, cwd=str(root), capture_output=True, text=True,
+                                  errors='replace', timeout=30, stdin=subprocess.DEVNULL)
+        except (OSError, subprocess.SubprocessError):
+            return None
+        if done.returncode not in (0, 1):
+            return None
+        for raw_line in done.stdout.splitlines():
+            if not raw_line:
+                continue
+            try:
+                obj = json.loads(raw_line)
+            except ValueError:
+                return None
+            if obj.get('type') != 'match':
+                continue
+            try:
+                data = obj['data']
+                p_obj = data['path']
+                rel = p_obj['text'] if 'text' in p_obj else base64.b64decode(p_obj['bytes']).decode('utf-8', errors='replace')
+                if rel not in walk_order:
+                    rel = rel.replace('\\', '/')
+                if rel not in walk_order:
+                    return None
+                line_no = int(data['line_number'])
+                l_obj = data['lines']
+                line_raw = l_obj['text'] if 'text' in l_obj else base64.b64decode(l_obj['bytes']).decode('utf-8', errors='replace')
+                line_text = line_raw.splitlines()[0] if line_raw else ''
+                matches.append((walk_order[rel], line_no, f'{rel}:{line_no}: {line_text.strip()[:160]}'))
+            except (KeyError, TypeError, ValueError, UnicodeDecodeError):
+                return None
+    return matches
+
+
+def _search_workspace(root, pattern, glob='*', max_bytes=600_000, max_matches=80):
+    """Search a regex in workspace files matching glob, optionally accelerated by rg --json."""
+    rx = re.compile(str(pattern))
+    files = sandbox.walk(root, str(glob or '*'), 2000)
+    rg_bin = shutil.which('rg') if _rg_enabled() else None
+    if not rg_bin:
+        out = []
+        for rel in files:
+            p = _safe_workspace_path(root, rel)
+            if p is None:
+                continue
+            try:
+                text = sandbox.read_text(p, max_bytes)
+            except Exception:
+                continue
+            for n, line in enumerate(text.splitlines(), 1):
+                if rx.search(line):
+                    out.append(f'{rel}:{n}: {line.strip()[:160]}')
+                    if len(out) >= max_matches:
+                        return '\n'.join(out) + '\n[more matches cut]'
+        return '\n'.join(out) or '(no match)'
+
+    walk_order = {rel: idx for idx, rel in enumerate(files)}
+    rg_files, py_files = [], []
+    for rel in files:
+        p = _safe_workspace_path(root, rel)
+        if p is None:
+            continue
+        if p.suffix.lower() == '.pdf':
+            py_files.append((rel, p))
+            continue
+        try:
+            sz = p.stat().st_size
+        except OSError:
+            py_files.append((rel, p))
+            continue
+        if sz > max_bytes:
+            py_files.append((rel, p))
+        else:
+            rg_files.append((rel, p))
+
+    if '\n' in pattern or '\\n' in pattern:
+        return None
+    matches = []
+    if rg_files:
+        rg_hits = _search_rg(root, str(pattern), rg_files, walk_order, rg_bin)
+        if rg_hits is None:
+            py_files.extend(rg_files)
+        else:
+            matches.extend(rg_hits)
+
+    for rel, p in py_files:
+        try:
+            text = sandbox.read_text(p, max_bytes)
+        except Exception:
+            continue
+        idx = walk_order[rel]
+        for n, line in enumerate(text.splitlines(), 1):
+            if rx.search(line):
+                matches.append((idx, n, f'{rel}:{n}: {line.strip()[:160]}'))
+
+    if not matches:
+        return '(no match)'
+    matches.sort(key=lambda item: (item[0], item[1]))
+    lines_out = [item[2] for item in matches[:max_matches]]
+    if len(matches) >= max_matches:
+        return '\n'.join(lines_out) + '\n[more matches cut]'
+    return '\n'.join(lines_out)
+
+
 class Task:
     def __init__(self, job, folder, goal, workspace, verify, max_steps=30, max_repairs=2, model='', context='',
                  baseline=True, max_seconds=0, checks_network=False, unjailed_checks=False, constraints=None,
@@ -365,22 +486,7 @@ class Task:
                 body = body[:cap] + f'\n[cut after line {start + shown - 1}: the file has {len(lines)} lines, read a range]'
             return body or '(empty)'
         if name == 'search':
-            rx = re.compile(str(args['pattern']))
-            out = []
-            for rel in sandbox.walk(self.ws.root, str(args.get('glob') or '*'), 2000):
-                p = _safe_workspace_path(self.ws.root, rel)
-                if p is None:
-                    continue
-                try:
-                    text = sandbox.read_text(p, 600_000)
-                except Exception:
-                    continue
-                for n, line in enumerate(text.splitlines(), 1):
-                    if rx.search(line):
-                        out.append(f'{rel}:{n}: {line.strip()[:160]}')
-                        if len(out) >= 80:
-                            return '\n'.join(out) + '\n[more matches cut]'
-            return '\n'.join(out) or '(no match)'
+            return _search_workspace(self.ws.root, str(args['pattern']), str(args.get('glob') or '*'))
         if name == 'replace_in_file':
             run_ctx = self.ws.run_lock if self.ws.run_lock is not None else contextlib.nullcontext()
             with run_ctx:
