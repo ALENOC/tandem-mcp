@@ -21,7 +21,10 @@ import re
 import shlex
 import signal
 from pathlib import Path
-from typing import TypedDict
+try:
+    from typing_extensions import TypedDict
+except ImportError:
+    from typing import TypedDict
 
 from mcp.server.mcpserver import MCPServer
 
