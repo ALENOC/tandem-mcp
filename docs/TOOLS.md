@@ -22,18 +22,18 @@ Ask the same question across many files matching a glob.
 ### `extract_from_file`
 Structured JSON extraction from a file against a JSON schema string.
 - **Parameters:** `path` (required), `json_schema` (required), `instructions` (required), `grep` (`""`).
-- **Output:** Compact JSON matching `json_schema` (multi-chunk extractions are merged deterministically and validated; raises an error on schema mismatch), followed by `NOTE:` if extracted values were not found verbatim in the file.
+- **Output:** Compact JSON matching `json_schema` (multi-chunk extractions are merged deterministically and validated; raises an error on schema mismatch), followed by `CONFLICTS:` metadata if different chunks disagree on a scalar/type value, and `NOTE:` if extracted values were not found verbatim in the file.
 
 ## Delegate & Execute
 
 ### `delegate`
 Delegate a bounded coding task in `workspace` under a strict contract (`TANDEM_STRICT=1` default).
-- **Parameters:** `goal` (required), `workspace` (required), `verify_commands` (`[]`), `write_globs` (`[]`), `allow_run` (`[]`), `immutable` (`[]`), `context` (`""`), `max_steps` (`30`), `max_repairs` (`2`), `wait_seconds` (`240`), `model` (`""`), `baseline` (`true`), `max_seconds` (`0`), `checks_network` (`false`), `unjailed_checks` (`false`), `constraints` (`[]`).
-- **Contract rules (strict mode):** `goal` must have concrete targets (>= 8 words, >= 40 chars); `write_globs` must name specific files/folders (no `*` or `**/*`); `verify_commands` must include at least one command that can fail; `constraints` (<= 160 chars, one requirement each) are required for visual/UI files or text-only checks.
+- **Parameters:** `goal` (required), `workspace` (required), `verify_commands` (`[]`), `write_globs` (`[]`), `allow_run` (`[]`), `immutable` (`[]`), `context` (`""`), `max_steps` (`30`), `max_repairs` (`2`), `wait_seconds` (`240`), `model` (`""`), `baseline` (`true`), `max_seconds` (`0`), `checks_network` (`false`), `unjailed_checks` (`false`), `constraints` (`[]`), `read_globs` (`[]`).
+- **Contract rules (strict mode):** `goal` must have concrete targets (>= 8 words, >= 40 chars); `write_globs` must name specific files/folders (no `*` or `**/*`); `verify_commands` must include at least one command that can fail; `constraints` (<= 160 chars, one requirement each) are required for visual/UI files or text-only checks. `read_globs` optionally restricts `read_file`, `list_files`, and `search` (empty: all workspace files).
 
 ### `delegate_many`
 Run a dependency-ordered DAG of delegated tasks (`BatchTaskSpec` items).
-- **Parameters:** `tasks` (required, list of `BatchTaskSpec`: `name`, `goal`, `write_globs`, `verify_commands`, `after`, `context`, `immutable`, `checks_network`, `unjailed_checks`, `constraints`), `workspace` (required), `allow_run` (`[]`), `immutable` (`[]`), `context` (`""`), `workers` (`1`), `max_steps` (`30`), `max_repairs` (`2`), `wait_seconds` (`240`), `model` (`""`), `checks_network` (`false`), `unjailed_checks` (`false`).
+- **Parameters:** `tasks` (required, list of `BatchTaskSpec`: `name`, `goal`, `write_globs`, `read_globs`, `verify_commands`, `after`, `context`, `immutable`, `checks_network`, `unjailed_checks`, `constraints`), `workspace` (required), `allow_run` (`[]`), `immutable` (`[]`), `context` (`""`), `workers` (`1`), `max_steps` (`30`), `max_repairs` (`2`), `wait_seconds` (`240`), `model` (`""`), `checks_network` (`false`), `unjailed_checks` (`false`), `read_globs` (`[]`).
 
 ### `digest_command`
 Run an orchestrator command on the host with user rights and get a summarized verdict.

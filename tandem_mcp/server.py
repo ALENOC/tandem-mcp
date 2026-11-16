@@ -257,16 +257,18 @@ def extract_from_file(path: str, json_schema: str, instructions: str, grep: str 
     are listed after the data, so an invented value is visible."""
     try:
         text = sandbox.read_text(Path(path).expanduser())
-        data, tokens, parts = digest.extract(text, json.loads(json_schema), instructions, grep)
+        data, tokens, parts, conflicts = digest.extract_with_conflicts(text, json.loads(json_schema), instructions, grep)
         loose = digest.loose_values(data, text)
         out = json.dumps(data, separators=(',', ':'))
         cut = sandbox.cut_note(Path(path).expanduser())
         if cut:
             out += '\n' + cut
+        if conflicts:
+            out += '\nCONFLICTS: ' + json.dumps(conflicts, separators=(',', ':'))
         if loose:
             out += '\nNOTE: not found in the file as written (reworded, computed or made up): ' + \
                    ', '.join(json.dumps(v)[:60] for v in loose[:12]) + (f' and {len(loose) - 12} more' if len(loose) > 12 else '')
-        return _saved('extract', len(text), out, executor_tokens=tokens, values_loose=len(loose))
+        return _saved('extract', len(text), out, executor_tokens=tokens, values_loose=len(loose), conflicts=len(conflicts))
     except Exception as exc:
         return _fail(exc)
 
@@ -492,7 +494,7 @@ def delegate(goal: str, workspace: str, verify_commands: list[str] = [], write_g
              allow_run: list[str] = [], immutable: list[str] = [], context: str = '', max_steps: int = 30,
              max_repairs: int = 2, wait_seconds: int = 240, model: str = '', baseline: bool = True,
              max_seconds: int = 0, checks_network: bool = False, unjailed_checks: bool = False,
-             constraints: list[str] = []) -> str:
+             constraints: list[str] = [], read_globs: list[str] = []) -> str:
     """Give the local executor a bounded task in a project and get a receipt.
 
     The contract is strict (TANDEM_STRICT=0 relaxes it): a call is refused unless it gives a goal
@@ -520,6 +522,10 @@ def delegate(goal: str, workspace: str, verify_commands: list[str] = [], write_g
       part of a pipeline or chain must match one. A pattern matches anywhere in the part: start it
       with ^ (for example '^pytest\\b') so that it names the command and not one of its arguments.
     immutable: files or globs relative to the workspace that are always read only.
+    read_globs: optional files or globs relative to the workspace the executor may read via
+      read_file, list_files, and search (empty: all workspace files). Note: if allow_run is also
+      set, shell commands run against the mounted workspace and are not filesystem-filtered by
+      read_globs; omit allow_run when strict read confinement is required.
     context: facts it needs and cannot find in the files.
     constraints: explicit, checkable contract requirements (coordinates, selectors, invariants)
       injected into the executor prompt and listed in the receipt for post-run inspection.
@@ -536,7 +542,7 @@ def delegate(goal: str, workspace: str, verify_commands: list[str] = [], write_g
     Good tasks: mechanical edits across files, a function plus its test, docs brought in line
     with a change, renames. Poor tasks: design choices, anything without a check."""
     try:
-        ws = sandbox.Workspace(workspace, write_globs, allow_run, immutable)
+        ws = sandbox.Workspace(workspace, write_globs, allow_run, immutable, read_globs=read_globs)
         clean_constraints = _validate_contract(goal, constraints, verify_commands, write_globs)
         job = agent.start(goal, ws, list(verify_commands), max(3, min(max_steps, 80)), max(0, min(max_repairs, 5)), model,
                           context, baseline or strict(), max(0, int(max_seconds)),
@@ -552,6 +558,7 @@ class BatchTaskSpec(TypedDict, total=False):
     name: str
     goal: str
     write_globs: list[str]
+    read_globs: list[str]
     verify_commands: list[str]
     after: list[str]
     context: str
@@ -565,7 +572,7 @@ class BatchTaskSpec(TypedDict, total=False):
 def delegate_many(tasks: list[BatchTaskSpec], workspace: str, allow_run: list[str] = [], immutable: list[str] = [],
                   context: str = '', workers: int = 1, max_steps: int = 30, max_repairs: int = 2,
                   wait_seconds: int = 240, model: str = '', checks_network: bool = False,
-                  unjailed_checks: bool = False) -> str:
+                  unjailed_checks: bool = False, read_globs: list[str] = []) -> str:
     """Give the executor several tasks with an order, each one a contract of its own.
 
     tasks: a list of objects with
@@ -592,6 +599,7 @@ def delegate_many(tasks: list[BatchTaskSpec], workspace: str, allow_run: list[st
             t_constraints = _validate_contract(str(t['goal']), t.get('constraints'), t_verify, t.get('write_globs'))
             specs.append({'name': str(t.get('name') or f'task{n + 1}'), 'goal': str(t['goal']),
                           'verify_commands': t_verify, 'write_globs': list(t.get('write_globs') or []),
+                          'read_globs': list(t.get('read_globs') or []),
                           'immutable': list(t.get('immutable') or []),
                           'constraints': t_constraints,
                           'checks_network': bool(t.get('checks_network', checks_network)),
@@ -602,7 +610,7 @@ def delegate_many(tasks: list[BatchTaskSpec], workspace: str, allow_run: list[st
         job = agent.start_batch(specs, workspace, allow_run, max(1, min(int(workers), 8)), max(3, min(max_steps, 80)),
                                 max(0, min(max_repairs, 5)), model, context,
                                 checks_network=checks_network, unjailed_checks=unjailed_checks, immutable=immutable,
-                                require_proof=strict())
+                                require_proof=strict(), read_globs=read_globs)
         _wait(job, wait_seconds)
         return _saved('delegate', 0, _receipt(job))
     except Exception as exc:

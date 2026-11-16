@@ -14,6 +14,7 @@ os.environ['TANDEM_STRICT'] = '0'             # the loose contract; the strict o
 from tandem_mcp import agent, digest, engine, sandbox, store  # noqa: E402
 
 checks = 0
+skipped = 0
 
 
 def ok(cond, what):
@@ -130,6 +131,9 @@ if sandbox.jail_available():
     del os.environ['TANDEM_TEST_API_KEY']
     print('jail checks ran')
 else:
+    if os.environ.get('TANDEM_REQUIRE_JAIL') == '1':
+        ok(False, 'bubblewrap jail required by TANDEM_REQUIRE_JAIL=1')
+    skipped += 1
     print('jail checks skipped (bubblewrap not usable here)')
 
 # evidence ----------------------------------------------------------------------------------------
@@ -1997,4 +2001,221 @@ finally:
     agent.STOP.pop(locked_job, None)
     agent.RUNNING.pop(locked_job, None)
 
-print(f'{checks} checks, 0 failures')
+# --- v3.6.0: batch rollback aggregation (Fase 2) ---
+batch_ws_dir = Path(tempfile.mkdtemp())
+(batch_ws_dir / 'a.txt').write_text('orig-a\n')
+(batch_ws_dir / 'b.txt').write_text('orig-b\n')
+
+
+def _mk_child_job(name, file_rel, new_text, unbacked=False):
+    jid, jdir = store.new_job('delegate')
+    (batch_ws_dir / file_rel).write_text(new_text)
+    orig_text = 'orig-a\n' if file_rel == 'a.txt' else 'orig-b\n'
+    store.write_json(jdir / 'journal.json', {file_rel: orig_text})
+    if unbacked:
+        store.write_json(jdir / 'journal_bin.json', {file_rel: 'missing-blob-sha'})
+        (jdir / 'journal.json').unlink()
+    store.write_json(jdir / 'post_state.json', {file_rel: agent._path_state_hash(batch_ws_dir / file_rel)})
+    jd = store.read_job(jid)
+    jd.update(state='verified', workspace=str(batch_ws_dir), write_globs=[file_rel])
+    store.write_job(jid, jd)
+    return jid
+
+
+c1 = _mk_child_job('t1', 'a.txt', 'edit-a\n')
+c2 = _mk_child_job('t2', 'b.txt', 'edit-b\n')
+b_ok, _ = store.new_job('batch')
+b_ok_data = store.read_job(b_ok)
+b_ok_data.update(state='done', workspace=str(batch_ws_dir),
+                 tasks=[{'name': 't1', 'job': c1, 'state': 'verified'},
+                        {'name': 't2', 'job': c2, 'state': 'verified'}])
+store.write_job(b_ok, b_ok_data)
+rb_ok_msg = agent.rollback(b_ok)
+ok(store.read_job(b_ok)['state'] == 'rolled_back'
+   and (batch_ws_dir / 'a.txt').read_text() == 'orig-a\n'
+   and (batch_ws_dir / 'b.txt').read_text() == 'orig-b\n'
+   and 'partial_rollback' not in rb_ok_msg,
+   'batch rollback marks rolled_back when all children succeed')
+
+# repeated rollback on the same batch stays idempotent
+rb_repeat_msg = agent.rollback(b_ok)
+ok(store.read_job(b_ok)['state'] == 'rolled_back' and 't1:' in rb_repeat_msg,
+   'repeated batch rollback remains rolled_back')
+
+# one child ends in partial_rollback -> batch MUST be partial_rollback
+c_ok = _mk_child_job('t1', 'a.txt', 'edit-a2\n')
+c_part = _mk_child_job('t2', 'b.txt', 'edit-b2\n', unbacked=True)
+b_part, _ = store.new_job('batch')
+b_part_data = store.read_job(b_part)
+b_part_data.update(state='done', workspace=str(batch_ws_dir),
+                   tasks=[{'name': 't1', 'job': c_ok, 'state': 'verified'},
+                          {'name': 't2', 'job': c_part, 'state': 'verified'}])
+store.write_job(b_part, b_part_data)
+rb_part_msg = agent.rollback(b_part)
+ok(store.read_job(c_part)['state'] == 'partial_rollback'
+   and store.read_job(b_part)['state'] == 'partial_rollback'
+   and 'batch status: partial_rollback' in rb_part_msg
+   and (batch_ws_dir / 'a.txt').read_text() == 'orig-a\n',
+   'batch rollback aggregates child partial_rollback to batch partial_rollback')
+
+# repeated rollback on partial batch keeps partial_rollback
+agent.rollback(b_part)
+ok(store.read_job(b_part)['state'] == 'partial_rollback',
+   'repeated rollback on partial batch preserves partial_rollback')
+
+# child raising an exception during rollback -> remaining children still undone, batch partial_rollback
+c_exc_ok = _mk_child_job('t1', 'a.txt', 'edit-a3\n')
+c_exc_bad = 'batch-child-boom'
+b_exc, _ = store.new_job('batch')
+b_exc_data = store.read_job(b_exc)
+b_exc_data.update(state='done', workspace=str(batch_ws_dir),
+                  tasks=[{'name': 't1', 'job': c_exc_ok, 'state': 'verified'},
+                         {'name': 't2', 'job': c_exc_bad, 'state': 'verified'}])
+store.write_job(b_exc, b_exc_data)
+_real_rollback = agent.rollback
+
+
+def _boom_rollback(jid):
+    if jid == c_exc_bad:
+        raise RuntimeError('simulated child rollback crash')
+    return _real_rollback(jid)
+
+
+agent.rollback = _boom_rollback
+try:
+    rb_exc_msg = agent.rollback(b_exc)
+    ok(store.read_job(b_exc)['state'] == 'partial_rollback'
+       and 'rollback error (simulated child rollback crash)' in rb_exc_msg
+       and (batch_ws_dir / 'a.txt').read_text() == 'orig-a\n',
+       'batch rollback catches child exception, finishes siblings, and marks partial_rollback')
+
+    # interrupted rollback -> batch state becomes partial_rollback
+    b_int, _ = store.new_job('batch')
+    b_int_data = store.read_job(b_int)
+    b_int_data.update(state='done', workspace=str(batch_ws_dir),
+                      tasks=[{'name': 't1', 'job': c_exc_bad, 'state': 'verified'}])
+    store.write_job(b_int, b_int_data)
+
+    def _interrupt_rollback(jid):
+        if jid == c_exc_bad:
+            raise KeyboardInterrupt('interrupted')
+        return _real_rollback(jid)
+
+    agent.rollback = _interrupt_rollback
+    got_interrupt = False
+    try:
+        agent.rollback(b_int)
+    except KeyboardInterrupt:
+        got_interrupt = True
+    ok(got_interrupt and store.read_job(b_int)['state'] == 'partial_rollback',
+       'interrupted batch rollback persists partial_rollback state')
+finally:
+    agent.rollback = _real_rollback
+
+# subsequent user modification after child job -> skipped without overwriting user edit
+c_user = _mk_child_job('t1', 'a.txt', 'edit-a4\n')
+(batch_ws_dir / 'a.txt').write_text('user-later-edit\n')
+b_user, _ = store.new_job('batch')
+b_user_data = store.read_job(b_user)
+b_user_data.update(state='done', workspace=str(batch_ws_dir),
+                   tasks=[{'name': 't1', 'job': c_user, 'state': 'verified'}])
+store.write_job(b_user, b_user_data)
+rb_user_msg = agent.rollback(b_user)
+ok((batch_ws_dir / 'a.txt').read_text() == 'user-later-edit\n'
+   and 'skipped (modified after job ended): a.txt' in rb_user_msg
+   and store.read_job(b_user)['state'] == 'rolled_back',
+   'batch rollback preserves subsequent user edits and reports skipped file')
+
+# --- v3.6.0: multi-chunk extraction conflict detection (Fase 3) ---
+sc_v = {'type': 'object', 'properties': {'voltage': {'type': ['number', 'null']},
+                                         'specs': {'type': 'object', 'properties': {'current': {'type': ['number', 'null']}}},
+                                         'tags': {'type': 'array', 'items': {'type': 'string'}},
+                                         'flag': {'type': ['boolean', 'integer', 'null']}}}
+m_same, c_same = digest._merge_extractions_with_conflicts(
+    [{'voltage': 3.3, 'tags': ['a', 'b']}, {'voltage': 3.3, 'tags': ['b', 'c']}], sc_v)
+ok(m_same == {'voltage': 3.3, 'tags': ['a', 'b', 'c']} and c_same == [],
+   'identical scalar and deduplicated array merge produces zero conflicts')
+
+m_null, c_null = digest._merge_extractions_with_conflicts(
+    [{'voltage': None, 'tags': ['x']}, {'voltage': 5.0, 'tags': ['y']}, {'voltage': None}], sc_v)
+ok(m_null == {'voltage': 5.0, 'tags': ['x', 'y']} and c_null == [],
+   'null/missing values in chunks do not trigger conflicts')
+
+m_diff, c_diff = digest._merge_extractions_with_conflicts(
+    [{'voltage': 3.3, 'specs': {'current': 1.2}},
+     {'voltage': 5.0, 'specs': {'current': 2.5}}], sc_v)
+ok(m_diff['voltage'] == 3.3
+   and engine.problem(m_diff, sc_v) == ''
+   and len(c_diff) == 2
+   and c_diff[0] == {'field': 'voltage', 'values': [3.3, 5.0], 'chunks': [1, 2], 'status': 'conflict'}
+   and c_diff[1] == {'field': 'specs.current', 'values': [1.2, 2.5], 'chunks': [1, 2], 'status': 'conflict'},
+   'conflicting scalar and nested object fields are reported with provenance while keeping schema valid')
+
+m_bool, c_bool = digest._merge_extractions_with_conflicts(
+    [{'flag': True}, {'flag': 1}], sc_v)
+ok(len(c_bool) == 1 and c_bool[0]['field'] == 'flag' and c_bool[0]['values'] == [True, 1],
+   'bool True vs int 1 is detected as a conflict')
+
+# end-to-end mocked extract_from_file with multi-chunk conflicts
+old_chat_json = engine.chat_json
+old_chunk_chars = digest.chunk_chars
+ext_file = batch_ws_dir / 'datasheet.txt'
+ext_file.write_text(('line voltage 3.3 V\n' * 15) + ('line voltage 5.0 V\n' * 15))
+digest.chunk_chars = lambda _m='': 200
+_chunk_idx = 0
+
+
+def _mock_chat_json(messages, schema, **kwargs):
+    global _chunk_idx
+    _chunk_idx += 1
+    val = 3.3 if _chunk_idx == 1 else 5.0
+    return {'voltage': val}, {'prompt': 10, 'completion': 5}
+
+
+engine.chat_json = _mock_chat_json
+try:
+    ext_out = _server.extract_from_file(str(ext_file), json.dumps({'type': 'object', 'properties': {'voltage': {'type': 'number'}}}), 'extract voltage')
+    ok('CONFLICTS:' in ext_out and '"voltage"' in ext_out and '[3.3,5.0]' in ext_out,
+       'extract_from_file surfaces CONFLICTS metadata on multi-chunk disagreement')
+finally:
+    engine.chat_json = old_chat_json
+    digest.chunk_chars = old_chunk_chars
+
+# --- v3.6.0: read_globs enforcement (Fase 4) ---
+rg_ws_dir = Path(tempfile.mkdtemp())
+(rg_ws_dir / 'src').mkdir()
+(rg_ws_dir / 'src' / 'app.py').write_text('TOKEN_REF = "ok"\n')
+(rg_ws_dir / '.env').write_text('API_SECRET=hunter2\n')
+(rg_ws_dir / '.env.example').write_text('API_SECRET=changeme\n')
+(rg_ws_dir / 'src' / 'leak_env.py').symlink_to(rg_ws_dir / '.env')
+outside_secret = Path(tempfile.mkdtemp()) / 'host_secret.txt'
+outside_secret.write_text('HOST_TOP_SECRET\n')
+(rg_ws_dir / 'src' / 'leak_out.py').symlink_to(outside_secret)
+
+ws_read_restricted = sandbox.Workspace(rg_ws_dir, write_globs=['src/*.py'], read_globs=['src/**', '.env.example'])
+ok(ws_read_restricted.readable('src/app.py') == (rg_ws_dir / 'src' / 'app.py').resolve()
+   and ws_read_restricted.readable('.env.example') == (rg_ws_dir / '.env.example').resolve(),
+   'read_globs allows matching files including explicitly listed dotfiles')
+ok(refused(ws_read_restricted.readable, '.env')
+   and refused(ws_read_restricted.readable, '../host_secret.txt')
+   and refused(ws_read_restricted.readable, 'src/leak_env.py')
+   and refused(ws_read_restricted.readable, 'src/leak_out.py'),
+   'read_globs blocks unlisted dotfiles, traversal, and symlinks to disallowed or external targets')
+
+rg_job, rg_folder = store.new_job('delegate')
+rg_task = agent.Task(rg_job, rg_folder, 'read test', ws_read_restricted, [], max_steps=3)
+listed = rg_task.call('list_files', {'glob': '*'})
+listed_lines = listed.splitlines()
+searched = rg_task.call('search', {'pattern': 'API_SECRET|TOKEN_REF'})
+ok('src/app.py' in listed_lines and '.env.example' in listed_lines and '.env' not in listed_lines,
+   'list_files filters out files outside read_globs')
+ok('src/app.py' in searched and 'API_SECRET=hunter2' not in searched,
+   'search filters out files outside read_globs')
+got_read_err = False
+try:
+    rg_task.call('read_file', {'path': '.env'})
+except sandbox.SandboxError:
+    got_read_err = True
+ok(got_read_err, 'read_file refuses files outside read_globs')
+
+print(f'{checks} checks, 0 failures ({skipped} skipped)')

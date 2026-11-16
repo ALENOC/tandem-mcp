@@ -25,6 +25,23 @@ Printable architecture overviews:
 
 ## Delegation Lifecycle
 
+```mermaid
+sequenceDiagram
+    participant C as Cloud AI
+    participant T as Tandem MCP
+    participant L as Local LLM
+
+    C->>T: delegate(goal, write_globs, read_globs, verify)
+    T->>T: baseline + guard + snapshot
+    loop steps & repairs
+        T->>L: bounded prompt
+        L-->>T: tools (read/edit/run/finish)
+        T->>T: verify (syntax, tests, quotes)
+    end
+    T-->>C: receipt
+    C->>T: job_feedback or job_rollback
+```
+
 1. **Contract validation:** `delegate` and `delegate_many` validate `goal`, `write_globs`, `verify_commands`, and `constraints` (enforced by default under `TANDEM_STRICT=1`).
 2. **Baseline & protection:** `verify_commands` run before any edit (pre-passing checks are flagged as `weak`). Test files and folders are marked read-only (`guard`) and restored if touched.
 3. **Executor tool loop:** The local model works inside `Workspace` using `list_files`, `read_file`, `search`, `replace_in_file`, `write_file`, `run`, and `finish`. Every file edit is journaled (`journal_bin.json` + `blobs/`) and every `run` is preceded by a workspace snapshot and `stamp()`.

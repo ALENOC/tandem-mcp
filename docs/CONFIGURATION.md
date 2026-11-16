@@ -16,6 +16,7 @@ All settings are controlled via environment variables read by the `tandem-mcp` s
 | `TANDEM_LLM_RETRIES` | Extra retry attempts on transient errors (backoff 1/2/4 s, cap 30 s, jitter) | `3` |
 | `TANDEM_JOB_AUTORESUME` | Bounded 15 s auto-resume waits per delegated job on transient errors | `2` |
 | `TANDEM_SANDBOX` | Sandbox profile: `secure` (`require`), `compatible` (`auto`), or `trusted` (`off`) | `secure` on Linux, `compatible` elsewhere |
+| `TANDEM_REQUIRE_JAIL` | `1` fails offline tests if Bubblewrap jail is unavailable | `0` |
 | `TANDEM_SANDBOX_NET` | `1` allows network inside Bubblewrap | off |
 | `TANDEM_ALLOW_OUTBOUND_SYMLINKS` | `1` allows unjailed `run` in workspaces with outbound symlinks | off |
 | `TANDEM_STRICT` | `0` relaxes the strict delegation contract | `1` |

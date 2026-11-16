@@ -340,10 +340,12 @@ def _search_rg(root, pattern, rg_files, walk_order, rg_bin):
     return matches
 
 
-def _search_workspace(root, pattern, glob='*', max_bytes=600_000, max_matches=80):
+def _search_workspace(root, pattern, glob='*', max_bytes=600_000, max_matches=80, allowed_fn=None):
     """Search a regex in workspace files matching glob, optionally accelerated by rg --json."""
     rx = re.compile(str(pattern))
     files = sandbox.walk(root, str(glob or '*'), 2000)
+    if allowed_fn is not None:
+        files = [rel for rel in files if allowed_fn(rel)]
     rg_bin = shutil.which('rg') if _rg_enabled() else None
     if not rg_bin:
         out = []
@@ -477,9 +479,11 @@ class Task:
             return f'ERROR: {name} needs the argument(s): {", ".join(missing)}'
         if name == 'list_files':
             files = sandbox.walk(self.ws.root, str(args.get('glob') or '*'), 300)
+            if self.ws.read_globs:
+                files = [f for f in files if self.ws.is_readable(f)]
             return '\n'.join(files) or '(no file matches)'
         if name == 'read_file':
-            text = sandbox.read_text(self.ws.path(args['path']))
+            text = sandbox.read_text(self.ws.readable(args['path']))
             lines = text.splitlines()
             start = max(1, int(args.get('start') or 1))
             end = min(len(lines), int(args.get('end') or len(lines)))
@@ -493,7 +497,8 @@ class Task:
                 body = body[:cap] + f'\n[cut after line {start + shown - 1}: the file has {len(lines)} lines, read a range]'
             return body or '(empty)'
         if name == 'search':
-            return _search_workspace(self.ws.root, str(args['pattern']), str(args.get('glob') or '*'))
+            allowed_fn = self.ws.is_readable if self.ws.read_globs else None
+            return _search_workspace(self.ws.root, str(args['pattern']), str(args.get('glob') or '*'), allowed_fn=allowed_fn)
         if name == 'replace_in_file':
             run_ctx = self.ws.run_lock if self.ws.run_lock is not None else contextlib.nullcontext()
             with run_ctx:
@@ -1176,6 +1181,8 @@ class Task:
         if notes:
             system += '\nLessons from earlier reviews of your work in this project:\n' + '\n'.join(f'- {n["text"]}' for n in notes)
         rules = [f'Workspace: {self.ws.root}']
+        if self.ws.read_globs:
+            rules.append('Readable files: ' + ', '.join(self.ws.read_globs))
         rules.append('Writable files: ' + (', '.join(self.ws.write_globs) if self.ws.write_globs else 'any file of the workspace'))
         locked = [rel for rel in sorted(self.ws.protected) if not self.ws._in_globs(rel)]
         if locked:
@@ -1423,7 +1430,8 @@ class Task:
         backup_status, unbacked_files = self._backup_status()
         data.update(state=state, summary=summary, checks=checks, repairs=self.repairs, steps=self.steps, tokens=self.tokens,
                     resumes=self.resumes, read_chars=self.read_chars, workspace=str(self.ws.root), goal=self.goal, context=self.context,
-                    write_globs=self.ws.write_globs, allow_run=[r.pattern for r in self.ws.allow_run],
+                    write_globs=self.ws.write_globs, read_globs=self.ws.read_globs,
+                    allow_run=[r.pattern for r in self.ws.allow_run],
                     immutable=self.ws.immutable, checks_network=self.checks_network, unjailed_checks=self.unjailed_checks,
                     verify=self.verify, constraints=self.constraints, model=self.model, used=self.used, max_steps=self.max_steps,
                     max_repairs=self.max_repairs, max_seconds=self.max_seconds,
@@ -1544,7 +1552,8 @@ def resume(job, hint, extra_steps=15):
         raise sandbox.SandboxError(f'job {job} cannot be continued (no saved conversation)')
     if data.get('state') == 'rolled_back':
         raise sandbox.SandboxError('the job was rolled back: delegate it again')
-    ws = sandbox.Workspace(data['workspace'], data.get('write_globs'), data.get('allow_run'), data.get('immutable'))
+    ws = sandbox.Workspace(data['workspace'], data.get('write_globs'), data.get('allow_run'),
+                           data.get('immutable'), read_globs=data.get('read_globs'))
     task = Task(job, folder, data['goal'], ws, data.get('verify', []), data.get('max_steps', 30), data.get('max_repairs', 2),
                 data.get('model', ''), data.get('context', ''), False, data.get('max_seconds', 0),
                 checks_network=data.get('checks_network', False), unjailed_checks=data.get('unjailed_checks', False),
@@ -1633,9 +1642,41 @@ def rollback(job):
     folder = store.JOBS / job
     data = store.read_job(job)
     if data and data.get('kind') == 'batch':
-        done = [f'{row["name"]}: {rollback(row["job"])}' for row in reversed(data.get('tasks', [])) if row.get('job')]
-        data['state'] = 'rolled_back'
+        done = []
+        partial = False
+        try:
+            for row in reversed(data.get('tasks', [])):
+                child_job = row.get('job')
+                if not child_job:
+                    if row.get('state') in ('done', 'verified', 'unverified', 'error', 'running'):
+                        partial = True
+                        done.append(f'{row["name"]}: missing job id')
+                    continue
+                try:
+                    child_msg = rollback(child_job)
+                except Exception as exc:
+                    partial = True
+                    done.append(f'{row["name"]}: rollback error ({exc})')
+                    continue
+                child_data = store.read_job(child_job)
+                if child_msg == 'the job is still running':
+                    partial = True
+                elif not child_data or child_msg == 'no journal for this job':
+                    if row.get('state') in ('done', 'verified', 'unverified', 'error', 'running') or (
+                        child_data and child_data.get('state') != 'rolled_back'
+                    ):
+                        partial = True
+                elif child_data.get('state') != 'rolled_back':
+                    partial = True
+                done.append(f'{row["name"]}: {child_msg}')
+        except BaseException:
+            data['state'] = 'partial_rollback'
+            store.write_job(job, data)
+            raise
+        data['state'] = 'partial_rollback' if partial else 'rolled_back'
         store.write_job(job, data)
+        if partial:
+            done.append('batch status: partial_rollback')
         return '\n'.join(done) or 'nothing to undo'
     if not data:
         return 'no journal for this job'
@@ -1830,7 +1871,7 @@ def plan(tasks):
 
 
 def start_batch(tasks, workspace, allow_run, workers=1, max_steps=30, max_repairs=2, model='', context='', baseline=True,
-                checks_network=False, unjailed_checks=False, immutable=None, require_proof=False):
+                checks_network=False, unjailed_checks=False, immutable=None, require_proof=False, read_globs=None):
     """Run tasks in dependency order, up to `workers` at a time. Two tasks that run side by side
     cannot write the same file: the first to write it owns it until it ends. A task whose
     prerequisite failed is not started."""
@@ -1896,7 +1937,8 @@ def start_batch(tasks, workspace, allow_run, workers=1, max_steps=30, max_repair
                             row['state'], row['why'] = 'cancelled', 'batch stopped'
                             state_of[row['name']] = 'cancelled'
                             continue
-                        ws = sandbox.Workspace(root, spec.get('write_globs'), allow_run, spec.get('immutable') or immutable)
+                        ws = sandbox.Workspace(root, spec.get('write_globs'), allow_run, spec.get('immutable') or immutable,
+                                               read_globs=spec.get('read_globs') or read_globs)
                         ws.claims, ws.name, ws.run_lock = claims, row['name'], run_lock
                         row['job'], started = start(spec['goal'], ws, spec.get('verify_commands', []), max_steps, max_repairs, model,
                                            spec.get('context') or context, baseline,

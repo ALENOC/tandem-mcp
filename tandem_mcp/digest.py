@@ -361,44 +361,78 @@ def _merge_lists(items_list):
     return out
 
 
-def _merge_dicts(base, nxt):
+def _values_equal(a, b):
+    if type(a) is bool or type(b) is bool:
+        return type(a) is type(b) and a is b
+    if isinstance(a, (dict, list)) or isinstance(b, (dict, list)):
+        return type(a) is type(b) and a == b
+    return a == b
+
+
+def _record_conflict(conflicts, field, existing, incoming, chunk_index=None):
+    entry = next((c for c in conflicts if c['field'] == field), None)
+    if entry is None:
+        entry = {'field': field, 'values': [existing], 'status': 'conflict'}
+        if chunk_index is not None:
+            entry['chunks'] = [1]
+        conflicts.append(entry)
+    if not any(_values_equal(v, incoming) for v in entry['values']):
+        entry['values'].append(incoming)
+    if chunk_index is not None:
+        chunks_list = entry.setdefault('chunks', [])
+        if chunk_index not in chunks_list:
+            chunks_list.append(chunk_index)
+
+
+def _merge_dicts(base, nxt, conflicts=None, prefix='', chunk_index=None):
     out = dict(base)
     for k, v in nxt.items():
+        field_path = f'{prefix}.{k}' if prefix else k
         if k not in out or out[k] is None:
             out[k] = v
+        elif v is None:
+            continue
         elif isinstance(out[k], list) and isinstance(v, list):
             out[k] = _merge_lists(out[k] + v)
         elif isinstance(out[k], dict) and isinstance(v, dict):
-            out[k] = _merge_dicts(out[k], v)
+            out[k] = _merge_dicts(out[k], v, conflicts=conflicts, prefix=field_path, chunk_index=chunk_index)
+        elif conflicts is not None and not _values_equal(out[k], v):
+            _record_conflict(conflicts, field_path, out[k], v, chunk_index=chunk_index)
     return out
 
 
-def _merge_extractions(results, schema):
+def _merge_extractions_with_conflicts(results, schema):
+    conflicts = []
     if len(results) == 1:
         merged = results[0]
         why = engine.problem(merged, schema)
         if why:
             raise engine.ExecutorError(f'extracted data does not match schema: {why}')
-        return merged
+        return merged, conflicts
     if (isinstance(schema, dict) and schema.get('type') == 'array') or all(isinstance(r, list) for r in results):
         merged = _merge_lists([x for r in results if isinstance(r, list) for x in r])
         why = engine.problem(merged, schema)
         if why:
             raise engine.ExecutorError(f'merged extraction does not match schema: {why}')
-        return merged
+        return merged, conflicts
     if all(isinstance(r, dict) for r in results):
-        merged = results[0]
-        for r in results[1:]:
-            merged = _merge_dicts(merged, r)
+        merged = dict(results[0])
+        for idx, r in enumerate(results[1:], start=2):
+            merged = _merge_dicts(merged, r, conflicts=conflicts, chunk_index=idx)
         why = engine.problem(merged, schema)
         if why:
             raise engine.ExecutorError(f'merged extraction does not match schema: {why}')
-        return merged
+        return merged, conflicts
     raise engine.ExecutorError('merged extraction produced incompatible chunk types for schema')
 
 
-def extract(text, schema, instructions, grep='', tool='extract', model=''):
-    """Structured data from a text, in the given JSON schema."""
+def _merge_extractions(results, schema):
+    merged, _ = _merge_extractions_with_conflicts(results, schema)
+    return merged
+
+
+def extract_with_conflicts(text, schema, instructions, grep='', tool='extract', model=''):
+    """Structured data from a text, in the given JSON schema, plus any multi-chunk conflicts."""
     model = model or engine.default_model('digest')
     body = numbered(text)
     if grep:
@@ -416,7 +450,14 @@ def extract(text, schema, instructions, grep='', tool='extract', model=''):
             schema, tool=tool, model=model, max_tokens=4000)
         tokens += used['prompt'] + used['completion']
         results.append(data)
-    return _merge_extractions(results, schema), tokens, len(parts)
+    merged, conflicts = _merge_extractions_with_conflicts(results, schema)
+    return merged, tokens, len(parts), conflicts
+
+
+def extract(text, schema, instructions, grep='', tool='extract', model=''):
+    """Structured data from a text, in the given JSON schema."""
+    data, tokens, parts, _ = extract_with_conflicts(text, schema, instructions, grep=grep, tool=tool, model=model)
+    return data, tokens, parts
 
 
 def loose_values(data, text):

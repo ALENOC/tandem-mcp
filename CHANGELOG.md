@@ -1,5 +1,19 @@
 # Changelog
 
+## 3.6.0
+
+### Security & Permissions
+- Added optional `read_globs` parameter to `Workspace`, `delegate`, `delegate_many`, and `BatchTaskSpec` to restrict `read_file`, `list_files`, and `search` via normalized glob matching with symlink resolution and traversal checks. Documented that `allow_run` shell commands still run against the mounted workspace.
+- Enforced mandatory Bubblewrap verification in `.github/workflows/tests.yml` (`bwrap --version`, `jail_available()`, and `TANDEM_REQUIRE_JAIL=1 TANDEM_SANDBOX=secure`) and distinguished passed vs skipped counts in `tests/test_offline.py`.
+
+### Reliability & Structured Extraction
+- Fixed `rollback()` batch aggregation in `tandem_mcp/agent.py` so a batch is marked `rolled_back` only when all relevant child jobs succeed; child `partial_rollback`, running children, exceptions, missing journals, or interruptions mark the batch `partial_rollback`.
+- Added deterministic multi-chunk conflict detection in `tandem_mcp/digest.py` (`_merge_dicts`, `_merge_extractions_with_conflicts`, `extract_with_conflicts`) and surfaced `CONFLICTS:` metadata in `extract_from_file` without breaking JSON Schema validity.
+
+### Documentation & Benchmarks
+- Added a mobile-friendly Mermaid delegation sequence diagram in `docs/ARCHITECTURE.md`.
+- Updated `docs/TOOLS.md`, `docs/SECURITY_MODEL.md`, `docs/CONFIGURATION.md`, and `docs/BENCHMARKS.md` (with live LM Studio `qwen3.8-27b@iq3_s` phase profiling).
+
 ## 3.5.2
 
 ### Documentation

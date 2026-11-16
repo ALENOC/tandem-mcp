@@ -256,15 +256,16 @@ def split_command(command):
 
 
 class Workspace:
-    def __init__(self, root, write_globs=None, allow_run=None, immutable=None):
+    def __init__(self, root, write_globs=None, allow_run=None, immutable=None, read_globs=None):
         self.root = Path(root).expanduser().resolve()
         if not self.root.is_dir():
             raise SandboxError(f'workspace is not a folder: {root}')
         why = _system_folder(self.root)
         if why:
             raise SandboxError(why)
-        self.write_globs = [g for g in (write_globs or []) if g.strip()]
-        self.immutable = [g for g in (immutable or []) if g.strip()]
+        self.write_globs = [g for g in (write_globs or []) if str(g).strip()]
+        self.read_globs = [g for g in (read_globs or []) if str(g).strip()]
+        self.immutable = [g for g in (immutable or []) if str(g).strip()]
         try:
             self.allow_run = [re.compile(r) for r in (allow_run or []) if r.strip()]
         except re.error as exc:
@@ -284,11 +285,39 @@ class Workspace:
     def rel(self, p):
         return str(Path(p).resolve().relative_to(self.root))
 
+    def _matches_globs(self, r, globs):
+        return any(glob_match(r, g, match_basename=False) for g in globs)
+
     def _in_globs(self, r):
-        return any(glob_match(r, g, match_basename=False) for g in self.write_globs)
+        return self._matches_globs(r, self.write_globs)
+
+    def _in_read_globs(self, r):
+        return self._matches_globs(r, self.read_globs)
 
     def _is_immutable(self, r):
-        return any(glob_match(r, g, match_basename=False) for g in self.immutable)
+        return self._matches_globs(r, self.immutable)
+
+    def is_readable(self, rel):
+        """True if rel resolves inside workspace and matches read_globs (when read_globs is set)."""
+        try:
+            p = self.path(rel)
+        except (SandboxError, OSError, ValueError):
+            return False
+        if p == self.root:
+            return False
+        if not self.read_globs:
+            return True
+        return self._in_read_globs(self.rel(p))
+
+    def readable(self, rel):
+        """Resolve rel inside workspace and enforce read_globs if configured."""
+        p = self.path(rel)
+        if p == self.root:
+            raise SandboxError('that is the workspace folder, not a file')
+        r = self.rel(p)
+        if self.read_globs and not self._in_read_globs(r):
+            raise SandboxError(f'{r} is outside the files this task may read ({", ".join(self.read_globs)})')
+        return p
 
     def is_protected(self, r):
         parts = Path(r).parts

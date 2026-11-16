@@ -2,7 +2,24 @@
 
 > **Trade-off first.** Tandem can save cloud tokens on reading and test-driven fixes, at the cost of local execution time (which depends on your hardware). Writing brand-new code from a contract often uses similar or more total cloud tokens once contract authoring and inspection are counted.
 
-## 1. Live Validation & Micro-Benchmark (Tandem 3.5.1, Nov 2026)
+## 1. Live Profiling & Micro-Benchmark (Tandem 3.6.0, Nov 2026)
+
+Measured on **LM Studio** (`http://127.0.0.1:1234/v1`) running **`qwen3.8-27b@iq3_s`**:
+
+| Scenario / Phase | Wall Time | Local Tokens | Outcome / Notes |
+| --- | ---: | ---: | --- |
+| `digest_file` (`calc.py`) | 16.36 s | - | Quote-checked answer |
+| `extract_from_file` (`calc.py`) | 4.96 s | - | Schema-validated JSON |
+| `delegate` bugfix (`calc.py` + `unittest`) | 13.46 s | 4,608 | `VERIFIED` (3 steps, 0 repairs) |
+| `delegate` refactor + `read_globs` (`fmt.py`) | 26.35 s | 6,494 | `VERIFIED` (4 steps, 0 repairs) |
+
+Phase breakdown for the 13.46 s `delegate` bugfix:
+- Local LLM inference (`_turn`): **12.5606 s (93.3%)**
+- Baseline + post-edit `bwrap` verification (`run_checks`): **0.8921 s (6.6%)**
+- Tandem Python overhead (`protect` 0.0006 s + `take_guard` 0.0003 s + `tool_exec` 0.0014 s + `changes` 0.0018 s + `_save` 0.0026 s): **0.0067 s (<0.1%)**
+- Large-workspace scan (`protect` + `take_guard` on 2,500 files): **0.0196 s**
+
+## 2. Live Validation & Micro-Benchmark (Tandem 3.5.1, Nov 2026)
 
 Measured on **LM Studio** (`http://127.0.0.1:1234/v1`) running **`qwen3.8-27b@iq3_s`** (`tools=true`, `schema=true`, `thinking=true`, probed `10.7 tok/s`):
 

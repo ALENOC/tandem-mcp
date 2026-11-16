@@ -18,9 +18,17 @@ jobs:
       - name: Install bubblewrap
         run: sudo apt-get update && sudo apt-get install -y bubblewrap
       - run: pip install .
+      - name: Verify Bubblewrap namespaces and jail
+        run: |
+          bwrap --version
+          python -c "import tandem_mcp.sandbox as s; assert s.jail_available(), 'bubblewrap jail_available() returned False'"
+          TANDEM_SANDBOX=secure python -c "import pathlib, tandem_mcp.sandbox as s; code, out = s.run('echo bwrap-ok', pathlib.Path('.'), jail=True); assert code == 0 and 'bwrap-ok' in out, (code, out)"
       - name: Trap regressions
         run: python scripts/verify_traps.py
-      - name: Limits, evidence, journal (no model)
+      - name: Limits, evidence, journal, and mandatory jail (no model)
+        env:
+          TANDEM_REQUIRE_JAIL: '1'
+          TANDEM_SANDBOX: secure
         run: python tests/test_offline.py
       - name: Whole loop against a scripted server (no model)
         run: python tests/test_protocol.py
