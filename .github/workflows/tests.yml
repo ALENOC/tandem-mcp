@@ -15,7 +15,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
+      - name: Install bubblewrap
+        run: sudo apt-get update && sudo apt-get install -y bubblewrap
       - run: pip install .
+      - name: Trap regressions
+        run: python scripts/verify_traps.py
       - name: Limits, evidence, journal (no model)
         run: python tests/test_offline.py
       - name: Whole loop against a scripted server (no model)

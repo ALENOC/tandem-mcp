@@ -79,10 +79,11 @@ Manual stdio configuration (any MCP client):
 | `TANDEM_TIMEOUT` | Per-completion timeout (seconds) | `900` |
 | `TANDEM_LLM_RETRIES` | Extra retry attempts on transient model errors (backoff 1/2/4 s, cap 30 s, jitter) | `3` |
 | `TANDEM_JOB_AUTORESUME` | Bounded 15 s auto-resume waits per delegated job on transient errors | `2` |
-| `TANDEM_SANDBOX` | `auto`, `require`, or `off` | `auto` |
+| `TANDEM_SANDBOX` | `secure` (`require`), `compatible` (`auto`), or `trusted` (`off`) | `auto` |
 | `TANDEM_STRICT` | `0` relaxes the strict delegation contract | `1` |
 | `TANDEM_RUN_OUTPUT_CAP` | Bytes of command output kept in RAM (head+tail) | `2097152` |
 | `TANDEM_RUN_TIMEOUT` | Default timeout for executor `run` commands (seconds) | `180` |
+| `TANDEM_LOG_CAP` | Max bytes streamed to `output.txt` by `digest_command` | `67108864` |
 | `TANDEM_REDACT` | `0` disables secret redaction on tool outputs | `1` |
 | `TANDEM_SANDBOX_NET` | `1` allows network inside sandbox | off |
 | `TANDEM_ALLOW_OUTBOUND_SYMLINKS` | `1` allows unjailed `run` in workspaces with outbound symlinks | off |
@@ -238,7 +239,7 @@ The receipt lists, under each constraint, the line the executor cited (`path:lin
 
 Read this before pointing Tandem at a sensitive repository:
 
-- **Sandboxed execution (`bubblewrap`)**: when available, both executor `run` commands and `verify_commands` run inside `bubblewrap` (`--ro-bind / /`, workspace writable, `.git` and `SKIP_DIRS` read-only, home credential folders hidden, `/run/user` replaced by an empty folder and every other Unix socket under `/run` masked (session bus, Docker socket, key agents), `SECRET_ENV` vars stripped, `--unshare-net` and `--unshare-ipc` enabled).
+- **Sandboxed execution (`bubblewrap`)**: when available, both executor `run` commands and `verify_commands` run inside `bubblewrap` using allowlisted system directories (`/usr`, `/bin`, `/sbin`, `/lib*`, `/etc`, `/opt`, `/nix`, and Python base runtime when outside `/usr`), empty tmpfs mounts over `/tmp`, `/run`, and host `$HOME`, workspace writable, `.git` and `SKIP_DIRS` read-only, `SECRET_ENV` vars stripped, and `--unshare-net`, `--unshare-pid`, `--unshare-ipc` enabled.
 - **Explicit exceptions**: pass `checks_network=True` or `unjailed_checks=True` on `delegate` only for checks that need network or host resources. `digest_command` runs the orchestrator's own command with the user's rights.
 - **Fail-closed mode**: on systems without `bubblewrap`, `TANDEM_SANDBOX=auto` falls back to command-text checks (`allow_run` + `DENY` list) with a warning in `executor_status`. Unjailed `run` and `verify_commands` also refuse workspaces containing symlinks that resolve outside the workspace (override with `TANDEM_ALLOW_OUTBOUND_SYMLINKS=1`). Set `TANDEM_SANDBOX=require` to fail closed with `SandboxError` instead.
 - **Contract enforcement on shell commands**: `stamp()` hashes every workspace file with SHA-256 before and after `run` (no file-count cap, symlinks excluded). Any file modified outside `write_globs` or owned by another parallel task is reverted immediately. A generated folder (`build`, `dist`, `node_modules`, ...) that a command creates is removed when it lies outside `write_globs` or inside the files of the checks, otherwise it is listed in the receipt and removed by `job_rollback`.
