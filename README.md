@@ -83,6 +83,8 @@ Manual stdio configuration (any MCP client):
 | `TANDEM_REDACT` | `0` disables secret redaction on tool outputs | `1` |
 | `TANDEM_SANDBOX_NET` | `1` allows network inside sandbox | off |
 | `TANDEM_ALLOW_OUTBOUND_SYMLINKS` | `1` allows unjailed `run` in workspaces with outbound symlinks | off |
+| `TANDEM_SNAPSHOT_FILE_CAP` | Max pre-task file size backed up by `take_snapshot` (bytes) | `8388608` |
+| `TANDEM_SNAPSHOT_TOTAL_CAP` | Max total pre-task snapshot size per job (bytes) | `268435456` |
 | `TANDEM_HOME` | Ledger, lessons, caps, cache, and jobs folder | `~/.local/share/tandem-mcp` |
 | `TANDEM_MAX_PARTS` | Most parts one `digest_*` answer may read (one executor call each) | `60` |
 | `TANDEM_JOBS_PENDING_TTL_DAYS` | Days a job with changes and no verdict is kept | `120` |
@@ -233,7 +235,7 @@ Read this before pointing Tandem at a sensitive repository:
 - **Allow list**: an `allow_run` pattern matches anywhere in a command part, so anchor it (`^pytest\b`). Shell comments are dropped before matching, and command substitution and `$'...'` quoting are refused. The safety list refuses `ssh`, `kill`, `source` and the like as the command of a part (also behind `env`, `xargs`, `sh -c`), not as a word among its arguments.
 - **Workspace**: `/`, the home folder and the folders above it, system folders (`/etc`, `/usr`, `/tmp` itself, ...) and credential folders (`~/.ssh`, ...) are refused as a workspace.
 - **API key**: `TANDEM_API_KEY` is sent only to the configured or selected server, never to the other local ports tried during discovery. The data folder is private to the user (`0700`).
-- **Safe rollback**: `journal_bin.json` + `snapshot.json` back up original bytes (up to 2 MB/file, 50 MB total). Pre-existing files larger than the cap are tracked as `None` so `job_rollback` preserves them instead of deleting them; `post_state.json` prevents overwriting later user edits.
+- **Safe rollback**: `journal_bin.json` + `snapshot.json` back up original bytes (up to 8 MB/file, 256 MB total, configurable via `TANDEM_SNAPSHOT_FILE_CAP` and `TANDEM_SNAPSHOT_TOTAL_CAP`). Pre-existing files larger than the cap are tracked as `None` so `job_rollback` preserves them instead of deleting them; `post_state.json` prevents overwriting later user edits.
 - **Transient outage resilience**: `engine.chat` retries connection errors and `408`/`409`/`429`/`5xx` server errors with exponential backoff (single retry layer; `OpenAI(..., max_retries=0)`), while a per-completion timeout (`APITimeoutError`) is not retried so a long hang is not multiplied (long hangs are covered by `max_seconds` and `job_continue`). Delegated jobs survive short local server outages via bounded auto-resume; longer outages finish as `error` and can be resumed with `job_continue`.
 - **Hostile text**: file contents and command output are marked as data in prompts, and receipts/diffs should always be reviewed before accepting. See [SECURITY.md](SECURITY.md) to report vulnerabilities.
 

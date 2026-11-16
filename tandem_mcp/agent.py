@@ -271,6 +271,10 @@ def _is_binary(data):
     return data is not None and b'\x00' in data[:4096]
 
 
+SNAPSHOT_FILE_CAP = int(os.environ.get('TANDEM_SNAPSHOT_FILE_CAP', 8 * 1024 * 1024))
+SNAPSHOT_TOTAL_CAP = int(os.environ.get('TANDEM_SNAPSHOT_TOTAL_CAP', 256 * 1024 * 1024))
+
+
 class Task:
     def __init__(self, job, folder, goal, workspace, verify, max_steps=30, max_repairs=2, model='', context='',
                  baseline=True, max_seconds=0, checks_network=False, unjailed_checks=False, constraints=None,
@@ -733,6 +737,8 @@ class Task:
         manifest = {}
         modes = {}
         total_bytes = 0
+        file_cap = int(os.environ.get('TANDEM_SNAPSHOT_FILE_CAP', SNAPSHOT_FILE_CAP))
+        total_cap = int(os.environ.get('TANDEM_SNAPSHOT_TOTAL_CAP', SNAPSHOT_TOTAL_CAP))
         for rel in sandbox.walk(self.ws.root, '*', limit=None):
             p = _safe_workspace_path(self.ws.root, rel)
             if p is None:
@@ -741,7 +747,7 @@ class Task:
                 st = p.stat()
                 modes[rel] = stat.S_IMODE(st.st_mode)
                 sz = st.st_size
-                if sz > 2_000_000 or total_bytes + sz > 50_000_000:
+                if sz > file_cap or total_bytes + sz > total_cap:
                     manifest[rel] = None
                     continue
                 data = p.read_bytes()

@@ -356,6 +356,10 @@ def _receipt(job):
         else:
             note = 'unbacked (outside the journal, job_rollback does not undo them)'
         lines.append(f'NOTE: changed by commands, {note}: ' + ', '.join(data['touched'][:12]))
+        if unbacked:
+            lines.append(f'WARNING: {len(unbacked)} pre-existing file(s) were not snapshotted (size cap) and cannot be '
+                         f'restored by job_rollback: {", ".join(unbacked[:12])}. Raise TANDEM_SNAPSHOT_FILE_CAP / '
+                         'TANDEM_SNAPSHOT_TOTAL_CAP for full coverage.')
     if data.get('created_dirs'):
         lines.append('NOTE: generated folders created by commands, not shown in job_diff (job_rollback removes them): '
                      + ', '.join(data['created_dirs'][:12]))

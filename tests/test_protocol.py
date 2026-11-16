@@ -191,14 +191,22 @@ rb_user = server.job_rollback(job)
 ok('skipped (modified after job ended): calc.py' in rb_user and '# user edit after job' in (root / 'calc.py').read_text(),
    'rollback does not overwrite subsequent user edits')
 
-# large pre-existing file (>2 MB) skipped by snapshot is NOT deleted on rollback
+# large pre-existing file (>cap) skipped by snapshot is NOT deleted on rollback
 root = project()
 (root / 'big.bin').write_bytes(b'A' * 2_100_000)
-job, data = run('Touch big file.', root, [], [('run', {'command': 'echo more >> big.bin'}),
-                                              ('finish', {'summary': 'Touched.'})], fake, allow_run=['^echo '])
-rb_big = server.job_rollback(job)
-ok((root / 'big.bin').exists() and 'not undone (too large/skipped from snapshot): big.bin' in rb_big,
-   'rollback preserves pre-existing >2MB file without snapshot backup')
+old_snap_cap = os.environ.get('TANDEM_SNAPSHOT_FILE_CAP')
+os.environ['TANDEM_SNAPSHOT_FILE_CAP'] = '2000000'
+try:
+    job, data = run('Touch big file.', root, [], [('run', {'command': 'echo more >> big.bin'}),
+                                                  ('finish', {'summary': 'Touched.'})], fake, allow_run=['^echo '])
+    rb_big = server.job_rollback(job)
+    ok((root / 'big.bin').exists() and 'not undone (too large/skipped from snapshot): big.bin' in rb_big,
+       'rollback preserves pre-existing >cap file without snapshot backup')
+finally:
+    if old_snap_cap is None:
+        os.environ.pop('TANDEM_SNAPSHOT_FILE_CAP', None)
+    else:
+        os.environ['TANDEM_SNAPSHOT_FILE_CAP'] = old_snap_cap
 
 # chmod +x and new symlink via run() -> job_diff() shows mode change, job_rollback() restores mode & unlinks symlink
 root = project()
@@ -216,16 +224,24 @@ ok('calc.py' in rb_mode and 'calc_link.py' in rb_mode
    and not (root / 'calc_link.py').exists() and not (root / 'calc_link.py').is_symlink(),
    'job_rollback restores st_mode and unlinks newly created symlink')
 
-# partially_backed status in receipt when >2 MB file and backed file are both in touched
+# partially_backed status in receipt when >cap file and backed file are both in touched
 root = project()
 (root / 'big.bin').write_bytes(b'A' * 2_100_000)
-job, data = run('Touch big and small.', root, [], [
-    ('run', {'command': 'echo more >> big.bin; echo ok > small.txt'}),
-    ('finish', {'summary': 'Touched both.'}),
-], fake, allow_run=['^echo '])
-receipt_partial = server._receipt(job)
-ok(data['backup_status'] == 'partially_backed' and 'partially_backed' in receipt_partial and 'big.bin' in receipt_partial,
-   'partially_backed status and unbacked file shown in receipt')
+old_snap_cap2 = os.environ.get('TANDEM_SNAPSHOT_FILE_CAP')
+os.environ['TANDEM_SNAPSHOT_FILE_CAP'] = '2000000'
+try:
+    job, data = run('Touch big and small.', root, [], [
+        ('run', {'command': 'echo more >> big.bin; echo ok > small.txt'}),
+        ('finish', {'summary': 'Touched both.'}),
+    ], fake, allow_run=['^echo '])
+    receipt_partial = server._receipt(job)
+    ok(data['backup_status'] == 'partially_backed' and 'partially_backed' in receipt_partial and 'big.bin' in receipt_partial,
+       'partially_backed status and unbacked file shown in receipt')
+finally:
+    if old_snap_cap2 is None:
+        os.environ.pop('TANDEM_SNAPSHOT_FILE_CAP', None)
+    else:
+        os.environ['TANDEM_SNAPSHOT_FILE_CAP'] = old_snap_cap2
 
 # shell-created .py file with syntax error is caught by check_syntax() and shown in job_diff
 root = project()

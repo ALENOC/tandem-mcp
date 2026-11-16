@@ -1214,6 +1214,33 @@ for bad_link in ('rel_out', 'dangling_out'):
 
 st_sym = sandbox.stamp(sym_root)
 ok(st_sym['in_link'][1] == 'symlink:' + str(sym_root / 'inside.txt'), 'stamp still records symlinks as target string')
+
+# --- P0 #4b: configurable snapshot caps and receipt warning ---
+cap_root = Path(tempfile.mkdtemp())
+(cap_root / 'big.bin').write_bytes(b'X' * 4096)
+old_snap_cap = os.environ.get('TANDEM_SNAPSHOT_FILE_CAP')
+try:
+    os.environ['TANDEM_SNAPSHOT_FILE_CAP'] = '1024'
+    cap_job, cap_folder = store.new_job('delegate')
+    cap_ws = sandbox.Workspace(str(cap_root), ['big.bin'], allow_run=['^echo'])
+    cap_task = agent.Task(cap_job, cap_folder, 'snap cap test', cap_ws, [], max_steps=2)
+    cap_task.take_snapshot()
+    snap_manifest = store.read_json(cap_folder / 'snapshot.json')
+    cap_task.touched.add('big.bin')
+    b_status, b_unbacked = cap_task._backup_status()
+    cap_task._save('unverified', 'done', [])
+    cap_data = store.read_job(cap_job)
+    cap_receipt = _server._receipt(cap_job)
+    ok(snap_manifest.get('big.bin') is None
+       and b_status == 'unbacked' and 'big.bin' in b_unbacked
+       and 'big.bin' in (cap_data.get('unbacked_files') or [])
+       and 'WARNING:' in cap_receipt and 'TANDEM_SNAPSHOT_FILE_CAP' in cap_receipt,
+       'configurable snapshot caps track unbacked files and surface warning in receipt')
+finally:
+    if old_snap_cap is None:
+        os.environ.pop('TANDEM_SNAPSHOT_FILE_CAP', None)
+    else:
+        os.environ['TANDEM_SNAPSHOT_FILE_CAP'] = old_snap_cap
 ok(agent.request_stop('finished-job-id') is False and 'finished-job-id' not in agent.STOP,
    'request_stop on dead job returns False without poisoning STOP')
 stop_job, stop_folder = store.new_job('delegate')
