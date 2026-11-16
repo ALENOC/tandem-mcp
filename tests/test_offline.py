@@ -1856,6 +1856,36 @@ try:
        'sandbox.run streams full output to log_path while capping RAM')
 finally:
     shutil.rmtree(stream_log.parent, ignore_errors=True)
+
+# --- FASE 6: chunked digest.extract merges deterministically according to schema ---
+old_ex_cj = engine.chat_json
+old_ex_ctx = engine.context_tokens
+old_ex_mod = engine.default_model
+try:
+    engine.default_model = lambda _role='': 'extract-test-m'
+    engine.context_tokens = lambda _m='': 3000    # chunk_chars -> 3780 chars
+    ex_src = '\n'.join([f'item {i:02d}: ' + ('E' * 120) for i in range(1, 50)])
+    ex_idx = 0
+
+    def _ex_stub(_msgs, _sc, **_kw):
+        global ex_idx
+        ex_idx += 1
+        if ex_idx == 1:
+            return ({'part': 'LM317', 'voltage': None, 'tags': ['reg', 'ldo']}, {'prompt': 5, 'completion': 3})
+        return ({'part': 'LM317', 'voltage': 3.3, 'tags': ['ldo', '3v3']}, {'prompt': 5, 'completion': 3})
+
+    engine.chat_json = _ex_stub
+    ex_schema = {'type': 'object', 'required': ['part', 'voltage', 'tags'],
+                 'properties': {'part': {'type': 'string'}, 'voltage': {'type': ['number', 'null']},
+                                'tags': {'type': 'array', 'items': {'type': 'string'}}}}
+    merged_obj, _, n_parts = digest.extract(ex_src, ex_schema, 'extract specs')
+    ok(n_parts >= 2 and merged_obj == {'part': 'LM317', 'voltage': 3.3, 'tags': ['reg', 'ldo', '3v3']}
+       and not engine.problem(merged_obj, ex_schema),
+       'chunked digest.extract merges object chunks deterministically and validates against schema')
+finally:
+    engine.chat_json = old_ex_cj
+    engine.context_tokens = old_ex_ctx
+    engine.default_model = old_ex_mod
 ok(agent.request_stop('finished-job-id') is False and 'finished-job-id' not in agent.STOP,
    'request_stop on dead job returns False without poisoning STOP')
 stop_job, stop_folder = store.new_job('delegate')

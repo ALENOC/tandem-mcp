@@ -351,6 +351,42 @@ def render(result, source=''):
     return '\n'.join(out)
 
 
+def _merge_lists(items_list):
+    out, seen = [], set()
+    for item in items_list:
+        sig = json.dumps(item, sort_keys=True, default=str)
+        if sig not in seen:
+            seen.add(sig)
+            out.append(item)
+    return out
+
+
+def _merge_dicts(base, nxt):
+    out = dict(base)
+    for k, v in nxt.items():
+        if k not in out or out[k] is None:
+            out[k] = v
+        elif isinstance(out[k], list) and isinstance(v, list):
+            out[k] = _merge_lists(out[k] + v)
+        elif isinstance(out[k], dict) and isinstance(v, dict):
+            out[k] = _merge_dicts(out[k], v)
+    return out
+
+
+def _merge_extractions(results, schema):
+    if len(results) == 1:
+        return results[0]
+    if (isinstance(schema, dict) and schema.get('type') == 'array') or all(isinstance(r, list) for r in results):
+        merged = _merge_lists([x for r in results if isinstance(r, list) for x in r])
+        return merged if not engine.problem(merged, schema) else results
+    if all(isinstance(r, dict) for r in results):
+        merged = results[0]
+        for r in results[1:]:
+            merged = _merge_dicts(merged, r)
+        return merged if not engine.problem(merged, schema) else results
+    return results
+
+
 def extract(text, schema, instructions, grep='', tool='extract', model=''):
     """Structured data from a text, in the given JSON schema."""
     model = model or engine.default_model('digest')
@@ -370,7 +406,7 @@ def extract(text, schema, instructions, grep='', tool='extract', model=''):
             schema, tool=tool, model=model, max_tokens=4000)
         tokens += used['prompt'] + used['completion']
         results.append(data)
-    return (results[0] if len(results) == 1 else results), tokens, len(parts)
+    return _merge_extractions(results, schema), tokens, len(parts)
 
 
 def loose_values(data, text):
