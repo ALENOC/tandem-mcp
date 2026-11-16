@@ -1739,6 +1739,46 @@ finally:
             os.environ.pop(k, None)
         else:
             os.environ[k] = v
+
+# --- P3 #1: atomic multi-edit in replace_in_file ---
+me_root = Path(tempfile.mkdtemp())
+me_file = me_root / 'code.py'
+me_orig = 'alpha = 1\nbeta = 2\ngamma = 3\n'
+me_file.write_text(me_orig)
+me_job, me_folder = store.new_job('delegate')
+me_ws = sandbox.Workspace(str(me_root), ['code.py'])
+me_task = agent.Task(me_job, me_folder, 'multi edit test', me_ws, [], max_steps=5)
+try:
+    # 1. Single edit keeps exact return value
+    res_one = me_task.call('replace_in_file', {'path': 'code.py', 'old': 'alpha = 1', 'new': 'alpha = 10'})
+    ok(res_one == 'replaced' and 'alpha = 10' in me_file.read_text(), 'single replace_in_file returns replaced')
+    me_file.write_text(me_orig)
+    me_task.journal.clear()
+    me_task.journal_bin.clear()
+    me_task.journal_modes.clear()
+
+    # 2. Atomic failure: edit #1 valid, edit #2 missing -> file untouched and journal clean
+    res_fail = me_task.call('replace_in_file', {'path': 'code.py', 'edits': [
+        {'old': 'alpha = 1', 'new': 'alpha = 99'},
+        {'old': 'nonexistent = 0', 'new': 'x = 1'},
+    ]})
+    ok(res_fail.startswith('ERROR:') and 'edit #2' in res_fail and me_file.read_text() == me_orig
+       and 'code.py' not in me_task.journal,
+       'atomic multi-edit leaves file and journal untouched on failure')
+
+    # 3. Multi-edit with 3 edits + rollback
+    res_multi = me_task.call('replace_in_file', {'path': 'code.py', 'edits': [
+        {'old': 'alpha = 1', 'new': 'alpha = 10'},
+        {'old': 'beta = 2', 'new': 'beta = 20'},
+        {'old': 'gamma = 3', 'new': 'gamma = 30'},
+    ]})
+    me_task._record_post_state()
+    me_task._save('unverified', 'edited', [])
+    rb_me = agent.rollback(me_job)
+    ok('3 edits' in res_multi and 'restored: code.py' in rb_me and me_file.read_text() == me_orig,
+       'multi-edit applies all 3 edits atomically and rollback restores original')
+finally:
+    shutil.rmtree(me_root, ignore_errors=True)
 ok(agent.request_stop('finished-job-id') is False and 'finished-job-id' not in agent.STOP,
    'request_stop on dead job returns False without poisoning STOP')
 stop_job, stop_folder = store.new_job('delegate')

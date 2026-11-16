@@ -38,8 +38,11 @@ TOOLS = [
      {'path': {'type': 'string'}, 'start': {'type': 'integer'}, 'end': {'type': 'integer'}}, ['path']),
     ('search', 'Search a regular expression in the files that match a glob. Returns path:line: text.',
      {'pattern': {'type': 'string'}, 'glob': {'type': 'string'}}, ['pattern']),
-    ('replace_in_file', 'Replace one exact occurrence of old with new in a file. old must be unique in the file.',
-     {'path': {'type': 'string'}, 'old': {'type': 'string'}, 'new': {'type': 'string'}}, ['path', 'old', 'new']),
+    ('replace_in_file', 'Replace exact text in a file. Pass old+new for one edit, or edits=[{old, new}, ...] for atomic multi-edit.',
+     {'path': {'type': 'string'}, 'old': {'type': 'string'}, 'new': {'type': 'string'},
+      'edits': {'type': 'array', 'items': {'type': 'object', 'required': ['old', 'new'],
+                                          'properties': {'old': {'type': 'string'}, 'new': {'type': 'string'}}}}},
+     ['path']),
     ('write_file', 'Create a file or replace its whole content.',
      {'path': {'type': 'string'}, 'content': {'type': 'string'}}, ['path', 'content']),
     ('run', 'Run a shell command in the workspace (only commands the task allows).',
@@ -501,19 +504,39 @@ class Task:
                 crlf = '\r\n' in text and text.count('\r\n') == text.count('\n')
                 if crlf:
                     text = text.replace('\r\n', '\n')
-                old, new = str(args['old']), str(args['new'])
-                if crlf:
-                    old, new = old.replace('\r\n', '\n'), new.replace('\r\n', '\n')
-                count = text.count(old) if old else 0
-                if count == 0 and new and new in text:
-                    return ('ERROR: old text not found, and the file already holds the new text: this change is already made. '
-                            'Do not repeat it. Go on with the rest of the task, or call finish.')
-                if count != 1:
-                    return f'ERROR: old text found {count} times, it must be found exactly once. Read the file and copy it exactly.'
+                raw_edits = args.get('edits')
+                if raw_edits is not None:
+                    if not isinstance(raw_edits, list) or not raw_edits:
+                        return 'ERROR: edits must be a non-empty list of {old, new} objects.'
+                    pairs = []
+                    for item in raw_edits:
+                        if not isinstance(item, dict) or 'old' not in item or 'new' not in item:
+                            return 'ERROR: each item in edits must have old and new.'
+                        pairs.append((str(item['old']), str(item['new'])))
+                else:
+                    if 'old' not in args or 'new' not in args:
+                        return 'ERROR: pass old and new, or a non-empty edits list.'
+                    pairs = [(str(args['old']), str(args['new']))]
+                work = text
+                for idx, (old_s, new_s) in enumerate(pairs, 1):
+                    if crlf:
+                        old_s, new_s = old_s.replace('\r\n', '\n'), new_s.replace('\r\n', '\n')
+                    count = work.count(old_s) if old_s else 0
+                    if len(pairs) == 1:
+                        if count == 0 and new_s and new_s in work:
+                            return ('ERROR: old text not found, and the file already holds the new text: this change is already made. '
+                                    'Do not repeat it. Go on with the rest of the task, or call finish.')
+                        if count != 1:
+                            return f'ERROR: old text found {count} times, it must be found exactly once. Read the file and copy it exactly.'
+                    else:
+                        if count == 0:
+                            return f'ERROR: old text not found (edit #{idx}).'
+                        if count > 1:
+                            return f'ERROR: old text appears {count} times (edit #{idx}), give more surrounding lines.'
+                    work = work.replace(old_s, new_s)
                 self._remember(p)
-                text = text.replace(old, new)
-                p.write_bytes((text.replace('\n', '\r\n') if crlf else text).encode('utf-8'))
-                return 'replaced'
+                p.write_bytes((work.replace('\n', '\r\n') if crlf else work).encode('utf-8'))
+                return 'replaced' if len(pairs) == 1 else f'replaced ({len(pairs)} edits)'
         if name == 'write_file':
             run_ctx = self.ws.run_lock if self.ws.run_lock is not None else contextlib.nullcontext()
             with run_ctx:
