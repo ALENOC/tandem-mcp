@@ -50,6 +50,7 @@ imm = sandbox.Workspace(root, ['src/**/*.txt'], immutable=['src/a.txt'])
 ok(refused(imm.writable, 'src/a.txt') and imm.writable('src/b.txt').name == 'b.txt', 'explicit immutable overrides write_globs')
 os.symlink('/etc', root / 'src/link')
 ok(refused(ws.path, 'src/link/passwd'), 'symlink that leaves the workspace')
+(root / 'src/link').unlink()
 ok(refused(sandbox.Workspace, '/'), 'root as a workspace')
 ok(refused(sandbox.Workspace, str(Path.home())), 'home as a workspace')
 ok(refused(sandbox.Workspace, root, [], ['(']), 'bad regular expression in allow_run')
@@ -112,7 +113,7 @@ if sandbox.jail_available():
     listener.listen(1)
     probe = ('python3 -c "import socket; s = socket.socket(); s.settimeout(3); '
              f'print(\'reach\', s.connect_ex((\'127.0.0.1\', {listener.getsockname()[1]})))"')
-    ok(sandbox.run(probe, root)[1].split()[-1] == '0', 'without the jail the host port is reachable')
+    ok(sandbox.run(probe, root, guard_symlinks=False)[1].split()[-1] == '0', 'without the jail the host port is reachable')
     ok(sandbox.run(probe, root, jail=True)[1].split()[-1] != '0', 'jail: no network, not even the loopback of the host')
     listener.close()
     if (Path.home() / '.ssh').is_dir() and Path.home() not in root.parents:
@@ -1158,6 +1159,61 @@ finally:
         os.environ.pop('TANDEM_JOB_AUTORESUME', None)
     else:
         os.environ['TANDEM_JOB_AUTORESUME'] = old_ar_env
+
+# --- P0 #4a: outbound symlink refusal in unjailed sandbox.run ---
+sym_root = Path(tempfile.mkdtemp())
+ext_dir = Path(tempfile.mkdtemp())
+ext_file = ext_dir / 'outside.txt'
+ext_file.write_text('secret\n')
+(sym_root / 'inside.txt').write_text('ok\n')
+ok(sandbox.outbound_symlinks(sym_root) == [], 'outbound_symlinks is empty on clean tree')
+
+(sym_root / 'in_link').symlink_to(sym_root / 'inside.txt')
+code_in, _ = sandbox.run('echo ok', sym_root, jail=False)
+ok(code_in == 0 and sandbox.outbound_symlinks(sym_root) == [], 'inbound symlink is allowed')
+
+(sym_root / 'node_modules').mkdir()
+(sym_root / 'node_modules' / 'ext_skip').symlink_to(ext_file)
+ok(sandbox.outbound_symlinks(sym_root) == [], 'symlinks inside SKIP_DIRS are ignored')
+
+(sym_root / 'out_link').symlink_to(ext_file)
+old_allow_sym = os.environ.get('TANDEM_ALLOW_OUTBOUND_SYMLINKS')
+try:
+    got_sym_err = ''
+    try:
+        sandbox.run('echo x', sym_root, jail=False)
+    except sandbox.SandboxError as exc_sym:
+        got_sym_err = str(exc_sym)
+    ok('out_link' in got_sym_err, 'unjailed run refuses workspace with outbound symlink')
+
+    code_exempt, _ = sandbox.run('echo x', sym_root, jail=False, guard_symlinks=False)
+    ok(code_exempt == 0, 'guard_symlinks=False exempts digest_command')
+
+    os.environ['TANDEM_ALLOW_OUTBOUND_SYMLINKS'] = '1'
+    code_optout, _ = sandbox.run('echo x', sym_root, jail=False)
+    ok(code_optout == 0, 'TANDEM_ALLOW_OUTBOUND_SYMLINKS=1 allows unjailed run')
+finally:
+    if old_allow_sym is None:
+        os.environ.pop('TANDEM_ALLOW_OUTBOUND_SYMLINKS', None)
+    else:
+        os.environ['TANDEM_ALLOW_OUTBOUND_SYMLINKS'] = old_allow_sym
+    (sym_root / 'out_link').unlink()
+
+(sym_root / 'rel_out').symlink_to('../../etc/passwd')
+(sym_root / 'dangling_out').symlink_to(str(ext_dir / 'does_not_exist'))
+offenders = sandbox.outbound_symlinks(sym_root)
+ok('rel_out' in offenders and 'dangling_out' in offenders, 'relative and dangling outbound symlinks are detected')
+for bad_link in ('rel_out', 'dangling_out'):
+    got_err = False
+    try:
+        sandbox.run('echo x', sym_root, jail=False)
+    except sandbox.SandboxError:
+        got_err = True
+    ok(got_err, f'unjailed run refuses {bad_link}')
+    (sym_root / bad_link).unlink()
+
+st_sym = sandbox.stamp(sym_root)
+ok(st_sym['in_link'][1] == 'symlink:' + str(sym_root / 'inside.txt'), 'stamp still records symlinks as target string')
 ok(agent.request_stop('finished-job-id') is False and 'finished-job-id' not in agent.STOP,
    'request_stop on dead job returns False without poisoning STOP')
 stop_job, stop_folder = store.new_job('delegate')

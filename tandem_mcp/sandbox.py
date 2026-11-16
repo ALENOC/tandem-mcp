@@ -491,7 +491,31 @@ def describe_jail():
             return f'bubblewrap (machine read only, workspace writable, credentials and host sockets hidden, env secrets stripped, {net})'
     except SandboxError as exc:
         return f'ERROR: {exc}'
-    return 'WARNING: bubblewrap unavailable: falling back to unjailed command text checks only (set TANDEM_SANDBOX=require to fail closed)'
+    return 'WARNING: bubblewrap unavailable: falling back to unjailed command text checks only (outbound symlinks refused; set TANDEM_SANDBOX=require to fail closed)'
+
+
+def outbound_symlinks(root):
+    """Symlinks under root whose resolved target lies outside root. SKIP_DIRS skipped."""
+    root = Path(root).resolve()
+    out, stack = [], [root]
+    while stack:
+        folder = stack.pop()
+        try:
+            with os.scandir(folder) as it:
+                entries = list(it)
+        except OSError:
+            continue
+        for entry in entries:
+            try:
+                if entry.is_symlink():
+                    target = Path(entry.path).resolve()
+                    if target != root and root not in target.parents:
+                        out.append(str(Path(entry.path).relative_to(root)))
+                elif entry.is_dir(follow_symlinks=False) and entry.name not in SKIP_DIRS:
+                    stack.append(Path(entry.path))
+            except OSError:
+                continue
+    return sorted(out)
 
 
 def _run_output_cap():
@@ -501,7 +525,8 @@ def _run_output_cap():
         return 2 * 1024 * 1024
 
 
-def run(command, cwd, timeout=180, jail=False, allow_net=False, strip_env=None, max_output_bytes=None):
+def run(command, cwd, timeout=180, jail=False, allow_net=False, strip_env=None, max_output_bytes=None,
+        guard_symlinks=True):
     """Run a shell command, return (exit code, combined output). jail=True runs it inside the
     operating system sandbox when there is one. Output kept in RAM is bounded to avoid OOM."""
     # no bytecode files: a check run just before an edit must not leave a stale .pyc behind
@@ -512,6 +537,12 @@ def run(command, cwd, timeout=180, jail=False, allow_net=False, strip_env=None, 
     use_jail = bool(jail and jail_available())
     if jail and not use_jail and mode == 'require':
         raise SandboxError('TANDEM_SANDBOX=require but bubblewrap is not usable on this machine')
+    if not use_jail and guard_symlinks and os.environ.get('TANDEM_ALLOW_OUTBOUND_SYMLINKS', '') != '1':
+        offenders = outbound_symlinks(cwd)
+        if offenders:
+            raise SandboxError('workspace has symlinks pointing outside it (' + ', '.join(offenders[:5]) +
+                               '): a command could write through them. Remove them, use bubblewrap, '
+                               'or set TANDEM_ALLOW_OUTBOUND_SYMLINKS=1')
 
     cap = _run_output_cap() if max_output_bytes is None else max(4096, int(max_output_bytes))
     head_cap = max(1024, cap // 4)

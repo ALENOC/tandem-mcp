@@ -82,6 +82,7 @@ Manual stdio configuration (any MCP client):
 | `TANDEM_RUN_OUTPUT_CAP` | Bytes of command output kept in RAM (head+tail) | `2097152` |
 | `TANDEM_REDACT` | `0` disables secret redaction on tool outputs | `1` |
 | `TANDEM_SANDBOX_NET` | `1` allows network inside sandbox | off |
+| `TANDEM_ALLOW_OUTBOUND_SYMLINKS` | `1` allows unjailed `run` in workspaces with outbound symlinks | off |
 | `TANDEM_HOME` | Ledger, lessons, caps, cache, and jobs folder | `~/.local/share/tandem-mcp` |
 | `TANDEM_MAX_PARTS` | Most parts one `digest_*` answer may read (one executor call each) | `60` |
 | `TANDEM_JOBS_PENDING_TTL_DAYS` | Days a job with changes and no verdict is kept | `120` |
@@ -227,7 +228,7 @@ Read this before pointing Tandem at a sensitive repository:
 
 - **Sandboxed execution (`bubblewrap`)**: when available, both executor `run` commands and `verify_commands` run inside `bubblewrap` (`--ro-bind / /`, workspace writable, `.git` and `SKIP_DIRS` read-only, home credential folders hidden, `/run/user` replaced by an empty folder and every other Unix socket under `/run` masked (session bus, Docker socket, key agents), `SECRET_ENV` vars stripped, `--unshare-net` and `--unshare-ipc` enabled).
 - **Explicit exceptions**: pass `checks_network=True` or `unjailed_checks=True` on `delegate` only for checks that need network or host resources. `digest_command` runs the orchestrator's own command with the user's rights.
-- **Fail-closed mode**: on systems without `bubblewrap`, `TANDEM_SANDBOX=auto` falls back to command-text checks (`allow_run` + `DENY` list) with a warning in `executor_status`. Set `TANDEM_SANDBOX=require` to fail closed with `SandboxError` instead.
+- **Fail-closed mode**: on systems without `bubblewrap`, `TANDEM_SANDBOX=auto` falls back to command-text checks (`allow_run` + `DENY` list) with a warning in `executor_status`. Unjailed `run` and `verify_commands` also refuse workspaces containing symlinks that resolve outside the workspace (override with `TANDEM_ALLOW_OUTBOUND_SYMLINKS=1`). Set `TANDEM_SANDBOX=require` to fail closed with `SandboxError` instead.
 - **Contract enforcement on shell commands**: `stamp()` hashes every workspace file with SHA-256 before and after `run` (no file-count cap, symlinks excluded). Any file modified outside `write_globs` or owned by another parallel task is reverted immediately. A generated folder (`build`, `dist`, `node_modules`, ...) that a command creates is removed when it lies outside `write_globs` or inside the files of the checks, otherwise it is listed in the receipt and removed by `job_rollback`.
 - **Allow list**: an `allow_run` pattern matches anywhere in a command part, so anchor it (`^pytest\b`). Shell comments are dropped before matching, and command substitution and `$'...'` quoting are refused. The safety list refuses `ssh`, `kill`, `source` and the like as the command of a part (also behind `env`, `xargs`, `sh -c`), not as a word among its arguments.
 - **Workspace**: `/`, the home folder and the folders above it, system folders (`/etc`, `/usr`, `/tmp` itself, ...) and credential folders (`~/.ssh`, ...) are refused as a workspace.
