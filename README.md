@@ -19,18 +19,9 @@ Tandem MCP is an MCP server that pairs a cloud AI orchestrator (Claude Code, Cod
 
 ## Architecture: How Tandem Works
 
-> **Cloud AI Orchestrator** · `Claude Code` · `Codex` · `Gemini` · MCP clients
-> *Plans the task, sets contract limits, and reviews the final evidence.*
->
-> &nbsp;&nbsp;&nbsp;&nbsp;**↓** *Plan & contract* &nbsp;&nbsp;|&nbsp;&nbsp; **↑** *Verified evidence & receipt*
->
-> **Tandem MCP Server** · `Contracts` · `Sandbox` · `Verification` · `Rollback`
-> *Enforces path and tool rules, snapshots files, and runs deterministic checks.*
->
-> &nbsp;&nbsp;&nbsp;&nbsp;**↓** *Bounded task* &nbsp;&nbsp;|&nbsp;&nbsp; **↑** *Raw edits & answers*
->
-> **Local LLM Server & Model** · `LM Studio` · `Ollama` · `Qwen` · `DeepSeek`
-> *Executes the scoped subtask locally and returns raw output for verification.*
+<p align="center">
+  <img src="assets/architecture.svg" width="720" alt="Tandem MCP Architecture: Cloud AI Orchestrator -> Tandem MCP Server -> Local AI Executor">
+</p>
 
 1. **Plan:** The cloud orchestrator decides what to read or delegate and sets explicit contract limits.
 2. **Execute:** Tandem sends a bounded task to the local model inside a confined workspace.

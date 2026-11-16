@@ -8,18 +8,9 @@ Printable architecture overviews:
 
 ## System Flow
 
-> **1. Cloud AI Orchestrator** · `Claude Code` · `Codex` · `Gemini`
-> *Plans the task, defines the contract/query, and reviews the verified receipt.*
->
-> &nbsp;&nbsp;&nbsp;&nbsp;**↓** *Plan & contract / query* &nbsp;&nbsp;|&nbsp;&nbsp; **↑** *Checked evidence & receipt*
->
-> **2. Tandem MCP Server** · `Contracts` · `Sandbox` · `Verification` · `Rollback`
-> *Enforces permissions and limits, runs the bounded loop, and verifies outputs deterministically.*
->
-> &nbsp;&nbsp;&nbsp;&nbsp;**↓** *Bounded prompt / tool loop* &nbsp;&nbsp;|&nbsp;&nbsp; **↑** *Tool calls / JSON / raw output*
->
-> **3. Local LLM Server & Model** · `LM Studio` · `Ollama` · `Qwen` · `DeepSeek`
-> *Runs local inference inside the scoped boundaries.*
+<p align="center">
+  <img src="../assets/architecture.svg" width="720" alt="Tandem MCP Architecture: Cloud AI Orchestrator -> Tandem MCP Server -> Local AI Executor">
+</p>
 
 ## Core Modules
 
