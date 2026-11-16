@@ -477,6 +477,9 @@ def remember(model, **changes):
     return data
 
 
+_probe_lock = threading.Lock()
+
+
 def probe(model='', force=False):
     """Measure once what the model can do on this server:
     tools    it answers a tool request with a native tool call
@@ -487,37 +490,41 @@ def probe(model='', force=False):
     known = store.model_caps(_caps_key(model))
     if known and known.get('probed') and not force:
         return known
-    found = {'tools': False, 'schema': False, 'thinking': False, 'tps': None, 'probed': time.time(), 'notes': []}
-    tokens = seconds = 0.0
+    with _probe_lock:
+        known = store.model_caps(_caps_key(model))
+        if known and known.get('probed') and not force:
+            return known
+        found = {'tools': False, 'schema': False, 'thinking': False, 'tps': None, 'probed': time.time(), 'notes': []}
+        tokens = seconds = 0.0
 
-    def one(label, messages, **more):
-        nonlocal tokens, seconds
-        start = time.time()
-        try:
-            reply, used = chat(messages, tool='probe', model=model, max_tokens=1200, temperature=0.0, **more)
-        except ExecutorError as exc:
-            found['notes'].append(f'{label}: {str(exc)[:160]}')
-            return None
-        tokens, seconds = used['completion'], time.time() - start     # the last call: the first may include the load
-        found['thinking'] = found['thinking'] or reply.thought
-        return reply
+        def one(label, messages, **more):
+            nonlocal tokens, seconds
+            start = time.time()
+            try:
+                reply, used = chat(messages, tool='probe', model=model, max_tokens=1200, temperature=0.0, **more)
+            except ExecutorError as exc:
+                found['notes'].append(f'{label}: {str(exc)[:160]}')
+                return None
+            tokens, seconds = used['completion'], time.time() - start     # the last call: the first may include the load
+            found['thinking'] = found['thinking'] or reply.thought
+            return reply
 
-    # an unforced model answers "hello": only constrained decoding gives the odd key asked here
-    reply = one('schema', [{'role': 'user', 'content': 'Say hello.'}], schema=PROBE_SCHEMA)
-    data = parse_json(reply.content, (dict,)) if reply else None
-    found['schema'] = bool(data) and data.get('k7') in ('a', 'b')
-    reply = one('tools', [{'role': 'user', 'content': 'Call the tool ping with value 7.'}], tools=[PING])
-    for call in (reply.calls if reply else []):
-        try:
-            found['tools'] = found['tools'] or (call['name'] == 'ping' and int(json.loads(call['arguments']).get('value')) == 7)
-        except (ValueError, TypeError, AttributeError):
-            pass
-    if seconds > 0.5 and tokens:
-        found['tps'] = round(tokens / seconds, 1)
-    if not found['notes']:
-        del found['notes']
-    store.save_model_caps(_caps_key(model), found)
-    return found
+        # an unforced model answers "hello": only constrained decoding gives the odd key asked here
+        reply = one('schema', [{'role': 'user', 'content': 'Say hello.'}], schema=PROBE_SCHEMA)
+        data = parse_json(reply.content, (dict,)) if reply else None
+        found['schema'] = bool(data) and data.get('k7') in ('a', 'b')
+        reply = one('tools', [{'role': 'user', 'content': 'Call the tool ping with value 7.'}], tools=[PING])
+        for call in (reply.calls if reply else []):
+            try:
+                found['tools'] = found['tools'] or (call['name'] == 'ping' and int(json.loads(call['arguments']).get('value')) == 7)
+            except (ValueError, TypeError, AttributeError):
+                pass
+        if seconds > 0.5 and tokens:
+            found['tps'] = round(tokens / seconds, 1)
+        if not found['notes']:
+            del found['notes']
+        store.save_model_caps(_caps_key(model), found)
+        return found
 
 
 def caps(model=''):

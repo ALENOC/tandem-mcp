@@ -1486,6 +1486,36 @@ finally:
     engine.chat_json = old_chat_json
     engine.context_tokens = old_ctx_tokens
     engine.default_model = old_def_model
+
+# --- P1: concurrent probe() runs only once per model ---
+old_probe_chat = engine.chat
+old_probe_state = dict(engine._state)
+probe_lock_cnt = threading.Lock()
+probe_chat_calls = 0
+
+
+def _stub_probe_chat(_msgs, **_kw):
+    global probe_chat_calls
+    with probe_lock_cnt:
+        probe_chat_calls += 1
+    time.sleep(0.05)
+    return engine.Reply('{"k7": "a"}', [], 'stop', False), {'prompt': 5, 'completion': 3}
+
+
+try:
+    engine._state['url'] = 'http://127.0.0.1:1234/v1'
+    engine.chat = _stub_probe_chat
+    probe_model = 'concurrent-probe-test-model'
+    probe_threads = [threading.Thread(target=engine.probe, args=(probe_model,)) for _ in range(4)]
+    for th in probe_threads:
+        th.start()
+    for th in probe_threads:
+        th.join(timeout=5)
+    ok(probe_chat_calls == 2, f'concurrent probe runs only once (got {probe_chat_calls} chat calls)')
+finally:
+    engine.chat = old_probe_chat
+    engine._state.clear()
+    engine._state.update(old_probe_state)
 ok(agent.request_stop('finished-job-id') is False and 'finished-job-id' not in agent.STOP,
    'request_stop on dead job returns False without poisoning STOP')
 stop_job, stop_folder = store.new_job('delegate')
