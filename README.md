@@ -79,7 +79,8 @@ Manual stdio configuration (any MCP client):
 | `TANDEM_TIMEOUT` | Per-completion timeout (seconds) | `900` |
 | `TANDEM_LLM_RETRIES` | Extra retry attempts on transient model errors (backoff 1/2/4 s, cap 30 s, jitter) | `3` |
 | `TANDEM_JOB_AUTORESUME` | Bounded 15 s auto-resume waits per delegated job on transient errors | `2` |
-| `TANDEM_SANDBOX` | `secure` (`require`), `compatible` (`auto`), or `trusted` (`off`) | `auto` |
+| `TANDEM_SANDBOX` | `secure` (`require`), `compatible` (`auto`), or `trusted` (`off`) | `secure` on Linux, `compatible` elsewhere |
+| `TANDEM_REQUIRE_FULL_BACKUP` | `1` refuses `run` and `job_feedback(accepted=True)` when files are unbacked | `0` |
 | `TANDEM_STRICT` | `0` relaxes the strict delegation contract | `1` |
 | `TANDEM_RUN_OUTPUT_CAP` | Bytes of command output kept in RAM (head+tail) | `2097152` |
 | `TANDEM_RUN_TIMEOUT` | Default timeout for executor `run` commands (seconds) | `180` |
