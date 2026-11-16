@@ -46,7 +46,7 @@ GUIDE = '''Hybrid orchestration (cloud model = architect & reviewer, local model
   to undo cleanly, and job_feedback / lesson_add so mistakes become standing project rules.
 - Skip delegation for trivial 1-line edits or purely open-ended design with no check.
 The executor is slow. If a call runs past the client timeout and moves to the background, do not cancel it
-or redo its work with the cloud model on your own: ask the user whether to keep waiting or to stop it.'''
+or redo its work with the cloud model on your own: ask the user whether to keep waiting or to stop it with job_stop.'''
 mcp = MCPServer('tandem', version=__version__, instructions=GUIDE)
 logging.getLogger('httpx').setLevel(logging.WARNING)
 logging.getLogger('openai').setLevel(logging.WARNING)
@@ -648,7 +648,8 @@ def job_diff(job_id: str, path: str = '', max_lines: int = 200) -> str:
 
 @mcp.tool()
 def job_stop(job_id: str, wait_seconds: int = 10) -> str:
-    """Ask a running delegated job to stop cleanly and return its receipt."""
+    """Ask a running job or batch to stop at its next safe point. An in-flight model call is not
+    interrupted: it can take up to TANDEM_TIMEOUT seconds. Returns the receipt, which may still show running."""
     try:
         data = store.read_job(job_id)
         if not data:

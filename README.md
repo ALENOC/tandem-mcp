@@ -77,6 +77,8 @@ Manual stdio configuration (any MCP client):
 | `TANDEM_TIMEOUT` | Per-completion timeout (seconds) | `900` |
 | `TANDEM_SANDBOX` | `auto`, `require`, or `off` | `auto` |
 | `TANDEM_STRICT` | `0` relaxes the strict delegation contract | `1` |
+| `TANDEM_RUN_OUTPUT_CAP` | Bytes of command output kept in RAM (head+tail) | `2097152` |
+| `TANDEM_REDACT` | `0` disables secret redaction on tool outputs | `1` |
 | `TANDEM_SANDBOX_NET` | `1` allows network inside sandbox | off |
 | `TANDEM_HOME` | Ledger, lessons, caps, cache, and jobs folder | `~/.local/share/tandem-mcp` |
 | `TANDEM_MAX_PARTS` | Most parts one `digest_*` answer may read (one executor call each) | `60` |
@@ -163,12 +165,12 @@ Compared in November 2026 from each project's README (not from running them). `"
 | `executor_probe` | Measure native tool calls, forced JSON schema, reasoning, and speed |
 | `ask` | Text task with optional `json_schema` and `samples` agreement score |
 | `digest_file` | Q&A on a file (text, code, log, JSON, PDF) with checked quotes and `grep` filter |
-| `digest_command` | Run an orchestrator command and get exit code, verdict, and full log path |
+| `digest_command` | Run an orchestrator command and get exit code, verdict, and capped (head+tail) log path |
 | `digest_many` | Ask the same question across many files (`glob`), one line per file |
 | `extract_from_file` | Structured JSON extraction with ungrounded values flagged |
 | `delegate` | Bounded coding task with `verify_commands`, `write_globs`, `immutable`, `allow_run` |
 | `delegate_many` | Dependency-ordered batch (`after`) with parallel file ownership and rollback |
-| `job_status`, `job_evidence`, `job_diff`, `job_rollback` | Inspect status, the lines cited for each constraint, the unified diff, and undo changes per job or batch |
+| `job_status`, `job_stop`, `job_evidence`, `job_diff`, `job_rollback` | Inspect status, request clean stop, view lines cited for each constraint, read unified diff, and undo changes per job or batch |
 | `job_continue` | Resume a stopped job with a hint in the same conversation |
 | `job_feedback`, `lesson_add`, `lessons` | Record verdicts and manage standing project/global rules |
 | `ledger_report` | Calls, tokens, estimated cloud savings, and per-model quality stats |
