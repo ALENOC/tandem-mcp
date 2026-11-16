@@ -946,6 +946,16 @@ ok('sk-proj-' not in redacted and 'my_super_secret_bearer_token_12345' not in re
    and 'MIIEowIBAAKCAQEA' not in redacted and '[REDACTED_PRIVATE_KEY]' in redacted,
    'redact_secrets masks keys, tokens and PEM blocks')
 
+saved_red = _server._saved('digest_file', 100, 'OPENAI_API_KEY=sk-proj-1234567890abcdefghijklmnop')
+fail_red = _server._fail('Bearer abcdef1234567890abcdef')
+benign_red = sandbox.redact_secrets('MONKEY_COUNT=5\nKEYBOARD_LAYOUT=us\n')
+ok('[REDACTED' in saved_red and 'sk-proj-' not in saved_red
+   and '[REDACTED_TOKEN]' in fail_red and 'abcdef1234567890abcdef' not in fail_red
+   and 'MONKEY_COUNT=5' in benign_red and 'KEYBOARD_LAYOUT=us' in benign_red
+   and '.m2/settings.xml' in sandbox.SECRETS and '.m2' not in sandbox.SECRETS
+   and '.gradle/gradle.properties' in sandbox.SECRETS,
+   'choke-point redaction, SECRET_ENV precision, and narrowed SECRETS')
+
 spoof_file = root / 'spoof.txt'
 spoof_file.write_text('aaaa')
 st_orig = spoof_file.stat()

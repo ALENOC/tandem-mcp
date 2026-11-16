@@ -53,12 +53,12 @@ logging.getLogger('openai').setLevel(logging.WARNING)
 
 
 def _fail(exc):
-    return f'ERROR: {exc}'
+    return sandbox.redact_secrets(f'ERROR: {exc}')
 
 
 def _saved(tool, bytes_in, text, **more):
     store.log(tool, kind='result', bytes_in=bytes_in, bytes_out=len(text), **more)
-    return text
+    return sandbox.redact_secrets(text)
 
 
 def _caps_line(found):
@@ -78,7 +78,7 @@ def executor_status() -> str:
         rows = engine.models(refresh=True)
         active = engine.default_model()
     except Exception as exc:
-        return f'No local model server: {exc}'
+        return sandbox.redact_secrets(f'No local model server: {exc}')
     lines = [f'{server["name"]} online at {server["url"]}', f'executor model: {active}  (context {engine.context_tokens(active)})']
     known = store.model_caps(f'{server["url"]}|{active}')
     lines.append('  ' + (_caps_line(known) if known and known.get('probed') else 'not probed yet: executor_probe measures what it can do'))
@@ -90,7 +90,7 @@ def executor_status() -> str:
     lines.append('commands of the executor: ' + sandbox.describe_jail())
     if engine.context_tokens(active) < 8000:
         lines.append('NOTE: a context under 8000 tokens is enough for digest and ask, tight for delegate.')
-    return '\n'.join(lines)
+    return sandbox.redact_secrets('\n'.join(lines))
 
 
 @mcp.tool()
@@ -103,7 +103,7 @@ def executor_probe(model: str = '', force: bool = False) -> str:
         name = model or engine.default_model()
         found = engine.probe(name, force)
         notes = ''.join(f'\n  note: {n}' for n in found.get('notes', []))
-        return f'{name} on {engine.connect()["name"]}: {_caps_line(found)}{notes}'
+        return sandbox.redact_secrets(f'{name} on {engine.connect()["name"]}: {_caps_line(found)}{notes}')
     except Exception as exc:
         return _fail(exc)
 
@@ -752,7 +752,7 @@ def job_rollback(job_id: str) -> str:
         return 'the job is still running'
     if not store.read_job(job_id):
         return f'unknown job {job_id}'
-    return agent.rollback(job_id)
+    return sandbox.redact_secrets(agent.rollback(job_id))
 
 
 @mcp.tool()
@@ -805,7 +805,7 @@ def lessons(project_path: str, remove_containing: str = '') -> str:
     if remove_containing.strip():
         return f'removed {store.drop_lesson(scope, remove_containing)} lesson(s)'
     rows = store.lessons(scope, 50)
-    return '\n'.join(f'- [{r["scope"]}] {r["text"]}' for r in rows) or 'no lesson yet'
+    return sandbox.redact_secrets('\n'.join(f'- [{r["scope"]}] {r["text"]}' for r in rows) or 'no lesson yet')
 
 
 @mcp.tool()
@@ -867,7 +867,7 @@ def ledger_report(days: float = 30.0) -> str:
             parts.append(f'accepted by you {m["yes"]} of {m["yes"] + m["no"]}')
         if parts:
             lines.append(f'{name}: ' + '; '.join(parts))
-    return '\n'.join(lines)
+    return sandbox.redact_secrets('\n'.join(lines))
 
 
 def _graceful_shutdown(_signum=None, _frame=None):

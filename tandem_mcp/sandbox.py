@@ -34,7 +34,8 @@ _ASSIGNMENT = re.compile(r'^[A-Za-z_]\w*=')
 SKIP_DIRS = {'.git', 'node_modules', '__pycache__', '.venv', 'venv', 'build', 'managed_components', '.history', 'dist', '.cache'}
 SECRETS = ['.ssh', '.gnupg', '.aws', '.azure', '.kube', '.docker', '.config/gh', '.config/gcloud', '.password-store',
            '.netrc', '.git-credentials', '.npmrc', '.pypirc', '.claude', '.codex', '.gemini',
-           '.local/share/keyrings', '.gradle', '.m2', '.cargo/credentials', '.cargo/credentials.toml',
+           '.local/share/keyrings', '.gradle/gradle.properties', '.m2/settings.xml', '.m2/settings-security.xml',
+           '.cargo/credentials', '.cargo/credentials.toml',
            '.config/google-chrome', '.config/chromium', '.mozilla']
 
 _PEM_BLOCK_RE = re.compile(
@@ -42,12 +43,19 @@ _PEM_BLOCK_RE = re.compile(
 )
 _TOKEN_RE = re.compile(
     r'\b(?:sk-(?:proj-|ant-)?[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}'
-    r'|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|xox[baprs]-[0-9A-Za-z-]{10,})\b'
+    r'|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|xox[baprs]-[0-9A-Za-z-]{10,}'
+    r'|eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}|ya29\.[A-Za-z0-9_-]{20,})\b'
 )
-_ENV_SECRET_LINE_RE = re.compile(
-    r'(?im)^([A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|PRIVATE|DSN|CONNECTION_STRING)[A-Z0-9_]*\s*[=:]\s*)([^\s\'"#]+|"[^"\n]+"|\'[^\'\n]+\')'
+_ENV_ASSIGN_RE = re.compile(
+    r'(?im)^([A-Za-z_][A-Za-z0-9_]*)\s*[=:]\s*([^\s\'"#]+|"[^"\n]+"|\'[^\'\n]+\')'
 )
 _BEARER_RE = re.compile(r'(?i)(\bBearer\s+)[A-Za-z0-9._~+/=-]{16,}')
+
+
+def _mask_env(m):
+    if SECRET_ENV.search(m.group(1)):
+        return m.group(1) + '=[REDACTED]'
+    return m.group(0)
 
 
 def redact_secrets(text):
@@ -57,7 +65,7 @@ def redact_secrets(text):
     out = _PEM_BLOCK_RE.sub('[REDACTED_PRIVATE_KEY]', text)
     out = _TOKEN_RE.sub('[REDACTED_TOKEN]', out)
     out = _BEARER_RE.sub(r'\1[REDACTED_TOKEN]', out)
-    out = _ENV_SECRET_LINE_RE.sub(r'\1[REDACTED]', out)
+    out = _ENV_ASSIGN_RE.sub(_mask_env, out)
     return out
 TEST_DIR = re.compile(r'^(tests?|specs?|__tests__|e2e|unit_tests|integration_tests)$', re.I)
 TEST_FILE = re.compile(r'^(?:test_.*\.py|.*_test\.(?:py|go|rs)|.*\.(?:test|spec)\.[jt]sx?|conftest\.py|pytest\.ini)$', re.I)
