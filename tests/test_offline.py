@@ -1370,6 +1370,43 @@ finally:
         os.environ['TANDEM_BASE_URL'] = old_tb
     if old_lm is not None:
         os.environ['LM_STUDIO_BASE_URL'] = old_lm
+
+# --- P1 #10A: release finished Task objects from RUNNING and keep job_diff accurate ---
+rel_job, rel_folder = store.new_job('delegate')
+rel_ws = sandbox.Workspace(str(root), ['math_utils.py'])
+rel_task = agent.Task(rel_job, rel_folder, 'release task test', rel_ws, [], max_steps=2)
+rel_task._turn = lambda _m: [(None, 'finish', {'summary': 'done'})]
+t_rel = agent._launch(rel_task, lambda: rel_task.loop([{'role': 'system', 'content': 's'}, {'role': 'user', 'content': 'u'}]))
+t_rel.join(timeout=10)
+ok(rel_job in agent.RUNNING and agent.RUNNING[rel_job][0] is t_rel and agent.RUNNING[rel_job][1] is None,
+   'finished job drops Task object from RUNNING while keeping thread entry')
+
+(rel_folder / 'changes.diff').write_text('--- a/math_utils.py\n+++ b/math_utils.py\n@@ -1 +1 @@\n-a\n+b\n')
+diff_rel = _server.job_diff(rel_job)
+ok('this is a batch' not in diff_rel and '+b' in diff_rel,
+   'job_diff on finished delegate reads changes.diff instead of mistaking it for a batch')
+
+live_batch, _ = store.new_job('batch')
+ev_batch = threading.Event()
+th_batch = threading.Thread(target=ev_batch.wait, args=(5,), daemon=True)
+th_batch.start()
+agent.RUNNING[live_batch] = (th_batch, None)
+try:
+    ok('this is a batch' in _server.job_diff(live_batch), 'job_diff on live batch reports batch')
+finally:
+    ev_batch.set()
+    th_batch.join(timeout=2)
+    agent.RUNNING.pop(live_batch, None)
+
+done_batch, _ = store.new_job('batch')
+b_data = store.read_job(done_batch)
+b_data['state'] = 'verified'
+store.write_job(done_batch, b_data)
+ok('this is a batch' in _server.job_diff(done_batch), 'job_diff on finished batch reports batch')
+
+ok(agent.request_stop(rel_job) is False and agent.rollback(rel_job) == 'no journal for this job',
+   'finished job rollback/stop work with cleared Task')
+agent.RUNNING.pop(rel_job, None)
 ok(agent.request_stop('finished-job-id') is False and 'finished-job-id' not in agent.STOP,
    'request_stop on dead job returns False without poisoning STOP')
 stop_job, stop_folder = store.new_job('delegate')

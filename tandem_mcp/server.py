@@ -619,9 +619,9 @@ def job_continue(job_id: str, hint: str, extra_steps: int = 15, wait_seconds: in
 def job_diff(job_id: str, path: str = '', max_lines: int = 200) -> str:
     """Unified diff of what a delegated job changed (one file if path is given)."""
     entry = agent.RUNNING.get(job_id)
-    if (entry and entry[1] is None) or (store.read_job(job_id) or {}).get('kind') == 'batch':
+    if (store.read_job(job_id) or {}).get('kind') == 'batch':
         return 'this is a batch: ask for the diff of one of its task jobs (job_status lists them)'
-    if entry and entry[0].is_alive():
+    if entry and entry[0].is_alive() and entry[1] is not None:
         text = entry[1].diff(path)
         lines = text.splitlines()
         truncated = len(lines) > max_lines

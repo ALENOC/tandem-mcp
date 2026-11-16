@@ -1325,8 +1325,13 @@ def stop_all(timeout=5.0):
 
 
 def _forget_finished(keep=48):
-    """Drop the oldest finished jobs from memory: their receipt, diff and journal are on disk."""
-    done = [job for job, (thread, _) in list(RUNNING.items()) if not thread.is_alive()]
+    """Drop finished Task objects from memory while keeping thread entries up to keep."""
+    done = []
+    for job, (thread, task) in list(RUNNING.items()):
+        if not thread.is_alive():
+            done.append(job)
+            if task is not None:
+                RUNNING[job] = (thread, None)       # journal, outputs and log are on disk
     for job in done[:max(0, len(done) - keep)]:
         RUNNING.pop(job, None)
 
@@ -1356,6 +1361,9 @@ def _launch(task, body_of, release=None):
                       bytes_in=task.read_chars + len(diff), model=task.used or task.model or 'default')
         finally:
             STOP.pop(task.job, None)
+            entry = RUNNING.get(task.job)
+            if entry is not None:
+                RUNNING[task.job] = (entry[0], None)
             store.release_job_lock(lock_handle)
             if release:
                 release()
