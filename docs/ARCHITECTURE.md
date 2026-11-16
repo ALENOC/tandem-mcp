@@ -8,20 +8,18 @@ Printable architecture overviews:
 
 ## System Flow
 
-```mermaid
-flowchart TD
-    Cloud["Cloud AI Orchestrator<br/>(Claude Code, Codex, Gemini)"]
-    Server["Tandem MCP Server<br/>Contracts · Sandbox · Verification · Rollback"]
-    Exec["Local LLM Server<br/>(LM Studio, Ollama, OpenAI-compatible)"]
-    Model["Local LLM<br/>(Qwen, DeepSeek, etc.)"]
-
-    Cloud -->|"1. Plan & Contract / Query"| Server
-    Server -->|"2. Bounded Prompt / Tool Loop"| Exec
-    Exec -->|"Inference"| Model
-    Model -->|"Tool Calls / JSON"| Exec
-    Exec -->|"Raw Output"| Server
-    Server -->|"3. Deterministic Checks & Evidence"| Cloud
-```
+> **1. Cloud AI Orchestrator** · `Claude Code` · `Codex` · `Gemini`
+> *Plans the task, defines the contract/query, and reviews the verified receipt.*
+>
+> &nbsp;&nbsp;&nbsp;&nbsp;**↓** *Plan & contract / query* &nbsp;&nbsp;|&nbsp;&nbsp; **↑** *Checked evidence & receipt*
+>
+> **2. Tandem MCP Server** · `Contracts` · `Sandbox` · `Verification` · `Rollback`
+> *Enforces permissions and limits, runs the bounded loop, and verifies outputs deterministically.*
+>
+> &nbsp;&nbsp;&nbsp;&nbsp;**↓** *Bounded prompt / tool loop* &nbsp;&nbsp;|&nbsp;&nbsp; **↑** *Tool calls / JSON / raw output*
+>
+> **3. Local LLM Server & Model** · `LM Studio` · `Ollama` · `Qwen` · `DeepSeek`
+> *Runs local inference inside the scoped boundaries.*
 
 ## Core Modules
 
