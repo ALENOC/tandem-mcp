@@ -1813,6 +1813,17 @@ for bad_cmd in (
 adv_ws.check_command('echo "line1\nline2"')
 adv_ws.check_command('echo ok > math_utils.py')
 ok(True, 'quoted newline and writable redirection are accepted')
+
+# --- FASE 2: glob_match dotfile and traversal regressions ---
+ok(not sandbox.glob_match('.env', 'env')
+   and not sandbox.glob_match('.github/workflows/test.yml', 'github/**')
+   and sandbox.glob_match('.env', '.env')
+   and sandbox.glob_match('.github/workflows/test.yml', '.github/**')
+   and sandbox.glob_match('./src/app.py', 'src/*.py')
+   and not sandbox.glob_match('../secret', '*')
+   and not sandbox.glob_match('/etc/passwd', '*')
+   and not sandbox.glob_match('a/../secret', 'secret'),
+   'glob_match preserves leading dots and rejects traversal or absolute paths')
 ok(agent.request_stop('finished-job-id') is False and 'finished-job-id' not in agent.STOP,
    'request_stop on dead job returns False without poisoning STOP')
 stop_job, stop_folder = store.new_job('delegate')

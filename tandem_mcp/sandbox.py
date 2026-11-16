@@ -83,9 +83,17 @@ SECRET_ENV = re.compile(
 )
 
 
+def _strip_rel_prefix(path):
+    """Normalize separators and strip leading './' prefixes without stripping leading dots of dotfiles."""
+    s = str(path).replace(os.sep, '/').replace('\\', '/')
+    while s.startswith('./'):
+        s = s[2:]
+    return s
+
+
 def _glob_to_re(pattern):
     """Translate a POSIX path glob to a regex where * never crosses '/' and ** does."""
-    pattern = pattern.replace(os.sep, '/').lstrip('./')
+    pattern = _strip_rel_prefix(pattern)
     parts, i, n = ['^'], 0, len(pattern)
     while i < n:
         c = pattern[i]
@@ -126,9 +134,11 @@ def _glob_to_re(pattern):
 
 def glob_match(rel, pattern, match_basename=False):
     """Match a workspace-relative path against a glob without '*' crossing '/'."""
-    rel = rel.replace(os.sep, '/').lstrip('./')
-    pat = pattern.replace(os.sep, '/').lstrip('./')
-    if not pat:
+    rel = _strip_rel_prefix(rel)
+    pat = _strip_rel_prefix(pattern)
+    if not pat or not rel or rel.startswith('/') or pat.startswith('/'):
+        return False
+    if '..' in rel.split('/') or '..' in pat.split('/'):
         return False
     rx = _glob_to_re(pat)
     if rx.match(rel):
@@ -673,7 +683,7 @@ def walk(root, glob='**/*', limit=None):
     """Files under root that match the glob, generated folders and symlinks skipped."""
     root = Path(root)
     out = []
-    match_base = '/' not in glob.replace(os.sep, '/').lstrip('./')
+    match_base = '/' not in _strip_rel_prefix(glob)
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS and not (Path(dirpath) / d).is_symlink()]
         for name in filenames:
