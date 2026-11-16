@@ -137,6 +137,8 @@ def reconcile_stale_jobs():
         data = read_job(job)
         if not data or data.get('state') != 'running':
             continue
+        if time.time() - (data.get('started') or 0) < 120:
+            continue
         if is_job_locked(job):
             continue
         data['state'] = 'error'

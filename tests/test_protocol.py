@@ -321,6 +321,39 @@ out = server.delegate_many([T('bad'), T('b', 'bad'), T('c')], str(root), wait_se
 ok('PARTIAL' in out and 'b: CANCELLED  not started: bad did not succeed' in out and 'c: VERIFIED' in out, out)
 ok(server.delegate_many([T('a', 'b'), T('b', 'a')], str(root)).startswith('ERROR'), 'a circle is refused before anything runs')
 
+# batch stop with queued task
+stop_root = project()
+(stop_root / 'first.txt').write_text('init\n')
+(stop_root / 'second.txt').write_text('init\n')
+
+
+def slow_worker(body):
+    import time as _time
+    _time.sleep(0.4)
+    if sum(1 for m in body['messages'] if m.get('role') == 'tool') < 8:
+        return ('read_file', {'path': 'first.txt'})
+    return ('finish', {'summary': 'done'})
+
+
+fake.policy = slow_worker
+try:
+    stop_out = server.delegate_many([T('first'), T('second', 'first')], str(stop_root), workers=1, wait_seconds=0)
+    stop_batch = stop_out.split()[1].rstrip(':')
+    import time as _time
+    _time.sleep(0.25)
+    stop_receipt = server.job_stop(stop_batch, wait_seconds=15)
+    bdata = store.read_job(stop_batch)
+    b_rows = {r['name']: r for r in bdata.get('tasks', [])}
+    first_sub = store.read_job(b_rows['first']['job']) if b_rows['first'].get('job') else {}
+    ok(bdata['state'] == 'stopped'
+       and b_rows['second']['state'] == 'cancelled'
+       and b_rows['second'].get('why') == 'batch stopped'
+       and b_rows['first']['state'] != 'running'
+       and first_sub.get('state') != 'running',
+       f'batch stop cancels queue and stops running task: {stop_receipt!r}')
+finally:
+    fake.policy = worker
+
 # parallel batch run() conflict: task 'a' claims shared.txt, task 'b' tries to overwrite it via run()
 conflict_root = project()
 (conflict_root / 'shared.txt').write_text('orig\n')

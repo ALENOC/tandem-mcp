@@ -1666,45 +1666,72 @@ def start_batch(tasks, workspace, allow_run, workers=1, max_steps=30, max_repair
 
     def body():
         running = {}
-        while True:
-            with lock:
-                for row in rows:
-                    if row['state'] == 'running' and not running[row['name']].is_alive():
-                        row['state'] = (store.read_job(row['job']) or {}).get('state', 'error')
-                        for rel in [rel for rel, owner in claims.items() if owner == row['name']]:
-                            del claims[rel]
-                state_of = {row['name']: row['state'] for row in rows}
-                for row, spec in zip(rows, tasks):
-                    if row['state'] != 'waiting':
-                        continue
-                    failed = [d for d in row['after'] if state_of[d] not in DONE and state_of[d] not in ('waiting', 'running')]
-                    if failed:
-                        row['state'] = 'cancelled'
-                        row['why'] = f'not started: {failed[0]} did not succeed'
-                        state_of[row['name']] = 'cancelled'
-                        continue
-                    if any(state_of[d] not in DONE for d in row['after']):
-                        continue
-                    if sum(1 for r in rows if r['state'] == 'running') >= workers:
-                        continue
-                    ws = sandbox.Workspace(root, spec.get('write_globs'), allow_run, spec.get('immutable') or immutable)
-                    ws.claims, ws.name, ws.run_lock = claims, row['name'], run_lock
-                    row['job'], started = start(spec['goal'], ws, spec.get('verify_commands', []), max_steps, max_repairs, model,
-                                       spec.get('context') or context, baseline,
-                                       checks_network=spec.get('checks_network', checks_network),
-                                       unjailed_checks=spec.get('unjailed_checks', unjailed_checks),
-                                       constraints=spec.get('constraints'), with_thread=True,
-                                       require_proof=require_proof)
-                    running[row['name']] = started
-                    row['state'] = state_of[row['name']] = 'running'
-                left = [r for r in rows if r['state'] in ('waiting', 'running')]
-                save('running' if left else ('verified' if all(r['state'] == 'verified' for r in rows) else
-                                             'unverified' if all(r['state'] in DONE for r in rows) else 'partial'))
-            if not left:
-                return
-            time.sleep(0.3)
+        try:
+            while True:
+                ev = STOP.get(batch)
+                if ev and ev.is_set():
+                    to_wait = []
+                    with lock:
+                        for row in rows:
+                            if row['state'] == 'waiting':
+                                row['state'], row['why'] = 'cancelled', 'batch stopped'
+                            elif row['state'] == 'running' and row['job']:
+                                request_stop(row['job'])
+                                if row['name'] in running:
+                                    to_wait.append((row, running[row['name']]))
+                    for row, th in to_wait:
+                        th.join(timeout=5.0)
+                        with lock:
+                            if not th.is_alive():
+                                row['state'] = (store.read_job(row['job']) or {}).get('state', 'stopped')
+                    with lock:
+                        save('stopped')
+                    return
+                with lock:
+                    for row in rows:
+                        if row['state'] == 'running' and not running[row['name']].is_alive():
+                            row['state'] = (store.read_job(row['job']) or {}).get('state', 'error')
+                            for rel in [rel for rel, owner in claims.items() if owner == row['name']]:
+                                del claims[rel]
+                    state_of = {row['name']: row['state'] for row in rows}
+                    for row, spec in zip(rows, tasks):
+                        if row['state'] != 'waiting':
+                            continue
+                        failed = [d for d in row['after'] if state_of[d] not in DONE and state_of[d] not in ('waiting', 'running')]
+                        if failed:
+                            row['state'] = 'cancelled'
+                            row['why'] = f'not started: {failed[0]} did not succeed'
+                            state_of[row['name']] = 'cancelled'
+                            continue
+                        if any(state_of[d] not in DONE for d in row['after']):
+                            continue
+                        if sum(1 for r in rows if r['state'] == 'running') >= workers:
+                            continue
+                        ws = sandbox.Workspace(root, spec.get('write_globs'), allow_run, spec.get('immutable') or immutable)
+                        ws.claims, ws.name, ws.run_lock = claims, row['name'], run_lock
+                        row['job'], started = start(spec['goal'], ws, spec.get('verify_commands', []), max_steps, max_repairs, model,
+                                           spec.get('context') or context, baseline,
+                                           checks_network=spec.get('checks_network', checks_network),
+                                           unjailed_checks=spec.get('unjailed_checks', unjailed_checks),
+                                           constraints=spec.get('constraints'), with_thread=True,
+                                           require_proof=require_proof)
+                        running[row['name']] = started
+                        row['state'] = state_of[row['name']] = 'running'
+                    left = [r for r in rows if r['state'] in ('waiting', 'running')]
+                    save('running' if left else ('verified' if all(r['state'] == 'verified' for r in rows) else
+                                                 'unverified' if all(r['state'] in DONE for r in rows) else 'partial'))
+                if not left:
+                    return
+                time.sleep(0.3)
+        except Exception:
+            save('error')
+        finally:
+            STOP.pop(batch, None)
+            store.release_job_lock(lock_handle)
 
     save('running')
+    STOP[batch] = threading.Event()
+    lock_handle = store.acquire_job_lock(batch)
     thread = threading.Thread(target=body, daemon=True)
     _forget_finished()
     RUNNING[batch] = (thread, None)

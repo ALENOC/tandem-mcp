@@ -947,15 +947,37 @@ s2 = sandbox.stamp(root)
 ok(s1['spoof.txt'][1] != s2['spoof.txt'][1], 'stamp ctime_ns fast-path still catches mtime+size spoofing')
 
 stale_job, _ = store.new_job('delegate')
+stale_data = store.read_job(stale_job)
+stale_data['started'] = time.time() - 300
+store.write_job(stale_job, stale_data)
 live_job, _ = store.new_job('delegate')
+live_data = store.read_job(live_job)
+live_data['started'] = time.time() - 300
+store.write_job(live_job, live_data)
+fresh_batch, _ = store.new_job('batch')
+old_batch_locked, _ = store.new_job('batch')
+obl_data = store.read_job(old_batch_locked)
+obl_data['started'] = time.time() - 300
+store.write_job(old_batch_locked, obl_data)
+old_batch_unlocked, _ = store.new_job('batch')
+obu_data = store.read_job(old_batch_unlocked)
+obu_data['started'] = time.time() - 300
+store.write_job(old_batch_unlocked, obu_data)
 lk = store.acquire_job_lock(live_job)
+lk_batch = store.acquire_job_lock(old_batch_locked)
 try:
     ok(store.is_job_locked(live_job) and not store.is_job_locked(stale_job), 'job flock reports live vs stale lock')
     fixed_n = store.reconcile_stale_jobs()
-    ok(fixed_n >= 1 and store.read_job(stale_job)['state'] == 'error' and store.read_job(live_job)['state'] == 'running',
-       'reconcile_stale_jobs marks unlocked running jobs as error')
+    ok(fixed_n >= 2
+       and store.read_job(stale_job)['state'] == 'error'
+       and store.read_job(live_job)['state'] == 'running'
+       and store.read_job(fresh_batch)['state'] == 'running'
+       and store.read_job(old_batch_locked)['state'] == 'running'
+       and store.read_job(old_batch_unlocked)['state'] == 'error',
+       'reconcile_stale_jobs respects grace period and locks for jobs and batches')
 finally:
     store.release_job_lock(lk)
+    store.release_job_lock(lk_batch)
 
 ok('no job' in _server.job_stop('nonexistent-job-id'), 'job_stop handles unknown job id')
 ok(agent.request_stop('finished-job-id') is False and 'finished-job-id' not in agent.STOP,
