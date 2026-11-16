@@ -13,7 +13,7 @@ import time
 import urllib.error
 import urllib.request
 
-from openai import OpenAI
+from openai import APIConnectionError, APITimeoutError, OpenAI
 
 from . import store
 
@@ -104,7 +104,7 @@ def connect(refresh=False, url=''):
     kind = _kind(found)
     label = {'lmstudio': 'LM Studio', 'ollama': 'Ollama', 'llamacpp': 'llama.cpp'}.get(kind, name)
     _state.update(url=found, kind=kind, name=label, models=None, models_at=0.0,
-                  client=OpenAI(base_url=found, api_key=_key(), timeout=float(os.environ.get('TANDEM_TIMEOUT', 900)), max_retries=1))
+                  client=OpenAI(base_url=found, api_key=_key(), timeout=float(os.environ.get('TANDEM_TIMEOUT', 900)), max_retries=0))
     return _state
 
 
@@ -215,6 +215,10 @@ _TRANSIENT_CODES = {408, 409, 429, 500, 502, 503, 504}
 
 
 def _transient(exc):
+    if isinstance(exc, APITimeoutError):
+        return False    # generation timeout: not a short outage, retrying multiplies a long hang
+    if isinstance(exc, APIConnectionError):
+        return True     # connection refused/reset/DNS: the canonical transient
     code = getattr(exc, 'status_code', None)
     if code is not None:
         return code in _TRANSIENT_CODES or code >= 500

@@ -1076,6 +1076,34 @@ try:
     except engine.ExecutorError as exc_400:
         got_400 = call_n == 1 and getattr(exc_400.__cause__, 'status_code', None) == 400
     ok(got_400, 'engine.chat fails immediately on 400 and preserves __cause__')
+
+    import httpx
+    from openai import APIConnectionError, APITimeoutError, InternalServerError, RateLimitError
+    req = httpx.Request('POST', 'http://127.0.0.1:1/v1/chat/completions')
+    ok(engine._transient(APIConnectionError(request=req)), 'real APIConnectionError is transient')
+    ok(not engine._transient(APITimeoutError(request=req)), 'generation timeout is not retried')
+    ok(engine._transient(RateLimitError('rl', response=httpx.Response(429, request=req), body=None)), 'real 429 is transient')
+    ok(engine._transient(InternalServerError('ise', response=httpx.Response(503, request=req), body=None)), 'real 5xx is transient')
+    try:
+        raise engine.ExecutorError('wrapped conn') from APIConnectionError(request=req)
+    except engine.ExecutorError as wrapped_conn:
+        ok(engine.transient_error(wrapped_conn), 'transient_error handles real APIConnectionError __cause__')
+
+    conn_calls = 0
+
+    def _conn_flaky_create(*_a, **_kw):
+        global conn_calls
+        conn_calls += 1
+        if conn_calls <= 2:
+            raise APIConnectionError(request=req)
+        return fake_resp
+
+    before_retries = len([r for r in store.ledger(1) if r.get('kind') == 'retry' and r.get('model') == 'test-conn'])
+    engine._create = _conn_flaky_create
+    reply_conn, _ = engine.chat([{'role': 'user', 'content': 'hi'}], tool='ask', model='test-conn')
+    after_retries = len([r for r in store.ledger(1) if r.get('kind') == 'retry' and r.get('model') == 'test-conn'])
+    ok(reply_conn.content == '{"ok": true}' and conn_calls == 3 and (after_retries - before_retries) == 2,
+       'engine.chat retries real APIConnectionError end-to-end')
 finally:
     engine._create = old_create
     engine.connect = old_connect
