@@ -799,10 +799,11 @@ def job_feedback(job_id: str, accepted: bool, lesson: str = '', constraints_veri
         if data.get('state') and data.get('state') not in ('verified', 'unverified'):
             return _fail(f'cannot accept job in state {data.get("state")!r}: fix or job_continue until verified')
         churn = sum(add + rem for _, _, add, rem in (data.get('changes') or []))
-        needs_diff = bool(data.get('changes')) and (churn > 40 or bool(data.get('constraints')) or bool(data.get('weak'))
-                                                    or data.get('state') == 'unverified'     # no check ran: the diff is the only proof
-                                                    or strict())                             # strict: a verdict is given on a diff that was read
-        focused = bool(data.get('evidence_inspected')) and not _focused(data)      # the cited lines were read and are enough
+        unbacked = bool(data.get('unbacked_files')) or data.get('backup_status') in ('partially_backed', 'unbacked')
+        needs_diff = unbacked or (bool(data.get('changes')) and (churn > 40 or bool(data.get('constraints')) or bool(data.get('weak'))
+                                                                or data.get('state') == 'unverified'     # no check ran: the diff is the only proof
+                                                                or strict()))                            # strict: a verdict is given on a diff that was read
+        focused = (not unbacked) and bool(data.get('evidence_inspected')) and not _focused(data)      # the cited lines were read and are enough
         if needs_diff and not focused and not data.get('diff_inspected'):
             return _fail(f'inspection required before accepting: call job_evidence({job_id!r}) for the lines cited for each constraint, '
                          f'or job_diff({job_id!r}) for the whole change')

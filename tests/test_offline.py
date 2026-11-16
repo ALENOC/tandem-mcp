@@ -1835,6 +1835,17 @@ ok(not sandbox.glob_match('.env', 'env')
    and not sandbox.glob_match('/etc/passwd', '*')
    and not sandbox.glob_match('a/../secret', 'secret'),
    'glob_match preserves leading dots and rejects traversal or absolute paths')
+
+# --- FASE 4: unbacked job_feedback gate ---
+ub_job, ub_folder = store.new_job('delegate')
+store.write_job(ub_job, {'id': ub_job, 'kind': 'delegate', 'state': 'verified', 'workspace': str(root),
+                         'changes': [], 'touched': ['big.bin'], 'backup_status': 'unbacked',
+                         'unbacked_files': ['big.bin'], 'checks': [], 'before': []})
+(ub_folder / 'changes.diff').write_text('no change\n')
+ok('inspection required' in _server.job_feedback(ub_job, True)
+   and bool(_server.job_diff(ub_job))
+   and _server.job_feedback(ub_job, True) == 'recorded',
+   'job_feedback requires job_diff inspection when backup_status is unbacked')
 ok(agent.request_stop('finished-job-id') is False and 'finished-job-id' not in agent.STOP,
    'request_stop on dead job returns False without poisoning STOP')
 stop_job, stop_folder = store.new_job('delegate')
