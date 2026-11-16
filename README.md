@@ -87,6 +87,8 @@ Manual stdio configuration (any MCP client):
 | `TANDEM_SNAPSHOT_TOTAL_CAP` | Max total pre-task snapshot size per job in bytes (`0` disables backup; affected files are reported as unbacked) | `268435456` |
 | `TANDEM_HOME` | Ledger, lessons, caps, cache, and jobs folder | `~/.local/share/tandem-mcp` |
 | `TANDEM_MAX_PARTS` | Most parts one `digest_*` answer may read (one executor call each) | `60` |
+| `TANDEM_DIGEST_WORKERS` | Concurrent map calls per wave in `digest_*` (`1` = sequential) | `1` |
+| `TANDEM_DIGEST_MIN_NOTES` | Early-stop map threshold in `digest_*` (`0` = full map) | `0` |
 | `TANDEM_JOBS_KEEP` | Max persisted job folders kept on disk | `200` |
 | `TANDEM_JOBS_TTL_DAYS` | Days persisted job folders are kept before pruning | `30` |
 | `TANDEM_JOBS_PENDING_TTL_DAYS` | Days a job with changes and no verdict is kept | `120` |
@@ -96,6 +98,7 @@ Manual stdio configuration (any MCP client):
 - **Ollama**: raise `OLLAMA_CONTEXT_LENGTH` for `delegate` tasks; reading tools (`digest_*`) work at any context length by chunking.
 - **Small contexts (< 8000 tokens)**: fine for `digest_*`, `extract_from_file`, and `ask`; tight for `delegate`.
 - **Reasoning models**: reasoning blocks are stripped; disabling verbose thinking on the server speeds up mechanical tasks.
+- **Parallel digest & early-stop**: `TANDEM_DIGEST_WORKERS > 1` only speeds up `digest_*` when the local server serves concurrent predictions (single-slot LM Studio queues requests with no speedup). `TANDEM_DIGEST_MIN_NOTES > 0` trades completeness for speed: do not use it for exhaustive questions such as "list every error with line numbers".
 - **macOS / Windows (no `bubblewrap`)**: unjailed `run` and `verify_commands` refuse workspaces containing symlinks pointing outside the workspace (for example, monorepo links like `packages/app/shared -> ../../shared`). Remove those symlinks, use `bubblewrap` on Linux, or set `TANDEM_ALLOW_OUTBOUND_SYMLINKS=1` (see [Security](#security) for the risk).
 
 </details>

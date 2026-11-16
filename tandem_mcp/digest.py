@@ -4,6 +4,7 @@ Three checks need no model and cannot be talked round: every quote is looked up 
 every number of the answer is looked up in the source, and the answer says how much of the
 material was read. What fails a check is reported, so a made-up answer is visible to the
 orchestrator without reading the source."""
+import concurrent.futures
 import json
 import os
 import re
@@ -197,12 +198,21 @@ def loose_numbers(answer, text, question='', evidence=()):
     return out[:8]
 
 
+def _int_env(name, default, minimum=0):
+    try:
+        return max(minimum, int(os.environ.get(name, default)))
+    except ValueError:
+        return default
+
+
 def answer(text, question, max_words=120, grep='', tool='digest', model='', cache=True):
     """Answer a question about a text. Returns a dict with the answer, the verified evidence,
     the number of evidence items that failed the check, the numbers that are not in the source,
     how much was read and the executor token use."""
     model = model or engine.default_model()
-    key = store.cache_key('answer', model, question, max_words, grep, text)
+    workers = _int_env('TANDEM_DIGEST_WORKERS', 1, minimum=1)
+    min_notes = _int_env('TANDEM_DIGEST_MIN_NOTES', 0, minimum=0)
+    key = store.cache_key('answer', model, question, max_words, grep, min_notes, text)
     if cache:
         hit = store.cache_get(key)
         if hit:
@@ -213,34 +223,47 @@ def answer(text, question, max_words=120, grep='', tool='digest', model='', cach
         body, hits = prefilter(text, grep)
         if not hits:
             return {'answer': f'No line matches /{grep}/.', 'evidence': [], 'rejected': 0, 'loose': [], 'chunks': 0,
-                    'read_lines': 0, 'lines': len(lines), 'tokens': 0, 'model': model}
+                    'parts_read': 0, 'read_lines': 0, 'lines': len(lines), 'tokens': 0, 'model': model}
     size = chunk_chars(model)
     parts, truncated_lines = chunk_with_stats(body, size)
     if len(parts) > MAX_PARTS:
         raise engine.ExecutorError(f'material too large for one answer ({len(parts)} parts of {size} characters, '
                                    f'the limit is {MAX_PARTS}): narrow it with grep')
-    read_lines = sum(1 for part in parts for line in part.splitlines() if line != '...')
     tokens = dropped = capped = omitted = 0
     if len(parts) > 1:                                   # map: notes per chunk, reduce: answer from the notes
-        notes = []
-        for k, part in enumerate(parts):
-            data, used = engine.chat_json(
+        def _map_one(k, part):
+            return engine.chat_json(
                 [{'role': 'system', 'content': SYSTEM},
                  {'role': 'user', 'content': f'Question: {question}\n\nPart {k + 1} of {len(parts)} of the material:\n{part}\n\n'
                                              'List the facts of this part that help to answer, each with its line and exact quote. '
                                              'Set relevant to false and notes to [] if this part has none.'}],
                 NOTES, tool=tool, model=model, max_tokens=1500)
-            tokens += used['prompt'] + used['completion']
-            if data.get('relevant') and isinstance(data.get('notes'), list):
-                ns = [n for n in data['notes'] if isinstance(n, dict)]
-                capped += max(0, len(ns) - 25)
-                notes += ns[:25]
+
+        notes, parts_read = [], 0
+        indexed = list(enumerate(parts))
+        for start in range(0, len(indexed), workers):
+            wave = indexed[start:start + workers]
+            if workers == 1:
+                results = [_map_one(k, p) for k, p in wave]
+            else:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+                    results = list(pool.map(lambda kp: _map_one(*kp), wave))
+            for (_, _), (data, used) in zip(wave, results):
+                tokens += used['prompt'] + used['completion']
+                parts_read += 1
+                if data.get('relevant') and isinstance(data.get('notes'), list):
+                    ns = [n for n in data['notes'] if isinstance(n, dict)]
+                    capped += max(0, len(ns) - 25)
+                    notes += ns[:25]
+            if min_notes and len(notes) >= min_notes:
+                break
+        read_lines = sum(1 for part in parts[:parts_read] for line in part.splitlines() if line != '...')
         if not notes:
             return {'answer': 'The material does not answer the question.', 'evidence': [], 'rejected': 0, 'loose': [],
                     'notes_dropped': 0, 'notes_capped': capped, 'notes_omitted': 0,
                     'quote_found': False, 'claim_supported': 'unsupported', 'claim_warnings': [],
-                    'truncated_lines': truncated_lines, 'chunks': len(parts), 'read_lines': read_lines,
-                    'lines': len(lines), 'tokens': tokens, 'model': model}
+                    'truncated_lines': truncated_lines, 'chunks': len(parts), 'parts_read': parts_read,
+                    'read_lines': read_lines, 'lines': len(lines), 'tokens': tokens, 'model': model}
         kept, dropped = check_evidence(notes, lines)
         facts = {}
         for n in notes:
@@ -258,6 +281,8 @@ def answer(text, question, max_words=120, grep='', tool='digest', model='', cach
         omitted = len(rows) - len(material_lines)
         prompt = f'Question: {question}\n\nVerified extracts of the material (line| quote :: fact):\n{material}'
     else:
+        parts_read = len(parts)
+        read_lines = sum(1 for part in parts for line in part.splitlines() if line != '...')
         prompt = f'Question: {question}\n\nMaterial:\n{parts[0] if parts else ""}'
     data, used = engine.chat_json(
         [{'role': 'system', 'content': SYSTEM},
@@ -272,7 +297,7 @@ def answer(text, question, max_words=120, grep='', tool='digest', model='', cach
               'notes_capped': capped, 'notes_omitted': omitted,
               'loose': loose, 'quote_found': support['quote_found'], 'claim_supported': support['claim_supported'],
               'claim_warnings': support['warnings'], 'truncated_lines': truncated_lines,
-              'chunks': len(parts), 'read_lines': read_lines, 'lines': len(lines), 'tokens': tokens, 'model': model}
+              'chunks': len(parts), 'parts_read': parts_read, 'read_lines': read_lines, 'lines': len(lines), 'tokens': tokens, 'model': model}
     if cache and good and not bad and support['claim_supported'] != 'contested':
         store.cache_put(key, result)
     return result
@@ -302,7 +327,9 @@ def render(result, source=''):
     if result.get('notes_omitted'):
         out.append(f'NOTE: {result["notes_omitted"]} verified extract(s) did not fit the reduce prompt and were omitted.')
     if result.get('lines') and result.get('read_lines', 0) < result['lines']:
-        out.append(f'Read {result["read_lines"]} of {result["lines"]} lines (narrowed by grep).')
+        out.append(f'Read {result["read_lines"]} of {result["lines"]} lines.')
+    if result.get('chunks', 0) > 1 and result.get('parts_read', result['chunks']) < result['chunks']:
+        out.append(f'Mapped {result["parts_read"]} of {result["chunks"]} parts (stopped early).')
     if result.get('cached'):
         out.append('(same file and question as before: answer from the cache)')
     return '\n'.join(out)

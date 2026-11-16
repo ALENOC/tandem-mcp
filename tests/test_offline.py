@@ -1516,6 +1516,77 @@ finally:
     engine.chat = old_probe_chat
     engine._state.clear()
     engine._state.update(old_probe_state)
+
+# --- P1: deterministic wave-parallel digest map + opt-in early-stop ---
+old_dj = engine.chat_json
+old_dctx = engine.context_tokens
+old_dmod = engine.default_model
+old_dw = os.environ.get('TANDEM_DIGEST_WORKERS')
+old_dmn = os.environ.get('TANDEM_DIGEST_MIN_NOTES')
+try:
+    engine.default_model = lambda: 'digest-wave-m'
+    engine.context_tokens = lambda _m='': 3000    # chunk_chars -> 3780 chars
+    wave_lines = [f'row {i:03d}: value_{i:03d} ' + ('W' * 120) for i in range(1, 200)]
+    wave_src = '\n'.join(wave_lines)
+
+    def _pure_stub(messages, schema, **_kw):
+        user_msg = str(messages[-1]['content'])
+        m_part = re.search(r'Part (\d+) of (\d+)', user_msg)
+        if m_part:
+            pnum = int(m_part.group(1))
+            # Sleep inversely to part number so later parts finish faster if timing-dependent
+            time.sleep(0.01 * max(1, 8 - pnum))
+            first_ln = int(user_msg.split('\n\nPart ', 1)[1].splitlines()[1].split('|', 1)[0])
+            return ({'relevant': True, 'notes': [
+                {'line': first_ln, 'quote': wave_lines[first_ln - 1], 'fact': f'fact_{pnum}'}
+            ]}, {'prompt': 10 + pnum, 'completion': 5})
+        return ({'answer': 'summary', 'evidence': [{'line': 1, 'quote': wave_lines[0]}]},
+                {'prompt': 20, 'completion': 8})
+
+    import re
+    engine.chat_json = _pure_stub
+
+    # 1. Determinism: workers=1 vs workers=4 produce identical results
+    os.environ['TANDEM_DIGEST_WORKERS'] = '1'
+    os.environ['TANDEM_DIGEST_MIN_NOTES'] = '0'
+    r_w1 = digest.answer(wave_src, 'summarize rows', cache=False)
+    os.environ['TANDEM_DIGEST_WORKERS'] = '4'
+    r_w4 = digest.answer(wave_src, 'summarize rows', cache=False)
+    cmp_keys = ('answer', 'evidence', 'rejected', 'loose', 'tokens', 'chunks', 'read_lines', 'parts_read')
+    ok(r_w1['chunks'] >= 6 and all(r_w1[k] == r_w4[k] for k in cmp_keys),
+       'parallel digest (workers=4) matches sequential (workers=1) identically')
+
+    # 2. Timing independence + 3. Coverage with early-stop
+    os.environ['TANDEM_DIGEST_WORKERS'] = '4'
+    os.environ['TANDEM_DIGEST_MIN_NOTES'] = '3'
+    runs_es = [digest.answer(wave_src, 'summarize rows early', cache=False) for _ in range(3)]
+    pr_set = {r['parts_read'] for r in runs_es}
+    r_es = runs_es[0]
+    rendered_es = digest.render(r_es, 'wave.txt')
+    ok(len(pr_set) == 1 and r_es['parts_read'] == 4 and r_es['parts_read'] < r_es['chunks']
+       and r_es['read_lines'] < r_es['lines'] and f'Mapped {r_es["parts_read"]} of {r_es["chunks"]} parts' in rendered_es,
+       'early-stop is wave-deterministic across 3 runs and reports honest coverage')
+
+    # 4. Cache separation between min_notes=0 and min_notes=3
+    os.environ['TANDEM_DIGEST_WORKERS'] = '1'
+    os.environ['TANDEM_DIGEST_MIN_NOTES'] = '0'
+    c_full = digest.answer(wave_src, 'cache sep q', cache=True)
+    os.environ['TANDEM_DIGEST_MIN_NOTES'] = '3'
+    c_early = digest.answer(wave_src, 'cache sep q', cache=True)
+    ok(not c_early.get('cached') and c_full['parts_read'] > c_early['parts_read'],
+       'cache key separates min_notes=0 from min_notes>0')
+finally:
+    engine.chat_json = old_dj
+    engine.context_tokens = old_dctx
+    engine.default_model = old_dmod
+    if old_dw is None:
+        os.environ.pop('TANDEM_DIGEST_WORKERS', None)
+    else:
+        os.environ['TANDEM_DIGEST_WORKERS'] = old_dw
+    if old_dmn is None:
+        os.environ.pop('TANDEM_DIGEST_MIN_NOTES', None)
+    else:
+        os.environ['TANDEM_DIGEST_MIN_NOTES'] = old_dmn
 ok(agent.request_stop('finished-job-id') is False and 'finished-job-id' not in agent.STOP,
    'request_stop on dead job returns False without poisoning STOP')
 stop_job, stop_folder = store.new_job('delegate')
