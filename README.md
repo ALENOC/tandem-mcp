@@ -1,17 +1,21 @@
-# Tandem MCP
+<div align="center">
 
-<p align="center">
-  <img src="assets/logo.svg" alt="Tandem MCP logo: a tandem bicycle, two riders on one frame" width="360">
+<h1>Tandem MCP</h1>
+
+<img src="assets/logo.svg" alt="Tandem MCP logo: a tandem bicycle, two riders on one frame" width="360">
+
+<p><strong>Your cloud AI plans. Your local AI executes. Tandem verifies.</strong></p>
+
+<p>
+  <a href="https://github.com/ALENOC/tandem-mcp/releases"><img src="https://img.shields.io/github/v/release/ALENOC/tandem-mcp" alt="GitHub Release"></a>
+  <a href="https://github.com/ALENOC/tandem-mcp/actions/workflows/tests.yml"><img src="https://github.com/ALENOC/tandem-mcp/actions/workflows/tests.yml/badge.svg" alt="CI"></a>
+  <a href="pyproject.toml"><img src="https://img.shields.io/badge/python-3.11%2B-blue.svg" alt="Python 3.11+"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
 </p>
 
-**Your cloud AI plans. Your local AI executes. Tandem verifies.**
+<p><strong>Delegate locally. Verify deterministically. Keep control.</strong></p>
 
-[![GitHub Release](https://img.shields.io/github/v/release/ALENOC/tandem-mcp)](https://github.com/ALENOC/tandem-mcp/releases)
-[![CI](https://github.com/ALENOC/tandem-mcp/actions/workflows/tests.yml/badge.svg)](https://github.com/ALENOC/tandem-mcp/actions/workflows/tests.yml)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-
-**Delegate locally. Verify deterministically. Keep control.**
+</div>
 
 Tandem MCP is an MCP server that pairs a cloud AI orchestrator (Claude Code, Codex, Gemini) with a local OpenAI-compatible LLM (LM Studio, Ollama, llama.cpp, vLLM). The cloud model keeps architectural decisions and final review; the local model reads large files and executes bounded edits while Tandem enforces contracts, runs checks, verifies quotes, and enables rollback.
 
