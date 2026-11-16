@@ -1306,7 +1306,9 @@ def request_stop(job):
     entry = RUNNING.get(job)
     alive = bool(entry and entry[0].is_alive())
     if alive:
-        STOP.setdefault(job, threading.Event()).set()
+        ev = STOP.get(job)          # never create: a live job always has one,
+        if ev is not None:          # a missing one means the job is already finishing
+            ev.set()
     return alive
 
 

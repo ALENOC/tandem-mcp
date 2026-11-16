@@ -1407,6 +1407,24 @@ ok('this is a batch' in _server.job_diff(done_batch), 'job_diff on finished batc
 ok(agent.request_stop(rel_job) is False and agent.rollback(rel_job) == 'no journal for this job',
    'finished job rollback/stop work with cleared Task')
 agent.RUNNING.pop(rel_job, None)
+
+# request_stop during finishing window (alive thread, STOP already popped) must not leak STOP entry
+win_job, win_folder = store.new_job('delegate')
+win_ws = sandbox.Workspace(str(root), ['math_utils.py'])
+win_task = agent.Task(win_job, win_folder, 'stop window test', win_ws, [], max_steps=2)
+win_gate = threading.Event()
+try:
+    t_win = agent._launch(win_task, lambda: (win_gate.wait(timeout=5), 'verified')[1])
+    agent.STOP.pop(win_job, None)
+    res_win = agent.request_stop(win_job)
+    ok(res_win is True and win_job not in agent.STOP,
+       'request_stop during finishing window returns True without creating orphan STOP event')
+finally:
+    win_gate.set()
+    if 't_win' in locals():
+        t_win.join(timeout=5)
+    agent.STOP.pop(win_job, None)
+    agent.RUNNING.pop(win_job, None)
 ok(agent.request_stop('finished-job-id') is False and 'finished-job-id' not in agent.STOP,
    'request_stop on dead job returns False without poisoning STOP')
 stop_job, stop_folder = store.new_job('delegate')
