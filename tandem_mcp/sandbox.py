@@ -526,6 +526,7 @@ def run(command, cwd, timeout=180, jail=False, allow_net=False, strip_env=None, 
 
     head, tail = [], collections.deque()
     head_kept = tail_kept = total = 0
+    buf_lock = threading.Lock()
 
     def _drain():
         nonlocal head_kept, tail_kept, total
@@ -534,26 +535,27 @@ def run(command, cwd, timeout=180, jail=False, allow_net=False, strip_env=None, 
             chunk = proc.stdout.read(65536)
             if not chunk:
                 break
-            total += len(chunk)
-            if head_kept < head_cap:
-                take = chunk[:head_cap - head_kept]
-                head.append(take)
-                head_kept += len(take)
-                chunk = chunk[len(take):]
-                if not chunk:
-                    continue
-            if tail_cap > 0:
-                tail.append(chunk)
-                tail_kept += len(chunk)
-                while tail_kept > tail_cap:
-                    old = tail[0]
-                    excess = tail_kept - tail_cap
-                    if excess >= len(old):
-                        tail.popleft()
-                        tail_kept -= len(old)
-                    else:
-                        tail[0] = old[excess:]
-                        tail_kept -= excess
+            with buf_lock:
+                total += len(chunk)
+                if head_kept < head_cap:
+                    take = chunk[:head_cap - head_kept]
+                    head.append(take)
+                    head_kept += len(take)
+                    chunk = chunk[len(take):]
+                    if not chunk:
+                        continue
+                if tail_cap > 0:
+                    tail.append(chunk)
+                    tail_kept += len(chunk)
+                    while tail_kept > tail_cap:
+                        old = tail[0]
+                        excess = tail_kept - tail_cap
+                        if excess >= len(old):
+                            tail.popleft()
+                            tail_kept -= len(old)
+                        else:
+                            tail[0] = old[excess:]
+                            tail_kept -= excess
 
     reader = threading.Thread(target=_drain, daemon=True)
     reader.start()
@@ -574,17 +576,20 @@ def run(command, cwd, timeout=180, jail=False, allow_net=False, strip_env=None, 
         except subprocess.TimeoutExpired:
             pass
     reader.join(timeout=2)
+    with buf_lock:
+        head_b = b''.join(head)
+        tail_b = b''.join(tail)
+        hk, tk, tot = head_kept, tail_kept, total
     if not reader.is_alive() and proc.stdout is not None:
         try:
             proc.stdout.close()
         except OSError:
             pass
 
-    kept = head_kept + tail_kept
-    text = b''.join(head).decode('utf-8', errors='replace')
-    if total > kept:
-        text += f'\n[output truncated: {total} bytes total, kept first {head_kept} and last {tail_kept} bytes]\n'
-    text += b''.join(tail).decode('utf-8', errors='replace')
+    text = head_b.decode('utf-8', errors='replace')
+    if tot > hk + tk:
+        text += f'\n[output truncated: {tot} bytes total, kept first {hk} and last {tk} bytes]\n'
+    text += tail_b.decode('utf-8', errors='replace')
     if timed_out:
         return 124, text + f'\n[timeout after {timeout} s]'
     return (proc.returncode if proc.returncode is not None else 124), text

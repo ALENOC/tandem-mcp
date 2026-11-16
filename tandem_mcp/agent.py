@@ -1303,8 +1303,8 @@ def _forget_finished(keep=48):
 
 
 def _launch(task, body_of, release=None):
-    STOP[task.job] = threading.Event()
     lock_handle = store.acquire_job_lock(task.job)
+    STOP[task.job] = threading.Event()
 
     def body():
         try:
@@ -1684,6 +1684,8 @@ def start_batch(tasks, workspace, allow_run, workers=1, max_steps=30, max_repair
                         with lock:
                             if not th.is_alive():
                                 row['state'] = (store.read_job(row['job']) or {}).get('state', 'stopped')
+                            else:
+                                row['why'] = 'stopping: child finishing'
                     with lock:
                         save('stopped')
                     return
@@ -1707,6 +1709,10 @@ def start_batch(tasks, workspace, allow_run, workers=1, max_steps=30, max_repair
                             continue
                         if sum(1 for r in rows if r['state'] == 'running') >= workers:
                             continue
+                        if ev and ev.is_set():
+                            row['state'], row['why'] = 'cancelled', 'batch stopped'
+                            state_of[row['name']] = 'cancelled'
+                            continue
                         ws = sandbox.Workspace(root, spec.get('write_globs'), allow_run, spec.get('immutable') or immutable)
                         ws.claims, ws.name, ws.run_lock = claims, row['name'], run_lock
                         row['job'], started = start(spec['goal'], ws, spec.get('verify_commands', []), max_steps, max_repairs, model,
@@ -1717,6 +1723,8 @@ def start_batch(tasks, workspace, allow_run, workers=1, max_steps=30, max_repair
                                            require_proof=require_proof)
                         running[row['name']] = started
                         row['state'] = state_of[row['name']] = 'running'
+                        if ev and ev.is_set():
+                            request_stop(row['job'])
                     left = [r for r in rows if r['state'] in ('waiting', 'running')]
                     save('running' if left else ('verified' if all(r['state'] == 'verified' for r in rows) else
                                                  'unverified' if all(r['state'] in DONE for r in rows) else 'partial'))
@@ -1730,8 +1738,8 @@ def start_batch(tasks, workspace, allow_run, workers=1, max_steps=30, max_repair
             store.release_job_lock(lock_handle)
 
     save('running')
-    STOP[batch] = threading.Event()
     lock_handle = store.acquire_job_lock(batch)
+    STOP[batch] = threading.Event()
     thread = threading.Thread(target=body, daemon=True)
     _forget_finished()
     RUNNING[batch] = (thread, None)

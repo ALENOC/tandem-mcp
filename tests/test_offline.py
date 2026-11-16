@@ -933,7 +933,8 @@ ok(code_ht == 0 and 'TAILMARKER' in out_ht and '[output truncated:' in out_ht an
    'sandbox.run keeps head+tail when truncating output')
 
 t_hang = time.time()
-code_hang, _ = sandbox.run('python3 -c "import os,time; os.setsid(); time.sleep(5)"', root, timeout=1)
+code_hang, _ = sandbox.run('python3 -c "import os,time; pid=os.fork(); (os.setsid(), time.sleep(5)) if pid==0 else time.sleep(5)"',
+                           root, timeout=1)
 ok(code_hang == 124 and (time.time() - t_hang) < 8.0, 'sandbox.run does not hang on detached child keeping stdout open')
 
 ok({'.claude', '.codex', '.gemini'}.issubset(set(sandbox.SECRETS)), 'SECRETS hides client config directories')
