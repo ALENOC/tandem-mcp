@@ -116,9 +116,14 @@ if sandbox.jail_available():
     ok(sandbox.run(probe, root, guard_symlinks=False)[1].split()[-1] == '0', 'without the jail the host port is reachable')
     ok(sandbox.run(probe, root, jail=True)[1].split()[-1] != '0', 'jail: no network, not even the loopback of the host')
     listener.close()
-    if (Path.home() / '.ssh').is_dir() and Path.home() not in root.parents:
-        code, out = sandbox.run('ls -A ~/.ssh | wc -l', root, jail=True)
-        ok(out.strip() == '0', 'jail: credentials folder hidden')
+    if Path.home() not in root.parents:
+        priv = Path.home() / f'.tandem-private-{os.getpid()}'
+        priv.write_text('PRIVATE_HOST_DATA')
+        try:
+            code, out = sandbox.run(f'test ! -e ~/.ssh && test ! -e {priv} && echo hidden', root, jail=True)
+            ok(code == 0 and out.strip() == 'hidden', 'jail: host $HOME and private files are hidden')
+        finally:
+            priv.unlink(missing_ok=True)
     os.environ['TANDEM_TEST_API_KEY'] = 'super-secret-value'
     code, out = sandbox.run('python3 -c "import os; print(os.environ.get(\'TANDEM_TEST_API_KEY\', \'MISSING\'))"', root, jail=True)
     ok(out.strip() == 'MISSING', 'jail: secret env vars are stripped')
@@ -242,7 +247,11 @@ try:
     ok('TANDEM_SANDBOX=require' in sandbox.describe_jail(), 'describe_jail warns on auto fallback')
     os.environ['TANDEM_SANDBOX'] = 'require'
     ok(refused(sandbox.jail_available), 'TANDEM_SANDBOX=require fails closed in jail_available')
-    ok(refused(sandbox.run, 'echo hi', root, 5, True), 'TANDEM_SANDBOX=require fails closed in run(jail=True)')
+    os.environ['TANDEM_SANDBOX'] = 'secure'
+    ok(refused(sandbox.jail_available), 'TANDEM_SANDBOX=secure fails closed in jail_available')
+    ok(refused(sandbox.run, 'echo hi', root, 5, True), 'TANDEM_SANDBOX=secure fails closed in run(jail=True)')
+    os.environ['TANDEM_SANDBOX'] = 'invalid_profile'
+    ok(refused(sandbox.jail_available), 'unknown TANDEM_SANDBOX profile fails closed')
 finally:
     sandbox._jail = saved_jail
     if saved_mode is None:
@@ -677,8 +686,8 @@ ok(masks[:2] == ['--tmpfs', str(run_dir / 'user')] and str(run_dir / 'docker.soc
    '_socket_masks() hides runtime folders and sockets only')
 ok('--unshare-ipc' in sandbox.jail_command('true', root), 'jail has its own IPC namespace')
 if sandbox.jail_available() and Path('/run/user').is_dir():
-    code, out = sandbox.run('ls -A /run/user | wc -l', root, timeout=30, jail=True)
-    ok(code == 0 and out.strip() == '0', 'the runtime folder of the user is empty inside the jail')
+    code, out = sandbox.run('test ! -e /run/user -o -z "$(ls -A /run/user 2>/dev/null)" && echo empty', root, timeout=30, jail=True)
+    ok(code == 0 and out.strip() == 'empty', 'the runtime folder of the user is empty or absent inside the jail')
 
 # secrets in the environment
 ok(all(sandbox.SECRET_ENV.search(k) for k in ('PGPASSWORD', 'DATABASE_URL', 'MYSQL_PWD', 'GH_TOKEN', 'REDIS_URL'))
@@ -829,8 +838,10 @@ try:
     ok(refused(sandbox.Workspace, fake_home / '.ssh') and refused(sandbox.Workspace, fake_home / '.ssh' / 'keys')
        and refused(sandbox.Workspace, fake_home.parent) and sandbox.Workspace(fake_home / 'proj').root == (fake_home / 'proj').resolve(),
        'credentials folders and the folders above the home are not workspaces, a project in the home is')
-    ok(['--tmpfs', str(fake_home / '.ssh')] == sandbox.jail_command('true', fake_home / 'proj')[10 + len(sandbox._socket_masks()):][:2],
-       'the jail hides the credentials folder')
+    jc_ssh = sandbox.jail_command('true', fake_home / 'proj')
+    ok(str(fake_home) in jc_ssh and jc_ssh[jc_ssh.index(str(fake_home)) - 1] == '--tmpfs'
+       and not any(jc_ssh[i:i + 3] == ['--ro-bind', '/', '/'] for i in range(len(jc_ssh) - 2)),
+       'the jail hides the entire host home via tmpfs instead of --ro-bind / /')
 finally:
     os.environ['HOME'] = _real_home
 

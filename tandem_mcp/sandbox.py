@@ -14,6 +14,7 @@ import shutil
 import signal
 import stat
 import subprocess
+import sys
 import threading
 from pathlib import Path
 
@@ -379,23 +380,35 @@ class Workspace:
 _jail = None
 
 
+def _sandbox_profile():
+    """Return normalized sandbox profile: 'secure', 'compatible', or 'trusted'."""
+    raw = os.environ.get('TANDEM_SANDBOX', 'auto').strip().lower()
+    if raw in ('secure', 'require'):
+        return 'secure'
+    if raw in ('compatible', 'auto', ''):
+        return 'compatible'
+    if raw in ('trusted', 'off'):
+        return 'trusted'
+    raise SandboxError(f'unknown TANDEM_SANDBOX profile {raw!r} (use secure, compatible, or trusted)')
+
+
 def jail_available():
     """True when bubblewrap is installed and may create its namespaces on this machine."""
     global _jail
-    mode = os.environ.get('TANDEM_SANDBOX', 'auto').lower()
-    if mode == 'off':
+    profile = _sandbox_profile()
+    if profile == 'trusted':
         return False
     if _jail is None:
         exe = shutil.which('bwrap')
         _jail = False
         if exe:
             try:
-                _jail = subprocess.run([exe, '--ro-bind', '/', '/', '--unshare-net', '--unshare-pid', '--die-with-parent', 'true'],
+                _jail = subprocess.run(jail_command('true', '/tmp'),
                                        capture_output=True, timeout=10).returncode == 0
             except (OSError, subprocess.SubprocessError):
                 _jail = False
-    if not _jail and mode == 'require':
-        raise SandboxError('TANDEM_SANDBOX=require but bubblewrap is not usable on this machine')
+    if not _jail and profile == 'secure':
+        raise SandboxError('TANDEM_SANDBOX=secure/require but bubblewrap is not usable on this machine')
     return _jail
 
 
@@ -453,17 +466,22 @@ def skip_dirs(root):
 
 
 def jail_command(command, root, allow_net=False):
-    """The bubblewrap call that runs `command` with only `root` writable."""
+    """The bubblewrap call that runs `command` with only `root` writable and host $HOME hidden."""
     root = Path(root).resolve()
     home = Path.home().resolve()
-    args = ['bwrap', '--ro-bind', '/', '/', '--dev', '/dev', '--proc', '/proc', '--tmpfs', '/tmp']
-    args += _socket_masks()
-    for name in SECRETS:
-        secret = home / name
-        if secret.is_dir():
-            args += ['--tmpfs', str(secret)]
-        elif secret.is_file():
-            args += ['--ro-bind', '/dev/null', str(secret)]
+    args = ['bwrap', '--dev', '/dev', '--proc', '/proc', '--tmpfs', '/tmp', '--tmpfs', '/run']
+    if allow_net or os.environ.get('TANDEM_SANDBOX_NET', '') == '1':
+        if os.path.isdir('/run/systemd/resolve') and not os.path.islink('/run/systemd/resolve'):
+            args += ['--ro-bind', '/run/systemd/resolve', '/run/systemd/resolve']
+    for sys_dir in ('/usr', '/bin', '/sbin', '/lib', '/lib64', '/lib32', '/etc', '/opt', '/nix'):
+        if os.path.islink(sys_dir):
+            args += ['--symlink', os.readlink(sys_dir), sys_dir]
+        elif os.path.isdir(sys_dir):
+            args += ['--ro-bind', sys_dir, sys_dir]
+    args += ['--tmpfs', str(home), '--setenv', 'HOME', str(home)]
+    base_prefix = str(Path(sys.base_prefix).resolve())
+    if base_prefix != '/usr' and not base_prefix.startswith('/usr/') and os.path.isdir(base_prefix):
+        args += ['--ro-bind', base_prefix, base_prefix]
     args += ['--bind', str(root), str(root)]
     skip_mounts = []
     for dirpath, dirnames, _ in os.walk(root, followlinks=False):
@@ -494,16 +512,16 @@ def clean_env(strip_secrets=True):
 
 
 def describe_jail():
-    mode = os.environ.get('TANDEM_SANDBOX', 'auto').lower()
-    if mode == 'off':
-        return 'WARNING: command text checks only (TANDEM_SANDBOX=off; bubblewrap disabled)'
+    profile = _sandbox_profile()
+    if profile == 'trusted':
+        return 'WARNING: command text checks only (TANDEM_SANDBOX=trusted/off; bubblewrap disabled)'
     try:
         if jail_available():
             net = 'network allowed' if os.environ.get('TANDEM_SANDBOX_NET', '') == '1' else 'no network'
-            return f'bubblewrap (machine read only, workspace writable, credentials and host sockets hidden, env secrets stripped, {net})'
+            return f'bubblewrap (allowlist system dirs, home hidden, workspace writable, env secrets stripped, {net})'
     except SandboxError as exc:
         return f'ERROR: {exc}'
-    return 'WARNING: bubblewrap unavailable: falling back to unjailed command text checks only (outbound symlinks refused; set TANDEM_SANDBOX=require to fail closed)'
+    return 'WARNING: bubblewrap unavailable: falling back to unjailed command text checks only (outbound symlinks refused; set TANDEM_SANDBOX=require or secure to fail closed)'
 
 
 def outbound_symlinks(root):
@@ -554,10 +572,10 @@ def run(command, cwd, timeout=None, jail=False, allow_net=False, strip_env=None,
     if strip_env is None:
         strip_env = bool(jail)
     env = clean_env(strip_secrets=strip_env)
-    mode = os.environ.get('TANDEM_SANDBOX', 'auto').lower()
+    profile = _sandbox_profile()
     use_jail = bool(jail and jail_available())
-    if jail and not use_jail and mode == 'require':
-        raise SandboxError('TANDEM_SANDBOX=require but bubblewrap is not usable on this machine')
+    if jail and not use_jail and profile == 'secure':
+        raise SandboxError('TANDEM_SANDBOX=secure/require but bubblewrap is not usable on this machine')
     if not use_jail and guard_symlinks and os.environ.get('TANDEM_ALLOW_OUTBOUND_SYMLINKS', '') != '1':
         offenders = outbound_symlinks(cwd)
         if offenders:
