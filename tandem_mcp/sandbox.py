@@ -562,8 +562,15 @@ def _run_timeout(default=180):
         return default
 
 
+def _log_cap(default=64 * 1024 * 1024):
+    try:
+        return max(65536, int(os.environ.get('TANDEM_LOG_CAP', default)))
+    except ValueError:
+        return default
+
+
 def run(command, cwd, timeout=None, jail=False, allow_net=False, strip_env=None, max_output_bytes=None,
-        guard_symlinks=True):
+        guard_symlinks=True, log_path=None, log_cap_bytes=None):
     """Run a shell command, return (exit code, combined output). jail=True runs it inside the
     operating system sandbox when there is one. Output kept in RAM is bounded to avoid OOM."""
     # no bytecode files: a check run just before an edit must not leave a stale .pyc behind
@@ -597,14 +604,24 @@ def run(command, cwd, timeout=None, jail=False, allow_net=False, strip_env=None,
     head, tail = [], collections.deque()
     head_kept = tail_kept = total = 0
     buf_lock = threading.Lock()
+    log_cap = _log_cap() if log_cap_bytes is None else max(4096, int(log_cap_bytes))
+    log_fh = open(log_path, 'wb') if log_path is not None else None
+    log_written = 0
 
     def _drain():
-        nonlocal head_kept, tail_kept, total
+        nonlocal head_kept, tail_kept, total, log_written
         assert proc.stdout is not None
         while True:
             chunk = proc.stdout.read(65536)
             if not chunk:
                 break
+            if log_fh is not None and log_written < log_cap:
+                take_log = chunk[:log_cap - log_written]
+                try:
+                    log_fh.write(take_log)
+                    log_written += len(take_log)
+                except OSError:
+                    pass
             with buf_lock:
                 total += len(chunk)
                 if head_kept < head_cap:
@@ -653,6 +670,13 @@ def run(command, cwd, timeout=None, jail=False, allow_net=False, strip_env=None,
     if not reader.is_alive() and proc.stdout is not None:
         try:
             proc.stdout.close()
+        except OSError:
+            pass
+    if log_fh is not None:
+        try:
+            if tot > log_written:
+                log_fh.write(f'\n[log truncated: {tot} bytes total, kept {log_written} bytes]\n'.encode('utf-8'))
+            log_fh.close()
         except OSError:
             pass
 

@@ -191,9 +191,10 @@ def digest_command(command: str, cwd: str, question: str = '', max_words: int = 
     it, with your rights: the limits apply only to commands the executor chooses."""
     try:
         job, folder = store.new_job('command')
-        code, output = sandbox.run(command, Path(cwd).expanduser(), timeout, guard_symlinks=False)
         full = folder / 'output.txt'
-        full.write_text(output)
+        code, output = sandbox.run(command, Path(cwd).expanduser(), timeout, guard_symlinks=False, log_path=full)
+        if not full.exists():
+            full.write_text(output)
         question = question or 'Did the command succeed? List each distinct error or failure with its file and line. Ignore progress noise.'
         tail = '\n'.join(output.strip().splitlines()[-4:])
         more = {}

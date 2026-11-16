@@ -1846,6 +1846,16 @@ ok('inspection required' in _server.job_feedback(ub_job, True)
    and bool(_server.job_diff(ub_job))
    and _server.job_feedback(ub_job, True) == 'recorded',
    'job_feedback requires job_diff inspection when backup_status is unbacked')
+
+# --- FASE 5: streaming log_path writes full output to disk while keeping RAM bounded ---
+stream_log = Path(tempfile.mkdtemp()) / 'output.txt'
+try:
+    code_sl, out_sl = sandbox.run('python3 -c "print(\'S\' * 20000)"', root, max_output_bytes=4096, log_path=stream_log)
+    ok(code_sl == 0 and len(out_sl) < 5000 and '[output truncated:' in out_sl
+       and stream_log.exists() and stream_log.stat().st_size >= 20000,
+       'sandbox.run streams full output to log_path while capping RAM')
+finally:
+    shutil.rmtree(stream_log.parent, ignore_errors=True)
 ok(agent.request_stop('finished-job-id') is False and 'finished-job-id' not in agent.STOP,
    'request_stop on dead job returns False without poisoning STOP')
 stop_job, stop_folder = store.new_job('delegate')
