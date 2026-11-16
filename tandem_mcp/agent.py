@@ -1088,6 +1088,10 @@ class Task:
         limit = self.steps + extra_steps if extra_steps else self.max_steps
         half = self.steps + max(2, (limit - self.steps) // 2)
         while self.steps < limit:
+            stop_ev = STOP.get(self.job)
+            if stop_ev and stop_ev.is_set():
+                state, summary = 'stopped', 'stopped by request'
+                break
             if self.max_seconds and time.time() - self.t0 > self.max_seconds:
                 state = 'out_of_time'
                 break
@@ -1097,10 +1101,16 @@ class Task:
             try:
                 calls = self._turn(messages)
             except engine.ExecutorError:
+                if stop_ev and stop_ev.is_set():
+                    state, summary = 'stopped', 'stopped by request'
+                    break
                 if self.max_seconds and time.time() - self.t0 >= self.max_seconds:
                     state = 'out_of_time'
                     break
                 raise
+            if stop_ev and stop_ev.is_set():
+                state, summary = 'stopped', 'stopped by request'
+                break
             self.mute = 0 if calls else self.mute + 1
             if self.mute >= 4:
                 state, summary = 'stuck', 'four replies in a row were not a tool call'
@@ -1259,6 +1269,28 @@ class Task:
 
 
 RUNNING = {}
+STOP: dict[str, threading.Event] = {}
+
+
+def request_stop(job):
+    """Signal a running job to stop cleanly at the next safe point."""
+    STOP.setdefault(job, threading.Event()).set()
+    entry = RUNNING.get(job)
+    return bool(entry and entry[0].is_alive())
+
+
+def stop_all(timeout=5.0):
+    """Request stop on all running jobs and wait up to timeout seconds for them to finish."""
+    alive = []
+    for job, (thread, _) in list(RUNNING.items()):
+        if thread.is_alive():
+            request_stop(job)
+            alive.append(thread)
+    deadline = time.time() + max(0.0, timeout)
+    for thread in alive:
+        remaining = deadline - time.time()
+        if remaining > 0:
+            thread.join(timeout=remaining)
 
 
 def _forget_finished(keep=48):
@@ -1269,26 +1301,36 @@ def _forget_finished(keep=48):
 
 
 def _launch(task, body_of, release=None):
+    STOP.setdefault(task.job, threading.Event())
+    try:
+        lock_handle = store.acquire_job_lock(task.job)
+    except OSError:
+        lock_handle = None
+
     def body():
         try:
-            state = body_of()
-        except Exception as exc:                 # the receipt must exist whatever happens
             try:
-                task.restore_guard()
-            except Exception:
-                pass
-            try:
-                task._record_post_state()
-            except Exception:
-                pass
-            task._save('error', f'{type(exc).__name__}: {exc}', [])
-            state = 'error'
-        diff = task.diff()
-        (task.folder / 'changes.diff').write_text(diff)
-        store.log('delegate', kind='job', job=task.job, state=state, steps=task.steps, executor_tokens=task.tokens,
-                  bytes_in=task.read_chars + len(diff), model=task.used or task.model or 'default')
-        if release:
-            release()
+                state = body_of()
+            except Exception as exc:                 # the receipt must exist whatever happens
+                try:
+                    task.restore_guard()
+                except Exception:
+                    pass
+                try:
+                    task._record_post_state()
+                except Exception:
+                    pass
+                task._save('error', f'{type(exc).__name__}: {exc}', [])
+                state = 'error'
+            diff = task.diff()
+            (task.folder / 'changes.diff').write_text(diff)
+            store.log('delegate', kind='job', job=task.job, state=state, steps=task.steps, executor_tokens=task.tokens,
+                      bytes_in=task.read_chars + len(diff), model=task.used or task.model or 'default')
+        finally:
+            STOP.pop(task.job, None)
+            store.release_job_lock(lock_handle)
+            if release:
+                release()
 
     thread = threading.Thread(target=body, daemon=True)
     _forget_finished()
@@ -1313,7 +1355,7 @@ def resume(job, hint, extra_steps=15):
     """Go on with a job that stopped, with a hint of the orchestrator, in the same conversation:
     what the executor read and tried is kept, and so is the journal."""
     entry = RUNNING.get(job)
-    if entry and entry[0].is_alive():
+    if (entry and entry[0].is_alive()) or store.is_job_locked(job):
         raise sandbox.SandboxError('the job is still running')
     data = store.read_job(job)
     folder = store.JOBS / job
@@ -1405,7 +1447,7 @@ def rollback(job):
     """Put back every file the task changed (journal and command snapshot), skipping files
     modified by the user after the task ended."""
     running_entry = RUNNING.get(job)
-    if running_entry and running_entry[0].is_alive():
+    if (running_entry and running_entry[0].is_alive()) or store.is_job_locked(job):
         return 'the job is still running'
     folder = store.JOBS / job
     data = store.read_job(job)

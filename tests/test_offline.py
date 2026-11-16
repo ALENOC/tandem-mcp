@@ -921,4 +921,46 @@ ok(all('one requirement per constraint' in contract_error(constraints=[c]) for c
 os.environ['TANDEM_STRICT'] = '0'
 ok(_server.strict() is False and contract_error(globs=(), verify=()) == '', 'TANDEM_STRICT=0 brings the loose contract back')
 
+# --- P0/P1 hardening checks ---
+code_cap, out_cap = sandbox.run('python3 -c "print(\'A\' * 20000)"', root, max_output_bytes=4096)
+ok(code_cap == 0 and '[output truncated:' in out_cap and len(out_cap) < 5000, 'sandbox.run caps output in RAM')
+
+ok({'.claude', '.codex', '.gemini'}.issubset(set(sandbox.SECRETS)), 'SECRETS hides client config directories')
+redacted = sandbox.redact_secrets(
+    'OPENAI_API_KEY=sk-proj-1234567890abcdefghijklmnop\n'
+    'Authorization: Bearer my_super_secret_bearer_token_12345\n'
+    '-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA\n-----END RSA PRIVATE KEY-----\n'
+)
+ok('sk-proj-' not in redacted and 'my_super_secret_bearer_token_12345' not in redacted
+   and 'MIIEowIBAAKCAQEA' not in redacted and '[REDACTED_PRIVATE_KEY]' in redacted,
+   'redact_secrets masks keys, tokens and PEM blocks')
+
+spoof_file = root / 'spoof.txt'
+spoof_file.write_text('aaaa')
+st_orig = spoof_file.stat()
+s1 = sandbox.stamp(root)
+spoof_file.write_text('bbbb')
+os.utime(spoof_file, ns=(st_orig.st_atime_ns, st_orig.st_mtime_ns))
+s2 = sandbox.stamp(root)
+ok(s1['spoof.txt'][1] != s2['spoof.txt'][1], 'stamp ctime_ns fast-path still catches mtime+size spoofing')
+
+stale_job, _ = store.new_job('delegate')
+live_job, _ = store.new_job('delegate')
+lk = store.acquire_job_lock(live_job)
+try:
+    ok(store.is_job_locked(live_job) and not store.is_job_locked(stale_job), 'job flock reports live vs stale lock')
+    fixed_n = store.reconcile_stale_jobs()
+    ok(fixed_n >= 1 and store.read_job(stale_job)['state'] == 'error' and store.read_job(live_job)['state'] == 'running',
+       'reconcile_stale_jobs marks unlocked running jobs as error')
+finally:
+    store.release_job_lock(lk)
+
+ok('no job' in _server.job_stop('nonexistent-job-id'), 'job_stop handles unknown job id')
+stop_job, stop_folder = store.new_job('delegate')
+stop_ws = sandbox.Workspace(str(root), ['math_utils.py'])
+stop_task = agent.Task(stop_job, stop_folder, 'stop test', stop_ws, [], max_steps=5)
+agent.request_stop(stop_job)
+stop_state = stop_task.loop([{'role': 'system', 'content': 's'}, {'role': 'user', 'content': 'u'}])
+ok(stop_state == 'stopped' and store.read_job(stop_job)['state'] == 'stopped', 'request_stop exits Task.loop cleanly as stopped')
+
 print(f'{checks} checks, 0 failures')

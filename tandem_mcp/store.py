@@ -5,7 +5,13 @@ import os
 import shutil
 import threading
 import time
+import uuid
 from pathlib import Path
+
+try:
+    import fcntl
+except ImportError:
+    fcntl = None
 
 DATA = Path(os.environ.get('TANDEM_HOME', Path.home() / '.local/share/tandem-mcp'))
 JOBS = DATA / 'jobs'
@@ -57,10 +63,88 @@ def new_job(kind):
 
 
 def write_json(path, data):
-    """Write through a temporary file, so that a crash never leaves half a file."""
-    tmp = path.with_name(path.name + '.tmp')
-    tmp.write_text(json.dumps(data, indent=1))
-    tmp.replace(path)
+    """Write through a process/thread-unique temporary file, so concurrent writes never collide."""
+    tmp = path.with_name(f'.{path.name}.{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex[:6]}.tmp')
+    try:
+        tmp.write_text(json.dumps(data, indent=1))
+        tmp.replace(path)
+    except Exception:
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
+
+
+def acquire_job_lock(job):
+    """Hold an exclusive non-blocking flock on a job while a worker owns it. Returns handle or None."""
+    if not fcntl or not job or '/' in job or job.startswith('.'):
+        return None
+    lock_path = JOBS / job / '.lock'
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    fh = open(lock_path, 'a+')
+    try:
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        fh.close()
+        raise
+    return fh
+
+
+def release_job_lock(handle):
+    """Release a handle returned by acquire_job_lock."""
+    if handle is None:
+        return
+    try:
+        if fcntl:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    except OSError:
+        pass
+    try:
+        handle.close()
+    except OSError:
+        pass
+
+
+def is_job_locked(job):
+    """True if another thread/process currently holds the exclusive lock for this job."""
+    if not fcntl or not job or '/' in job or job.startswith('.'):
+        return False
+    lock_path = JOBS / job / '.lock'
+    if not lock_path.exists():
+        return False
+    try:
+        with open(lock_path, 'a+') as fh:
+            try:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+                return False
+            except OSError:
+                return True
+    except OSError:
+        return False
+
+
+def reconcile_stale_jobs():
+    """Mark jobs left in 'running' state without an active lock as 'error' on startup."""
+    if not JOBS.exists():
+        return 0
+    fixed = 0
+    for folder in JOBS.iterdir():
+        if not folder.is_dir():
+            continue
+        job = folder.name
+        data = read_job(job)
+        if not data or data.get('state') != 'running':
+            continue
+        if is_job_locked(job):
+            continue
+        data['state'] = 'error'
+        if not data.get('summary'):
+            data['summary'] = 'interrupted: server exited before job finished'
+        write_job(job, data)
+        fixed += 1
+    return fixed
 
 
 def read_json(path, default=None):
@@ -262,7 +346,7 @@ def _trim_ledger(keep_days):
                 continue
         if len(kept) == len(lines):
             return 0
-        tmp = LEDGER.with_name(LEDGER.name + '.tmp')
+        tmp = LEDGER.with_name(f'.{LEDGER.name}.{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex[:6]}.tmp')
         tmp.write_text('\n'.join(kept) + ('\n' if kept else ''))
         tmp.replace(LEDGER)
     return len(lines) - len(kept)

@@ -10,8 +10,10 @@ import os
 import re
 import shlex
 import shutil
+import signal
 import stat
 import subprocess
+import threading
 from pathlib import Path
 
 # Never run for the executor, whatever the allow list says.
@@ -30,7 +32,32 @@ _DENY_NAMES = re.compile(r'(?<![\w./-])(?:' + '|'.join(re.escape(n) for n in sor
 _ASSIGNMENT = re.compile(r'^[A-Za-z_]\w*=')
 SKIP_DIRS = {'.git', 'node_modules', '__pycache__', '.venv', 'venv', 'build', 'managed_components', '.history', 'dist', '.cache'}
 SECRETS = ['.ssh', '.gnupg', '.aws', '.azure', '.kube', '.docker', '.config/gh', '.config/gcloud', '.password-store',
-           '.netrc', '.git-credentials', '.npmrc', '.pypirc']
+           '.netrc', '.git-credentials', '.npmrc', '.pypirc', '.claude', '.codex', '.gemini',
+           '.local/share/keyrings', '.gradle', '.m2', '.cargo/credentials', '.cargo/credentials.toml',
+           '.config/google-chrome', '.config/chromium', '.mozilla']
+
+_PEM_BLOCK_RE = re.compile(
+    r'-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----'
+)
+_TOKEN_RE = re.compile(
+    r'\b(?:sk-(?:proj-|ant-)?[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}'
+    r'|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|xox[baprs]-[0-9A-Za-z-]{10,})\b'
+)
+_ENV_SECRET_LINE_RE = re.compile(
+    r'(?im)^([A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|PRIVATE|DSN|CONNECTION_STRING)[A-Z0-9_]*\s*[=:]\s*)([^\s\'"#]+|"[^"\n]+"|\'[^\'\n]+\')'
+)
+_BEARER_RE = re.compile(r'(?i)(\bBearer\s+)[A-Za-z0-9._~+/=-]{16,}')
+
+
+def redact_secrets(text):
+    """Mask private key blocks, known API tokens and secret env assignments before returning text."""
+    if not text or os.environ.get('TANDEM_REDACT', '1').strip().lower() in ('0', 'off', 'false', 'no'):
+        return text
+    out = _PEM_BLOCK_RE.sub('[REDACTED_PRIVATE_KEY]', text)
+    out = _TOKEN_RE.sub('[REDACTED_TOKEN]', out)
+    out = _BEARER_RE.sub(r'\1[REDACTED_TOKEN]', out)
+    out = _ENV_SECRET_LINE_RE.sub(r'\1[REDACTED]', out)
+    return out
 TEST_DIR = re.compile(r'^(tests?|specs?|__tests__|e2e|unit_tests|integration_tests)$', re.I)
 TEST_FILE = re.compile(r'^(?:test_.*\.py|.*_test\.(?:py|go|rs)|.*\.(?:test|spec)\.[jt]sx?|conftest\.py|pytest\.ini)$', re.I)
 TEST_RUNNERS = re.compile(
@@ -458,9 +485,16 @@ def describe_jail():
     return 'WARNING: bubblewrap unavailable: falling back to unjailed command text checks only (set TANDEM_SANDBOX=require to fail closed)'
 
 
-def run(command, cwd, timeout=180, jail=False, allow_net=False, strip_env=None):
+def _run_output_cap():
+    try:
+        return max(65536, int(os.environ.get('TANDEM_RUN_OUTPUT_CAP', 2 * 1024 * 1024)))
+    except ValueError:
+        return 2 * 1024 * 1024
+
+
+def run(command, cwd, timeout=180, jail=False, allow_net=False, strip_env=None, max_output_bytes=None):
     """Run a shell command, return (exit code, combined output). jail=True runs it inside the
-    operating system sandbox when there is one."""
+    operating system sandbox when there is one. Output kept in RAM is bounded to avoid OOM."""
     # no bytecode files: a check run just before an edit must not leave a stale .pyc behind
     if strip_env is None:
         strip_env = bool(jail)
@@ -469,18 +503,64 @@ def run(command, cwd, timeout=180, jail=False, allow_net=False, strip_env=None):
     use_jail = bool(jail and jail_available())
     if jail and not use_jail and mode == 'require':
         raise SandboxError('TANDEM_SANDBOX=require but bubblewrap is not usable on this machine')
+
+    cap = _run_output_cap() if max_output_bytes is None else max(4096, int(max_output_bytes))
+    popen_kw = dict(stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, env=env)
+    if os.name == 'posix':
+        popen_kw['start_new_session'] = True
+    if use_jail:
+        proc = subprocess.Popen(jail_command(command, cwd, allow_net=allow_net), **popen_kw)
+    else:
+        proc = subprocess.Popen(command, shell=True, cwd=str(cwd), **popen_kw)
+
+    chunks = []
+    kept = 0
+    total = 0
+
+    def _drain():
+        nonlocal kept, total
+        assert proc.stdout is not None
+        while True:
+            chunk = proc.stdout.read(65536)
+            if not chunk:
+                break
+            total += len(chunk)
+            if kept < cap:
+                take = chunk[:cap - kept]
+                chunks.append(take)
+                kept += len(take)
+
+    reader = threading.Thread(target=_drain, daemon=True)
+    reader.start()
+    timed_out = False
     try:
-        if use_jail:
-            done = subprocess.run(jail_command(command, cwd, allow_net=allow_net), capture_output=True, text=True,
-                                  timeout=timeout, errors='replace', stdin=subprocess.DEVNULL, env=env)
+        proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        timed_out = True
+        if os.name == 'posix':
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except OSError:
+                proc.kill()
         else:
-            done = subprocess.run(command, shell=True, cwd=str(cwd), capture_output=True, text=True, timeout=timeout,
-                                  errors='replace', stdin=subprocess.DEVNULL, env=env)
-        return done.returncode, (done.stdout or '') + (('\n' + done.stderr) if done.stderr else '')
-    except subprocess.TimeoutExpired as exc:
-        partial = (exc.stdout or b'')
-        partial = partial.decode(errors='replace') if isinstance(partial, bytes) else partial
-        return 124, partial + f'\n[timeout after {timeout} s]'
+            proc.kill()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            pass
+    reader.join(timeout=2)
+    if proc.stdout is not None:
+        try:
+            proc.stdout.close()
+        except OSError:
+            pass
+
+    text = b''.join(chunks).decode('utf-8', errors='replace')
+    if total > kept:
+        text += f'\n[output truncated: {total} bytes total, kept first {kept} bytes]'
+    if timed_out:
+        return 124, text + f'\n[timeout after {timeout} s]'
+    return proc.returncode, text
 
 
 # reading ---------------------------------------------------------------------------------------
@@ -534,15 +614,22 @@ def walk(root, glob='**/*', limit=None):
     return sorted(out)
 
 
+_STAMP_LOCK = threading.Lock()
+_STAMP_CACHE: dict[str, dict[str, tuple]] = {}
+
+
 def stamp(root, limit=None):
     """Size and SHA-256 of the files of a workspace, to see what a command touched.
 
-    Uses os.scandir to avoid redundant stat/Path/glob work while still reading every
-    non-skipped file with hashlib.file_digest (intentionally not trusting mtime_ns/size
-    to prevent mtime-spoofing by commands).
+    Uses os.scandir and a ctime_ns fast-path: ctime_ns cannot be spoofed from userspace,
+    so unchanged (size, mtime_ns, ctime_ns, ino, mode) safely reuses the cached SHA-256.
     """
+    root_key = os.fspath(root)
+    with _STAMP_LOCK:
+        prev_cache = _STAMP_CACHE.get(root_key, {})
+    new_cache = {}
     out = {}
-    stack = [(os.fspath(root), '')]
+    stack = [(root_key, '')]
     while stack:
         dirpath, prefix = stack.pop()
         try:
@@ -562,12 +649,23 @@ def stamp(root, limit=None):
                     if entry.name not in SKIP_DIRS:
                         stack.append((entry.path, f'{prefix}{entry.name}/'))
                 elif entry.is_file(follow_symlinks=False):
+                    rel = f'{prefix}{entry.name}'
                     st = entry.stat(follow_symlinks=False)
-                    with open(entry.path, 'rb') as f:
-                        digest_hex = hashlib.file_digest(f, 'sha256').hexdigest()
-                    out[f'{prefix}{entry.name}'] = (st.st_size, digest_hex, stat.S_IMODE(st.st_mode))
+                    mode = stat.S_IMODE(st.st_mode)
+                    meta = (st.st_size, st.st_mtime_ns, st.st_ctime_ns, st.st_ino, mode)
+                    cached = prev_cache.get(rel)
+                    if cached is not None and cached[:5] == meta:
+                        digest_hex = cached[5]
+                    else:
+                        with open(entry.path, 'rb') as f:
+                            digest_hex = hashlib.file_digest(f, 'sha256').hexdigest()
+                    new_cache[rel] = (*meta, digest_hex)
+                    out[rel] = (st.st_size, digest_hex, mode)
                     if limit is not None and len(out) >= limit:
                         return out
             except OSError:
                 continue
+    if limit is None:
+        with _STAMP_LOCK:
+            _STAMP_CACHE[root_key] = new_cache
     return out

@@ -13,11 +13,13 @@ shape the tools:
    reads at its next task in that project, and the ledger shows where delegation pays.
 4. Any model. The server measures what the model can do and adapts the protocol to it.
 """
+import atexit
 import json
 import logging
 import os
 import re
 import shlex
+import signal
 from pathlib import Path
 
 from mcp.server.mcpserver import MCPServer
@@ -264,6 +266,7 @@ HINTS = {'verified': 'Checks passed. Read job_diff if the change is delicate, th
          'stuck': 'The executor went in circles. job_continue with a different approach, or job_rollback.',
          'out_of_steps': 'Step limit reached. job_continue gives more steps; job_rollback undoes the partial work.',
          'out_of_time': 'Time limit reached. job_continue gives more steps; job_rollback undoes the partial work.',
+         'stopped': 'Stopped on request. job_continue resumes from here, or job_rollback undoes the partial work.',
          'error': 'The run broke. job_rollback undoes any partial change.'}
 
 
@@ -360,7 +363,7 @@ def _receipt(job):
         lines.append('Last steps of the executor:')
         lines += ['  ' + t for t in data['tried']]
     hint = HINTS.get(data['state'], '')
-    return '\n'.join(lines + ([hint] if hint else []))
+    return sandbox.redact_secrets('\n'.join(lines + ([hint] if hint else [])))
 
 
 def _wait(job, seconds):
@@ -640,7 +643,26 @@ def job_diff(job_id: str, path: str = '', max_lines: int = 200) -> str:
         store.write_job(job_id, data)
     if truncated:
         lines = lines[:max_lines] + [f'[{len(lines) - max_lines} more lines: ask for one path or raise max_lines]']
-    return _saved('job_diff', 0, '\n'.join(lines) or 'no change')
+    return _saved('job_diff', 0, sandbox.redact_secrets('\n'.join(lines)) or 'no change')
+
+
+@mcp.tool()
+def job_stop(job_id: str, wait_seconds: int = 10) -> str:
+    """Ask a running delegated job to stop cleanly and return its receipt."""
+    try:
+        data = store.read_job(job_id)
+        if not data:
+            return f'no job {job_id}'
+        if data.get('kind') == 'batch':
+            for row in data.get('tasks') or []:
+                if row.get('job'):
+                    agent.request_stop(row['job'])
+        was_running = agent.request_stop(job_id)
+        if was_running and wait_seconds > 0:
+            _wait(job_id, min(wait_seconds, 30))
+        return _receipt(job_id)
+    except Exception as exc:
+        return _fail(exc)
 
 
 def _focused(data):
@@ -848,8 +870,21 @@ def ledger_report(days: float = 30.0) -> str:
     return '\n'.join(lines)
 
 
+def _graceful_shutdown(_signum=None, _frame=None):
+    agent.stop_all(timeout=5.0)
+    if _signum is not None:
+        raise SystemExit(0)
+
+
 def main():
     store.init()
+    store.reconcile_stale_jobs()
+    atexit.register(agent.stop_all, 2.0)
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            signal.signal(sig, _graceful_shutdown)
+        except (OSError, ValueError):
+            pass
     mcp.run()
 
 
