@@ -3,6 +3,8 @@ import json
 import os
 import sys
 import tempfile
+import threading
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -956,11 +958,45 @@ finally:
     store.release_job_lock(lk)
 
 ok('no job' in _server.job_stop('nonexistent-job-id'), 'job_stop handles unknown job id')
+ok(agent.request_stop('finished-job-id') is False and 'finished-job-id' not in agent.STOP,
+   'request_stop on dead job returns False without poisoning STOP')
 stop_job, stop_folder = store.new_job('delegate')
 stop_ws = sandbox.Workspace(str(root), ['math_utils.py'])
 stop_task = agent.Task(stop_job, stop_folder, 'stop test', stop_ws, [], max_steps=5)
-agent.request_stop(stop_job)
+agent.STOP[stop_job] = threading.Event()
+agent.STOP[stop_job].set()
 stop_state = stop_task.loop([{'role': 'system', 'content': 's'}, {'role': 'user', 'content': 'u'}])
-ok(stop_state == 'stopped' and store.read_job(stop_job)['state'] == 'stopped', 'request_stop exits Task.loop cleanly as stopped')
+agent.STOP.pop(stop_job, None)
+ok(stop_state == 'stopped' and store.read_job(stop_job)['state'] == 'stopped', 'STOP event exits Task.loop cleanly as stopped')
+
+# Regression: pre-poisoned STOP event must not stop a fresh _launch
+poison_job, poison_folder = store.new_job('delegate')
+poison_task = agent.Task(poison_job, poison_folder, 'poison test', stop_ws, [], max_steps=2)
+poison_task._turn = lambda msgs: (_ for _ in ()).throw(engine.ExecutorError('no server'))
+agent.STOP[poison_job] = threading.Event()
+agent.STOP[poison_job].set()
+try:
+    t_poison = agent._launch(poison_task, lambda: poison_task.loop([{'role': 'system', 'content': 's'}, {'role': 'user', 'content': 'u'}]))
+    t_poison.join(timeout=10)
+    ok((store.read_job(poison_job) or {}).get('state') == 'error', '_launch replaces pre-set STOP event')
+finally:
+    agent.STOP.pop(poison_job, None)
+    agent.RUNNING.pop(poison_job, None)
+
+# Fail-closed lock in _launch
+locked_job, locked_folder = store.new_job('delegate')
+locked_task = agent.Task(locked_job, locked_folder, 'lock test', stop_ws, [], max_steps=2)
+lk_held = store.acquire_job_lock(locked_job)
+try:
+    got_lock_err = False
+    try:
+        agent._launch(locked_task, lambda: 'verified')
+    except OSError:
+        got_lock_err = True
+    ok(got_lock_err, '_launch fails closed with OSError when job lock is already held')
+finally:
+    store.release_job_lock(lk_held)
+    agent.STOP.pop(locked_job, None)
+    agent.RUNNING.pop(locked_job, None)
 
 print(f'{checks} checks, 0 failures')

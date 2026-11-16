@@ -1274,9 +1274,11 @@ STOP: dict[str, threading.Event] = {}
 
 def request_stop(job):
     """Signal a running job to stop cleanly at the next safe point."""
-    STOP.setdefault(job, threading.Event()).set()
     entry = RUNNING.get(job)
-    return bool(entry and entry[0].is_alive())
+    alive = bool(entry and entry[0].is_alive())
+    if alive:
+        STOP.setdefault(job, threading.Event()).set()
+    return alive
 
 
 def stop_all(timeout=5.0):
@@ -1301,11 +1303,8 @@ def _forget_finished(keep=48):
 
 
 def _launch(task, body_of, release=None):
-    STOP.setdefault(task.job, threading.Event())
-    try:
-        lock_handle = store.acquire_job_lock(task.job)
-    except OSError:
-        lock_handle = None
+    STOP[task.job] = threading.Event()
+    lock_handle = store.acquire_job_lock(task.job)
 
     def body():
         try:
