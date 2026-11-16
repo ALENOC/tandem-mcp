@@ -479,9 +479,19 @@ def jail_command(command, root, allow_net=False):
         elif os.path.isdir(sys_dir):
             args += ['--ro-bind', sys_dir, sys_dir]
     args += ['--tmpfs', str(home), '--setenv', 'HOME', str(home)]
-    base_prefix = str(Path(sys.base_prefix).resolve())
-    if base_prefix != '/usr' and not base_prefix.startswith('/usr/') and os.path.isdir(base_prefix):
-        args += ['--ro-bind', base_prefix, base_prefix]
+    rt_paths = [Path(sys.base_prefix), Path(sys.prefix)]
+    exe_p = Path(sys.executable)
+    if exe_p.is_symlink():
+        try:
+            rt_paths.append((exe_p.parent / os.readlink(exe_p)).parent.parent)
+        except OSError:
+            pass
+    seen_rt = set()
+    for prefix in rt_paths:
+        for cand in (str(prefix), str(prefix.resolve())):
+            if cand not in seen_rt and cand != '/usr' and not cand.startswith('/usr/') and cand != str(root) and os.path.isdir(cand):
+                seen_rt.add(cand)
+                args += ['--ro-bind', cand, cand]
     args += ['--bind', str(root), str(root)]
     skip_mounts = []
     for dirpath, dirnames, _ in os.walk(root, followlinks=False):
