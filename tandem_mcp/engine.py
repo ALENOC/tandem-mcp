@@ -5,10 +5,12 @@ Local models differ in three ways that matter here: whether they call tools nati
 the server can force a JSON schema on the output, and whether they print their reasoning. The
 probe measures the three once per model and the rest of the server adapts, so the same tools
 work with a large tool calling model and with a small one that only writes text."""
+import concurrent.futures
 import json
 import os
 import random
 import re
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -26,6 +28,9 @@ THINK = re.compile(r'<(think|thinking|reasoning|thought)>.*?</\1>', re.S | re.I)
 THINK_END = re.compile(r'</(think|thinking|reasoning|thought)>', re.I)
 THINK_OPEN = re.compile(r'\s*<(think|thinking|reasoning|thought)>', re.I)
 _state = {'url': None, 'kind': None, 'name': None, 'client': None, 'models': None, 'models_at': 0.0, 'pinned': ''}
+_connect_lock = threading.Lock()
+_servers_lock = threading.Lock()
+_servers_cache = {'at': 0.0, 'rows': []}
 
 
 class ExecutorError(RuntimeError):
@@ -72,45 +77,73 @@ def _answers(url):
 
 def _kind(url):
     root = _root(url)
-    for kind, path, key in (('lmstudio', '/api/v0/models', 'data'), ('ollama', '/api/tags', 'models'),
-                            ('llamacpp', '/props', 'default_generation_settings')):
+    probes = (('lmstudio', '/api/v0/models', 'data'), ('ollama', '/api/tags', 'models'),
+              ('llamacpp', '/props', 'default_generation_settings'))
+
+    def _check(item):
+        kind, path, key = item
         try:
-            if key in _get(root + path, 1.5):
-                return kind
+            return kind, key in _get(root + path, 1.5)
         except Exception:
-            continue
+            return kind, False
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(probes)) as pool:
+        hits = dict(pool.map(_check, probes))
+    for kind, _, _ in probes:
+        if hits.get(kind):
+            return kind
     return 'openai'
+
+
+def _probe_known():
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(KNOWN)) as pool:
+        results = list(pool.map(lambda item: (item[1], _answers(item[1])), KNOWN))
+    return dict(results)
 
 
 def connect(refresh=False, url=''):
     """The server in use. With no address in the environment the usual local ports are tried."""
     if _state['url'] and not refresh and not url:
         return _state
-    if url:
-        _state['pinned'] = url                           # an address given by the caller stays until another is given
-    forced = _state['pinned'] or os.environ.get('TANDEM_BASE_URL') or os.environ.get('LM_STUDIO_BASE_URL')
-    name = 'configured server'
-    if forced:
-        found = forced.rstrip('/')
-    else:
-        found = None
-        for name, candidate in KNOWN:
-            if _answers(candidate):
-                found = candidate
-                break
-        if not found:
-            raise ExecutorError('no local model server answers (tried ' + ', '.join(n for n, _ in KNOWN) +
-                                '). Start one or set TANDEM_BASE_URL.')
-    kind = _kind(found)
-    label = {'lmstudio': 'LM Studio', 'ollama': 'Ollama', 'llamacpp': 'llama.cpp'}.get(kind, name)
-    _state.update(url=found, kind=kind, name=label, models=None, models_at=0.0,
-                  client=OpenAI(base_url=found, api_key=_key(), timeout=float(os.environ.get('TANDEM_TIMEOUT', 900)), max_retries=0))
-    return _state
+    with _connect_lock:
+        if _state['url'] and not refresh and not url:
+            return _state
+        if url:
+            _state['pinned'] = url                           # an address given by the caller stays until another is given
+        forced = _state['pinned'] or os.environ.get('TANDEM_BASE_URL') or os.environ.get('LM_STUDIO_BASE_URL')
+        name = 'configured server'
+        if forced:
+            found = forced.rstrip('/')
+        else:
+            up = _probe_known()
+            found = None
+            for candidate_name, candidate in KNOWN:
+                if up.get(candidate):
+                    found = candidate
+                    name = candidate_name
+                    break
+            if not found:
+                raise ExecutorError('no local model server answers (tried ' + ', '.join(n for n, _ in KNOWN) +
+                                    '). Start one or set TANDEM_BASE_URL.')
+        kind = _kind(found)
+        label = {'lmstudio': 'LM Studio', 'ollama': 'Ollama', 'llamacpp': 'llama.cpp'}.get(kind, name)
+        _state.update(url=found, kind=kind, name=label, models=None, models_at=0.0,
+                      client=OpenAI(base_url=found, api_key=_key(), timeout=float(os.environ.get('TANDEM_TIMEOUT', 900)), max_retries=0))
+        return _state
 
 
-def servers():
+def servers(ttl=10.0):
     """Every known local server that answers now, for the status report."""
-    return [(name, url) for name, url in KNOWN if _answers(url)]
+    now = time.time()
+    with _servers_lock:
+        if _servers_cache['rows'] is not None and now - _servers_cache['at'] < ttl and _servers_cache['at'] > 0:
+            return list(_servers_cache['rows'])
+    up = _probe_known()
+    rows = [(name, url) for name, url in KNOWN if up.get(url)]
+    with _servers_lock:
+        _servers_cache['at'] = time.time()
+        _servers_cache['rows'] = rows
+    return list(rows)
 
 
 def models(refresh=False):

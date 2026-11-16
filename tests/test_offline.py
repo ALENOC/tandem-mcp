@@ -1290,6 +1290,86 @@ finally:
         os.environ.pop('TANDEM_SNAPSHOT_TOTAL_CAP', None)
     else:
         os.environ['TANDEM_SNAPSHOT_TOTAL_CAP'] = old_total_cap
+
+# --- P1 #9: parallel server discovery and cached servers() ---
+old_answers = engine._answers
+old_kind = engine._kind
+old_state = dict(engine._state)
+old_srv_cache = dict(engine._servers_cache)
+old_tb = os.environ.pop('TANDEM_BASE_URL', None)
+old_lm = os.environ.pop('LM_STUDIO_BASE_URL', None)
+try:
+    engine._state.update(url=None, kind=None, name=None, client=None, models=None, models_at=0.0, pinned='')
+    engine._kind = lambda _u: 'openai'
+
+    def _prio_answers(u):
+        if '11434' in u:
+            time.sleep(0.2)
+            return True
+        if '8081' in u:
+            return True
+        return False
+
+    engine._answers = _prio_answers
+    st_prio = engine.connect(refresh=True)
+    ok(st_prio['url'] == 'http://127.0.0.1:11434/v1' and st_prio['name'] == 'Ollama',
+       'parallel connect preserves KNOWN priority order and matching name')
+
+    engine._state.update(url=None, pinned='')
+
+    def _slow_all(_u):
+        time.sleep(0.2)
+        return True
+
+    engine._answers = _slow_all
+    t_par = time.time()
+    engine.connect(refresh=True)
+    ok(time.time() - t_par < 1.0, 'parallel connect finishes all 8 slow probes in < 1.0 s')
+
+    engine._state.update(url=None, pinned='')
+    engine._answers = lambda _u: False
+    t_none = time.time()
+    got_no_srv = False
+    try:
+        engine.connect(refresh=True)
+    except engine.ExecutorError:
+        got_no_srv = True
+    ok(got_no_srv and time.time() - t_none < 1.0, 'parallel connect fails fast when no server answers')
+
+    probe_count = 0
+
+    def _count_answers(u):
+        global probe_count
+        probe_count += 1
+        return '1234' in u
+
+    engine._answers = _count_answers
+    engine._servers_cache.update(at=0.0, rows=[])
+    r1 = engine.servers()
+    r2 = engine.servers()
+    ok(probe_count == len(engine.KNOWN) and r1 == r2 and len(r1) == 1,
+       'servers() caches results within TTL')
+
+    probe_count = 0
+    os.environ['TANDEM_BASE_URL'] = 'http://127.0.0.1:9999/v1'
+    engine._state.update(url=None, pinned='')
+    engine.connect(refresh=True)
+    ok(probe_count == 0, 'forced TANDEM_BASE_URL skips _answers discovery')
+    os.environ.pop('TANDEM_BASE_URL', None)
+
+    engine._state.update(url=None, pinned='')
+    ok(not engine._trusted('http://127.0.0.1:8081/v1/models'), '_trusted remains False for unconfigured port')
+finally:
+    engine._answers = old_answers
+    engine._kind = old_kind
+    engine._state.clear()
+    engine._state.update(old_state)
+    engine._servers_cache.clear()
+    engine._servers_cache.update(old_srv_cache)
+    if old_tb is not None:
+        os.environ['TANDEM_BASE_URL'] = old_tb
+    if old_lm is not None:
+        os.environ['LM_STUDIO_BASE_URL'] = old_lm
 ok(agent.request_stop('finished-job-id') is False and 'finished-job-id' not in agent.STOP,
    'request_stop on dead job returns False without poisoning STOP')
 stop_job, stop_folder = store.new_job('delegate')
