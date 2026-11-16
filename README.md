@@ -1,5 +1,9 @@
 # Tandem MCP
 
+<p align="center">
+  <img src="assets/logo.svg" alt="Tandem MCP logo: a tandem bicycle, two riders on one frame" width="360">
+</p>
+
 **Your cloud AI plans. Your local AI executes. Tandem verifies.**
 
 [![GitHub Release](https://img.shields.io/github/v/release/ALENOC/tandem-mcp)](https://github.com/ALENOC/tandem-mcp/releases)
