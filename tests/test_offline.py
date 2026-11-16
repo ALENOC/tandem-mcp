@@ -1779,6 +1779,23 @@ try:
        'multi-edit applies all 3 edits atomically and rollback restores original')
 finally:
     shutil.rmtree(me_root, ignore_errors=True)
+
+# --- P3 #7: NUMBER regex (negatives, hex, scientific, dates) and multilingual claim support ---
+ok('-42' in digest.loose_numbers('the value is -42', 'the value is 42'),
+   'loose_numbers flags -42 when source only has 42')
+date_nums = digest.NUMBER.findall('date 2026-04-15 and hex 0x2a and sci 1.5e-3 and pct 50%')
+ok('-04' not in date_nums and '-15' not in date_nums and '0x2a' in date_nums
+   and '1.5e-3' in date_nums and '50%' in date_nums,
+   'NUMBER handles hex, scientific, percent without splitting ISO dates into negative numbers')
+ok(digest.loose_numbers('flag is 0x2A', 'flag is 0x2a') == [],
+   'loose_numbers matches hex case-insensitively')
+
+it_lines = ['il servizio è attivo sulla porta 8080']
+it_ev = [{'line': 1, 'quote': 'il servizio è attivo sulla porta 8080'}]
+it_sup = digest.check_claim_support('il servizio non è attivo', it_ev, it_lines)
+ok(it_sup['claim_supported'] == 'contested'
+   and any('polarity mismatch' in w for w in it_sup['warnings']),
+   'check_claim_support detects Italian negation polarity mismatch')
 ok(agent.request_stop('finished-job-id') is False and 'finished-job-id' not in agent.STOP,
    'request_stop on dead job returns False without poisoning STOP')
 stop_job, stop_folder = store.new_job('delegate')

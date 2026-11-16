@@ -515,7 +515,7 @@ class Task:
                         pairs.append((str(item['old']), str(item['new'])))
                 else:
                     if 'old' not in args or 'new' not in args:
-                        return 'ERROR: pass old and new, or a non-empty edits list.'
+                        return 'ERROR: replace_in_file needs the argument old and new (or edits).'
                     pairs = [(str(args['old']), str(args['new']))]
                 work = text
                 for idx, (old_s, new_s) in enumerate(pairs, 1):

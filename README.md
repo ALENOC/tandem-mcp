@@ -182,7 +182,7 @@ Compared in November 2026 from each project's README (not from running them). `"
 | `digest_command` | Run an orchestrator command and get exit code, verdict, and capped (head+tail) log path |
 | `digest_many` | Ask the same question across many files (`glob`), one line per file |
 | `extract_from_file` | Structured JSON extraction with ungrounded values flagged |
-| `delegate` | Bounded coding task with `verify_commands`, `write_globs`, `immutable`, `allow_run` |
+| `delegate` | Bounded coding task with `verify_commands`, `write_globs`, `immutable`, `allow_run` (`replace_in_file` supports atomic multi-edit `edits`) |
 | `delegate_many` | Dependency-ordered batch (`after`) with parallel file ownership and rollback |
 | `job_status`, `job_stop`, `job_evidence`, `job_diff`, `job_rollback` | Inspect status, request clean stop, view lines cited for each constraint, read unified diff, and undo changes per job or batch |
 | `job_continue` | Resume a stopped job with a hint in the same conversation |
