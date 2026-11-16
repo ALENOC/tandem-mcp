@@ -5,6 +5,7 @@ every part of a pipeline or a chain must match the allow list, none may match th
 command substitution is refused and a redirection must point at a writable file. The second,
 where bubblewrap is installed, is an operating system sandbox: the whole machine is read only,
 only the workspace is writable, credentials folders are hidden and there is no network."""
+import collections
 import hashlib
 import os
 import re
@@ -505,6 +506,8 @@ def run(command, cwd, timeout=180, jail=False, allow_net=False, strip_env=None, 
         raise SandboxError('TANDEM_SANDBOX=require but bubblewrap is not usable on this machine')
 
     cap = _run_output_cap() if max_output_bytes is None else max(4096, int(max_output_bytes))
+    head_cap = max(1024, cap // 4)
+    tail_cap = max(0, cap - head_cap)
     popen_kw = dict(stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, env=env)
     if os.name == 'posix':
         popen_kw['start_new_session'] = True
@@ -513,22 +516,36 @@ def run(command, cwd, timeout=180, jail=False, allow_net=False, strip_env=None, 
     else:
         proc = subprocess.Popen(command, shell=True, cwd=str(cwd), **popen_kw)
 
-    chunks = []
-    kept = 0
-    total = 0
+    head, tail = [], collections.deque()
+    head_kept = tail_kept = total = 0
 
     def _drain():
-        nonlocal kept, total
+        nonlocal head_kept, tail_kept, total
         assert proc.stdout is not None
         while True:
             chunk = proc.stdout.read(65536)
             if not chunk:
                 break
             total += len(chunk)
-            if kept < cap:
-                take = chunk[:cap - kept]
-                chunks.append(take)
-                kept += len(take)
+            if head_kept < head_cap:
+                take = chunk[:head_cap - head_kept]
+                head.append(take)
+                head_kept += len(take)
+                chunk = chunk[len(take):]
+                if not chunk:
+                    continue
+            if tail_cap > 0:
+                tail.append(chunk)
+                tail_kept += len(chunk)
+                while tail_kept > tail_cap:
+                    old = tail[0]
+                    excess = tail_kept - tail_cap
+                    if excess >= len(old):
+                        tail.popleft()
+                        tail_kept -= len(old)
+                    else:
+                        tail[0] = old[excess:]
+                        tail_kept -= excess
 
     reader = threading.Thread(target=_drain, daemon=True)
     reader.start()
@@ -549,18 +566,20 @@ def run(command, cwd, timeout=180, jail=False, allow_net=False, strip_env=None, 
         except subprocess.TimeoutExpired:
             pass
     reader.join(timeout=2)
-    if proc.stdout is not None:
+    if not reader.is_alive() and proc.stdout is not None:
         try:
             proc.stdout.close()
         except OSError:
             pass
 
-    text = b''.join(chunks).decode('utf-8', errors='replace')
+    kept = head_kept + tail_kept
+    text = b''.join(head).decode('utf-8', errors='replace')
     if total > kept:
-        text += f'\n[output truncated: {total} bytes total, kept first {kept} bytes]'
+        text += f'\n[output truncated: {total} bytes total, kept first {head_kept} and last {tail_kept} bytes]\n'
+    text += b''.join(tail).decode('utf-8', errors='replace')
     if timed_out:
         return 124, text + f'\n[timeout after {timeout} s]'
-    return proc.returncode, text
+    return (proc.returncode if proc.returncode is not None else 124), text
 
 
 # reading ---------------------------------------------------------------------------------------
@@ -625,8 +644,11 @@ def stamp(root, limit=None):
     so unchanged (size, mtime_ns, ctime_ns, ino, mode) safely reuses the cached SHA-256.
     """
     root_key = os.fspath(root)
-    with _STAMP_LOCK:
-        prev_cache = _STAMP_CACHE.get(root_key, {})
+    if os.name == 'posix':
+        with _STAMP_LOCK:
+            prev_cache = _STAMP_CACHE.get(root_key, {})
+    else:
+        prev_cache = {}
     new_cache = {}
     out = {}
     stack = [(root_key, '')]
@@ -665,7 +687,10 @@ def stamp(root, limit=None):
                         return out
             except OSError:
                 continue
-    if limit is None:
+    if limit is None and os.name == 'posix':
         with _STAMP_LOCK:
+            _STAMP_CACHE.pop(root_key, None)
             _STAMP_CACHE[root_key] = new_cache
+            while len(_STAMP_CACHE) > 8:
+                _STAMP_CACHE.pop(next(iter(_STAMP_CACHE)))
     return out

@@ -927,6 +927,15 @@ ok(_server.strict() is False and contract_error(globs=(), verify=()) == '', 'TAN
 code_cap, out_cap = sandbox.run('python3 -c "print(\'A\' * 20000)"', root, max_output_bytes=4096)
 ok(code_cap == 0 and '[output truncated:' in out_cap and len(out_cap) < 5000, 'sandbox.run caps output in RAM')
 
+code_ht, out_ht = sandbox.run('python3 -c "print(\'H\'*5000); print(\'M\'*5000); print(\'TAILMARKER\')"',
+                              root, max_output_bytes=4096)
+ok(code_ht == 0 and 'TAILMARKER' in out_ht and '[output truncated:' in out_ht and 'H' in out_ht,
+   'sandbox.run keeps head+tail when truncating output')
+
+t_hang = time.time()
+code_hang, _ = sandbox.run('python3 -c "import os,time; os.setsid(); time.sleep(5)"', root, timeout=1)
+ok(code_hang == 124 and (time.time() - t_hang) < 8.0, 'sandbox.run does not hang on detached child keeping stdout open')
+
 ok({'.claude', '.codex', '.gemini'}.issubset(set(sandbox.SECRETS)), 'SECRETS hides client config directories')
 redacted = sandbox.redact_secrets(
     'OPENAI_API_KEY=sk-proj-1234567890abcdefghijklmnop\n'
@@ -945,6 +954,16 @@ spoof_file.write_text('bbbb')
 os.utime(spoof_file, ns=(st_orig.st_atime_ns, st_orig.st_mtime_ns))
 s2 = sandbox.stamp(root)
 ok(s1['spoof.txt'][1] != s2['spoof.txt'][1], 'stamp ctime_ns fast-path still catches mtime+size spoofing')
+
+nt_root = Path(tempfile.mkdtemp())
+(nt_root / 'a.txt').write_text('hello')
+old_os_name = sandbox.os.name
+try:
+    sandbox.os.name = 'nt'
+    sandbox.stamp(nt_root)
+    ok(os.fspath(nt_root) not in sandbox._STAMP_CACHE, 'stamp does not populate cache on non-POSIX')
+finally:
+    sandbox.os.name = old_os_name
 
 stale_job, _ = store.new_job('delegate')
 stale_data = store.read_job(stale_job)
