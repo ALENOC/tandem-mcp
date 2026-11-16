@@ -5,6 +5,7 @@ import sys
 import tempfile
 import threading
 import time
+import types
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -1010,6 +1011,79 @@ finally:
     store.release_job_lock(lk_batch)
 
 ok('no job' in _server.job_stop('nonexistent-job-id'), 'job_stop handles unknown job id')
+
+# --- P0 #6: transient error classification and retry in engine.chat ---
+class _DummyHTTP(Exception):
+    def __init__(self, status_code, msg='err'):
+        super().__init__(msg)
+        self.status_code = status_code
+
+
+ok(all(engine._transient(_DummyHTTP(c)) for c in (502, 429, 503))
+   and not any(engine._transient(_DummyHTTP(c)) for c in (400, 401, 404))
+   and engine._transient(ConnectionError('reset')),
+   '_transient classifies HTTP status codes and connection errors')
+try:
+    raise engine.ExecutorError('wrapped') from _DummyHTTP(502)
+except engine.ExecutorError as wrapped_err:
+    ok(engine.transient_error(wrapped_err), 'transient_error inspects __cause__')
+
+old_create = engine._create
+old_connect = engine.connect
+old_sleep = time.sleep
+old_retries = os.environ.get('TANDEM_LLM_RETRIES')
+sleeps = []
+call_n = 0
+fake_resp = types.SimpleNamespace(
+    choices=[types.SimpleNamespace(
+        message=types.SimpleNamespace(content='{"ok": true}', tool_calls=None),
+        finish_reason='stop',
+    )],
+    usage=types.SimpleNamespace(prompt_tokens=10, completion_tokens=5),
+)
+
+
+def _flaky_create(*_a, **_kw):
+    global call_n
+    call_n += 1
+    if call_n <= 2:
+        raise _DummyHTTP(502, 'bad gateway')
+    return fake_resp
+
+
+def _bad_create(*_a, **_kw):
+    global call_n
+    call_n += 1
+    raise _DummyHTTP(400, 'bad request')
+
+
+try:
+    engine.connect = lambda refresh=False: {'name': 'fake', 'url': 'http://127.0.0.1:1/v1', 'kind': 'lmstudio', 'client': None}
+    time.sleep = lambda s: sleeps.append(s)
+    os.environ['TANDEM_LLM_RETRIES'] = '2'
+    engine._create = _flaky_create
+    reply, _ = engine.chat([{'role': 'user', 'content': 'hi'}], tool='ask', model='test-m')
+    retry_rows = [r for r in store.ledger(1) if r.get('kind') == 'retry' and r.get('model') == 'test-m']
+    ok(reply.content == '{"ok": true}' and call_n == 3 and len(sleeps) == 2 and sleeps[1] > sleeps[0]
+       and len(retry_rows) == 2,
+       'engine.chat retries transient errors with increasing backoff and logs retry rows')
+
+    call_n = 0
+    engine._create = _bad_create
+    got_400 = False
+    try:
+        engine.chat([{'role': 'user', 'content': 'hi'}], tool='ask', model='test-m')
+    except engine.ExecutorError as exc_400:
+        got_400 = call_n == 1 and getattr(exc_400.__cause__, 'status_code', None) == 400
+    ok(got_400, 'engine.chat fails immediately on 400 and preserves __cause__')
+finally:
+    engine._create = old_create
+    engine.connect = old_connect
+    time.sleep = old_sleep
+    if old_retries is None:
+        os.environ.pop('TANDEM_LLM_RETRIES', None)
+    else:
+        os.environ['TANDEM_LLM_RETRIES'] = old_retries
 ok(agent.request_stop('finished-job-id') is False and 'finished-job-id' not in agent.STOP,
    'request_stop on dead job returns False without poisoning STOP')
 stop_job, stop_folder = store.new_job('delegate')

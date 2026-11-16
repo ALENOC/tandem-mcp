@@ -75,6 +75,8 @@ Manual stdio configuration (any MCP client):
 | `TANDEM_CONTEXT` | Context length fallback when server omits it | `8192` (Ollama: `4096`) |
 | `TANDEM_API_KEY` | API key if required by server | `local` |
 | `TANDEM_TIMEOUT` | Per-completion timeout (seconds) | `900` |
+| `TANDEM_LLM_RETRIES` | Extra retry attempts on transient model errors (backoff 1/2/4 s, cap 30 s, jitter) | `3` |
+| `TANDEM_JOB_AUTORESUME` | Bounded 15 s auto-resume waits per delegated job on transient errors | `2` |
 | `TANDEM_SANDBOX` | `auto`, `require`, or `off` | `auto` |
 | `TANDEM_STRICT` | `0` relaxes the strict delegation contract | `1` |
 | `TANDEM_RUN_OUTPUT_CAP` | Bytes of command output kept in RAM (head+tail) | `2097152` |
@@ -231,6 +233,7 @@ Read this before pointing Tandem at a sensitive repository:
 - **Workspace**: `/`, the home folder and the folders above it, system folders (`/etc`, `/usr`, `/tmp` itself, ...) and credential folders (`~/.ssh`, ...) are refused as a workspace.
 - **API key**: `TANDEM_API_KEY` is sent only to the configured or selected server, never to the other local ports tried during discovery. The data folder is private to the user (`0700`).
 - **Safe rollback**: `journal_bin.json` + `snapshot.json` back up original bytes (up to 2 MB/file, 50 MB total). Pre-existing files larger than the cap are tracked as `None` so `job_rollback` preserves them instead of deleting them; `post_state.json` prevents overwriting later user edits.
+- **Transient outage resilience**: `engine.chat` retries transient server errors (`408`/`409`/`429`/`5xx`/connection errors) with exponential backoff, and delegated jobs survive short local server outages via bounded auto-resume; longer outages finish as `error` and can be resumed with `job_continue`.
 - **Hostile text**: file contents and command output are marked as data in prompts, and receipts/diffs should always be reviewed before accepting. See [SECURITY.md](SECURITY.md) to report vulnerabilities.
 
 ---

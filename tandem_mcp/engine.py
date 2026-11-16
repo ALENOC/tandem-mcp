@@ -7,6 +7,7 @@ probe measures the three once per model and the rest of the server adapts, so th
 work with a large tool calling model and with a small one that only writes text."""
 import json
 import os
+import random
 import re
 import time
 import urllib.error
@@ -210,6 +211,21 @@ def _create(model, messages, max_tokens, temperature, tools=None, schema=None, t
     return connect()['client'].chat.completions.create(**kwargs)
 
 
+_TRANSIENT_CODES = {408, 409, 429, 500, 502, 503, 504}
+
+
+def _transient(exc):
+    code = getattr(exc, 'status_code', None)
+    if code is not None:
+        return code in _TRANSIENT_CODES or code >= 500
+    return isinstance(exc, (ConnectionError, TimeoutError, OSError))
+
+
+def transient_error(exc):
+    """True when a wrapped ExecutorError was caused by a transient failure."""
+    return _transient(exc.__cause__ or exc)
+
+
 def chat(messages, tool='chat', model='', max_tokens=2048, temperature=0.1, tools=None, schema=None, timeout=None):
     """One completion. Returns (Reply, usage). Reasoning is never returned as the answer: when
     it eats the whole budget the call is repeated once with a larger one."""
@@ -217,17 +233,27 @@ def chat(messages, tool='chat', model='', max_tokens=2048, temperature=0.1, tool
     budget = max_tokens
     total = {'prompt': 0, 'completion': 0}
     deadline = (time.time() + float(timeout)) if timeout is not None else None
+    retries = max(0, int(os.environ.get('TANDEM_LLM_RETRIES', 3)))
     for attempt in range(2):
         start = time.time()
-        rem = None
-        if deadline is not None:
-            rem = deadline - start
-            if rem <= 0:
+        delay = 1.0
+        response = None
+        for i in range(retries + 1):
+            rem = (deadline - time.time()) if deadline is not None else None
+            if rem is not None and rem <= 0:
                 raise ExecutorError('time limit reached before calling the local model')
-        try:
-            response = _create(model, messages, budget, temperature, tools, schema, timeout=rem)
-        except Exception as exc:
-            raise ExecutorError(f'call to the local model failed ({connect()["name"]}, {model}): {exc}') from exc
+            try:
+                response = _create(model, messages, budget, temperature, tools, schema, timeout=rem)
+                break
+            except Exception as exc:
+                if not _transient(exc) or i == retries:
+                    raise ExecutorError(f'call to the local model failed ({connect()["name"]}, {model}): {exc}') from exc
+                wait = min(delay, 30.0) * (0.8 + 0.4 * random.random())
+                if deadline is not None and time.time() + wait >= deadline:
+                    raise ExecutorError(f'call to the local model failed ({connect()["name"]}, {model}): {exc}') from exc
+                store.log(tool, kind='retry', model=model, attempt=i + 1, error=str(exc)[:160], wait=round(wait, 1))
+                time.sleep(wait)
+                delay *= 2
         if not getattr(response, 'choices', None):
             raise ExecutorError('the model server returned no choice')
         choice = response.choices[0]
