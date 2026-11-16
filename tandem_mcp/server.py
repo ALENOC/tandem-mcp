@@ -80,6 +80,13 @@ def executor_status() -> str:
     except Exception as exc:
         return sandbox.redact_secrets(f'No local model server: {exc}')
     lines = [f'{server["name"]} online at {server["url"]}', f'executor model: {active}  (context {engine.context_tokens(active)})']
+    routing = []
+    if os.environ.get('TANDEM_MODEL_DIGEST', '').strip():
+        routing.append(f'digest={os.environ["TANDEM_MODEL_DIGEST"].strip()}')
+    if os.environ.get('TANDEM_MODEL_DELEGATE', '').strip():
+        routing.append(f'delegate={os.environ["TANDEM_MODEL_DELEGATE"].strip()}')
+    if routing:
+        lines.append('  role routing: ' + ', '.join(routing))
     known = store.model_caps(f'{server["url"]}|{active}')
     lines.append('  ' + (_caps_line(known) if known and known.get('probed') else 'not probed yet: executor_probe measures what it can do'))
     state = {True: 'loaded', False: 'not loaded', None: ''}
@@ -118,6 +125,7 @@ def ask(prompt: str, system_prompt: str = '', json_schema: str = '', samples: in
     samples: 2 to 5 runs the task several times and reports how many runs agree. Agreement
     below 1.0 on a factual or structured task means the executor is unsure: check or do it yourself."""
     try:
+        use_model = model or engine.default_model('digest')
         schema = json.loads(json_schema) if json_schema.strip() else None
         messages = ([{'role': 'system', 'content': system_prompt}] if system_prompt.strip() else []) + \
                    [{'role': 'user', 'content': prompt}]
@@ -125,10 +133,10 @@ def ask(prompt: str, system_prompt: str = '', json_schema: str = '', samples: in
         for k in range(max(1, min(int(samples), 5))):
             temperature = 0.1 if k == 0 else 0.7
             if schema:
-                data, _ = engine.chat_json(messages, schema, tool='ask', model=model, max_tokens=max_tokens, temperature=temperature)
+                data, _ = engine.chat_json(messages, schema, tool='ask', model=use_model, max_tokens=max_tokens, temperature=temperature)
                 answers.append(data)
             else:
-                reply, _ = engine.chat(messages, tool='ask', model=model, max_tokens=max_tokens, temperature=temperature)
+                reply, _ = engine.chat(messages, tool='ask', model=use_model, max_tokens=max_tokens, temperature=temperature)
                 answers.append(reply.content)
         if len(answers) == 1:
             text = answers[0] if isinstance(answers[0], str) else json.dumps(answers[0], indent=1)

@@ -209,7 +209,7 @@ def answer(text, question, max_words=120, grep='', tool='digest', model='', cach
     """Answer a question about a text. Returns a dict with the answer, the verified evidence,
     the number of evidence items that failed the check, the numbers that are not in the source,
     how much was read and the executor token use."""
-    model = model or engine.default_model()
+    model = model or engine.default_model('digest')
     workers = _int_env('TANDEM_DIGEST_WORKERS', 1, minimum=1)
     min_notes = _int_env('TANDEM_DIGEST_MIN_NOTES', 0, minimum=0)
     key = store.cache_key('answer', model, question, max_words, grep, min_notes, text)
@@ -337,7 +337,7 @@ def render(result, source=''):
 
 def extract(text, schema, instructions, grep='', tool='extract', model=''):
     """Structured data from a text, in the given JSON schema."""
-    model = model or engine.default_model()
+    model = model or engine.default_model('digest')
     body = numbered(text)
     if grep:
         body, _ = prefilter(text, grep, context=1)

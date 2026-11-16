@@ -179,8 +179,17 @@ def models(refresh=False):
     return rows
 
 
-def default_model():
-    """TANDEM_MODEL, else the loaded chat model (no load delay), else the first chat model."""
+def default_model(role=''):
+    """Role-specific model (TANDEM_MODEL_DIGEST / TANDEM_MODEL_DELEGATE), else TANDEM_MODEL,
+    else the loaded chat model (no load delay), else the first chat model."""
+    if role == 'digest':
+        role_m = os.environ.get('TANDEM_MODEL_DIGEST', '').strip()
+        if role_m:
+            return role_m
+    elif role == 'delegate':
+        role_m = os.environ.get('TANDEM_MODEL_DELEGATE', '').strip()
+        if role_m:
+            return role_m
     forced = os.environ.get('TANDEM_MODEL')
     if forced:
         return forced

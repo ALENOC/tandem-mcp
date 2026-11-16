@@ -72,6 +72,8 @@ Manual stdio configuration (any MCP client):
 | --- | --- | --- |
 | `TANDEM_BASE_URL` | OpenAI-compatible URL (`LM_STUDIO_BASE_URL` also read) | auto-detected |
 | `TANDEM_MODEL` | Model ID to use | loaded chat model |
+| `TANDEM_MODEL_DIGEST` | Model ID for reading/text tools (`digest_*`, `extract_from_file`, `ask`) | `TANDEM_MODEL` |
+| `TANDEM_MODEL_DELEGATE` | Model ID for coding delegation (`delegate`, `delegate_many`, `job_continue`) | `TANDEM_MODEL` |
 | `TANDEM_CONTEXT` | Context length fallback when server omits it | `8192` (Ollama: `4096`) |
 | `TANDEM_API_KEY` | API key if required by server | `local` |
 | `TANDEM_TIMEOUT` | Per-completion timeout (seconds) | `900` |

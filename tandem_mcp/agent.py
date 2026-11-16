@@ -1131,7 +1131,7 @@ class Task:
         self.ws.protect(self.verify)
         self.take_guard()
         self.take_snapshot()
-        self.used = self.model or engine.default_model()
+        self.used = self.model or engine.default_model('delegate')
         self.native = bool(engine.caps(self.used)['tools'])
         context = engine.context_tokens(self.used)
         self.budget = int(context * 0.6 * 3.2)
@@ -1174,7 +1174,7 @@ class Task:
         if self.native:
             reply, used = engine.chat(messages, tool='delegate', model=model, tools=SPEC, max_tokens=4000, timeout=rem)
         else:
-            schema = CALL if engine.caps(model or engine.default_model())['schema'] else None
+            schema = CALL if engine.caps(model or engine.default_model('delegate'))['schema'] else None
             reply, used = engine.chat(messages, tool='delegate', model=model, schema=schema, max_tokens=4000, timeout=rem)
         self.tokens += used['prompt'] + used['completion']
         if reply.calls:
@@ -1522,7 +1522,7 @@ def resume(job, hint, extra_steps=15):
     task.before = data.get('before', [])
     task.restored, task.touched = data.get('restored', []), set(data.get('touched', []))
     task.created_dirs = list(data.get('created_dirs', []))
-    task.used = data.get('used') or task.model or engine.default_model()
+    task.used = data.get('used') or task.model or engine.default_model('delegate')
     ws.protect(task.verify)
     task.take_guard()
     task.take_snapshot()

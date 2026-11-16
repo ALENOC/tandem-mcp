@@ -1432,7 +1432,7 @@ old_ctx_tokens = engine.context_tokens
 old_def_model = engine.default_model
 captured_reduce = []
 try:
-    engine.default_model = lambda: 'digest-test-m'
+    engine.default_model = lambda _role='': 'digest-test-m'
     engine.context_tokens = lambda _m='': 3000    # chunk_chars -> 3000 * 0.42 * 3 = 3780 chars
 
     # 1. Two notes with same quote and different facts -> both facts appear in reduce prompt
@@ -1524,7 +1524,7 @@ old_dmod = engine.default_model
 old_dw = os.environ.get('TANDEM_DIGEST_WORKERS')
 old_dmn = os.environ.get('TANDEM_DIGEST_MIN_NOTES')
 try:
-    engine.default_model = lambda: 'digest-wave-m'
+    engine.default_model = lambda _role='': 'digest-wave-m'
     engine.context_tokens = lambda _m='': 3000    # chunk_chars -> 3780 chars
     wave_lines = [f'row {i:03d}: value_{i:03d} ' + ('W' * 120) for i in range(1, 200)]
     wave_src = '\n'.join(wave_lines)
@@ -1697,6 +1697,48 @@ finally:
     else:
         os.environ['TANDEM_USE_RG'] = old_use_rg
     shutil.rmtree(rg_root, ignore_errors=True)
+
+# --- P3 #2: role-based model routing ---
+old_tm = os.environ.get('TANDEM_MODEL')
+old_tmd = os.environ.get('TANDEM_MODEL_DIGEST')
+old_tmw = os.environ.get('TANDEM_MODEL_DELEGATE')
+old_r_dj = engine.chat_json
+old_r_ctx = engine.context_tokens
+try:
+    os.environ['TANDEM_MODEL'] = 'base-m'
+    os.environ['TANDEM_MODEL_DIGEST'] = 'fast-m'
+    os.environ['TANDEM_MODEL_DELEGATE'] = 'coder-m'
+    ok(engine.default_model() == 'base-m'
+       and engine.default_model('digest') == 'fast-m'
+       and engine.default_model('delegate') == 'coder-m',
+       'default_model routes by role when role env vars are set')
+
+    os.environ.pop('TANDEM_MODEL_DIGEST', None)
+    os.environ.pop('TANDEM_MODEL_DELEGATE', None)
+    ok(engine.default_model() == 'base-m'
+       and engine.default_model('digest') == 'base-m'
+       and engine.default_model('delegate') == 'base-m',
+       'default_model falls back to TANDEM_MODEL when role env vars are unset')
+
+    os.environ['TANDEM_MODEL_DIGEST'] = 'fast-m'
+    os.environ['TANDEM_MODEL_DELEGATE'] = 'coder-m'
+    seen_models = []
+    engine.context_tokens = lambda _m='': 8192
+    engine.chat_json = lambda _msgs, _sc, **kw: (seen_models.append(kw.get('model')),
+                                                ({'answer': 'ok', 'evidence': [{'line': 1, 'quote': 'alpha'}]},
+                                                 {'prompt': 1, 'completion': 1}))[1]
+    digest.answer('alpha\n', 'q', model='explicit-m', cache=False)
+    ok(seen_models == ['explicit-m'], 'explicit model parameter overrides TANDEM_MODEL_DIGEST')
+    r_task = agent.Task('rjob', Path(tempfile.mkdtemp()), 'g', sandbox.Workspace(str(root), ['math_utils.py']), [], model='explicit-m')
+    ok((r_task.model or engine.default_model('delegate')) == 'explicit-m', 'explicit model overrides TANDEM_MODEL_DELEGATE')
+finally:
+    engine.chat_json = old_r_dj
+    engine.context_tokens = old_r_ctx
+    for k, v in (('TANDEM_MODEL', old_tm), ('TANDEM_MODEL_DIGEST', old_tmd), ('TANDEM_MODEL_DELEGATE', old_tmw)):
+        if v is None:
+            os.environ.pop(k, None)
+        else:
+            os.environ[k] = v
 ok(agent.request_stop('finished-job-id') is False and 'finished-job-id' not in agent.STOP,
    'request_stop on dead job returns False without poisoning STOP')
 stop_job, stop_folder = store.new_job('delegate')
