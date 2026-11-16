@@ -674,7 +674,11 @@ try:
             'delegate_many', 'job_status', 'job_stop', 'job_continue', 'job_diff', 'job_evidence', 'job_rollback', 'job_feedback', 'lesson_add', 'lessons',
             'ledger_report'}
     ok(set(tools) == want, f'MCP tools: {sorted(set(tools) ^ want)}')
-    ok(all(t.get('description') for t in tools.values()) and 'verify_commands' in tools['delegate']['inputSchema']['properties'], 'tool schemas')
+    dm_schema = tools['delegate_many']['inputSchema']
+    dm_raw = json.dumps(dm_schema)
+    ok(all(t.get('description') for t in tools.values())
+       and 'verify_commands' in tools['delegate']['inputSchema']['properties']
+       and 'verify_commands' in dm_raw and 'write_globs' in dm_raw, 'tool schemas')
     called = rpc('tools/call', {'name': 'lessons', 'arguments': {'project_path': '*'}}, 3)
     ok('lesson' in called['result']['content'][0]['text'].lower() or 'Comments' in called['result']['content'][0]['text'], 'MCP tool call')
 finally:

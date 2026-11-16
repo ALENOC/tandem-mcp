@@ -213,6 +213,8 @@ def split_command(command):
             while i < n and command[i] != '\n':
                 i += 1
             continue
+        elif command.startswith('<<', i):
+            raise SandboxError('heredoc and herestring are not allowed')
         elif c == '>':
             j = i + 1
             if j < n and command[j] in '>|':
@@ -525,11 +527,20 @@ def _run_output_cap():
         return 2 * 1024 * 1024
 
 
-def run(command, cwd, timeout=180, jail=False, allow_net=False, strip_env=None, max_output_bytes=None,
+def _run_timeout(default=180):
+    try:
+        return max(1, int(os.environ.get('TANDEM_RUN_TIMEOUT', default)))
+    except ValueError:
+        return default
+
+
+def run(command, cwd, timeout=None, jail=False, allow_net=False, strip_env=None, max_output_bytes=None,
         guard_symlinks=True):
     """Run a shell command, return (exit code, combined output). jail=True runs it inside the
     operating system sandbox when there is one. Output kept in RAM is bounded to avoid OOM."""
     # no bytecode files: a check run just before an edit must not leave a stale .pyc behind
+    if timeout is None:
+        timeout = _run_timeout()
     if strip_env is None:
         strip_env = bool(jail)
     env = clean_env(strip_secrets=strip_env)

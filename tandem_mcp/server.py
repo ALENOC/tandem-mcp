@@ -21,6 +21,7 @@ import re
 import shlex
 import signal
 from pathlib import Path
+from typing import TypedDict
 
 from mcp.server.mcpserver import MCPServer
 
@@ -542,8 +543,21 @@ def delegate(goal: str, workspace: str, verify_commands: list[str] = [], write_g
         return _fail(exc)
 
 
+class BatchTaskSpec(TypedDict, total=False):
+    name: str
+    goal: str
+    write_globs: list[str]
+    verify_commands: list[str]
+    after: list[str]
+    context: str
+    immutable: list[str]
+    checks_network: bool
+    unjailed_checks: bool
+    constraints: list[str]
+
+
 @mcp.tool()
-def delegate_many(tasks: list[dict], workspace: str, allow_run: list[str] = [], immutable: list[str] = [],
+def delegate_many(tasks: list[BatchTaskSpec], workspace: str, allow_run: list[str] = [], immutable: list[str] = [],
                   context: str = '', workers: int = 1, max_steps: int = 30, max_repairs: int = 2,
                   wait_seconds: int = 240, model: str = '', checks_network: bool = False,
                   unjailed_checks: bool = False) -> str:

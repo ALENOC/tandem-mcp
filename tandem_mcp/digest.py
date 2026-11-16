@@ -183,9 +183,15 @@ def check_claim_support(answer_text, evidence, lines, loose=()):
 
 
 def _forms(raw):
-    """The ways one figure may be written: decimal comma, thousands separators, trailing zeros."""
+    """The ways one figure may be written: decimal comma, thousands separators, trailing zeros, percent."""
+    if raw.endswith('%'):
+        inner = raw[:-1]
+        forms = {raw, raw.lower()}
+        for f in _forms(inner):
+            forms.add(f + '%')
+        return forms
     forms = {raw, raw.lower(), raw.replace(',', '.')}
-    if re.fullmatch(r'\d{1,3}(?:[.,]\d{3})+', raw):
+    if re.fullmatch(r'-?\d{1,3}(?:[.,]\d{3})+', raw):
         forms.add(re.sub(r'[.,]', '', raw))
     for form in list(forms):
         if '.' in form:

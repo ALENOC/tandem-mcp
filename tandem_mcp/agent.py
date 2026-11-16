@@ -565,7 +565,8 @@ class Task:
                 before = sandbox.stamp(self.ws.root)
                 hidden = sandbox.skip_dirs(self.ws.root)
                 rem = self._remaining_seconds()
-                run_timeout = 180 if rem is None else max(1.0, min(180.0, rem))
+                base_to = float(sandbox._run_timeout())
+                run_timeout = base_to if rem is None else max(1.0, min(base_to, rem))
                 code, out = sandbox.run(command, self.ws.root, timeout=run_timeout, jail=True)
                 after = sandbox.stamp(self.ws.root)
                 removed = self._new_hidden_dirs(hidden)
@@ -1193,11 +1194,11 @@ class Task:
     def _turn(self, messages):
         """One reply of the executor, as a list of (call id or None, tool name, arguments or error text)."""
         rem = self._remaining_seconds()
-        model = self.used or self.model                  # the model the job started with, whatever is loaded now
+        model = self.used or self.model or engine.default_model('delegate')
         if self.native:
             reply, used = engine.chat(messages, tool='delegate', model=model, tools=SPEC, max_tokens=4000, timeout=rem)
         else:
-            schema = CALL if engine.caps(model or engine.default_model('delegate'))['schema'] else None
+            schema = CALL if engine.caps(model)['schema'] else None
             reply, used = engine.chat(messages, tool='delegate', model=model, schema=schema, max_tokens=4000, timeout=rem)
         self.tokens += used['prompt'] + used['completion']
         if reply.calls:

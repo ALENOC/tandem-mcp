@@ -1796,6 +1796,24 @@ it_sup = digest.check_claim_support('il servizio non è attivo', it_ev, it_lines
 ok(it_sup['claim_supported'] == 'contested'
    and any('polarity mismatch' in w for w in it_sup['warnings']),
    'check_claim_support detects Italian negation polarity mismatch')
+ok(digest.loose_numbers('values are -1000 and 50%', 'values are -1,000 and 50.0%') == [],
+   '_forms normalizes negative thousands separators and percentages')
+
+# --- Adversarial split_command / check_command battery ---
+adv_ws = sandbox.Workspace(str(root), ['math_utils.py'], allow_run=['^echo\\b', '^cat\\b'])
+for bad_cmd in (
+    'echo $(id)',
+    'echo `id`',
+    'echo "$((1+1)) $(id)"',
+    'echo ok\nrm -rf /',
+    'cat <<EOF\nhi\nEOF',
+    'cat <<< secret',
+    'echo x > outside.txt',
+):
+    ok(refused(adv_ws.check_command, bad_cmd), f'adversarial command refused: {bad_cmd!r}')
+adv_ws.check_command('echo "line1\nline2"')
+adv_ws.check_command('echo ok > math_utils.py')
+ok(True, 'quoted newline and writable redirection are accepted')
 ok(agent.request_stop('finished-job-id') is False and 'finished-job-id' not in agent.STOP,
    'request_stop on dead job returns False without poisoning STOP')
 stop_job, stop_folder = store.new_job('delegate')

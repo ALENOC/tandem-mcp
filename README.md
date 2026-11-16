@@ -82,6 +82,7 @@ Manual stdio configuration (any MCP client):
 | `TANDEM_SANDBOX` | `auto`, `require`, or `off` | `auto` |
 | `TANDEM_STRICT` | `0` relaxes the strict delegation contract | `1` |
 | `TANDEM_RUN_OUTPUT_CAP` | Bytes of command output kept in RAM (head+tail) | `2097152` |
+| `TANDEM_RUN_TIMEOUT` | Default timeout for executor `run` commands (seconds) | `180` |
 | `TANDEM_REDACT` | `0` disables secret redaction on tool outputs | `1` |
 | `TANDEM_SANDBOX_NET` | `1` allows network inside sandbox | off |
 | `TANDEM_ALLOW_OUTBOUND_SYMLINKS` | `1` allows unjailed `run` in workspaces with outbound symlinks | off |
