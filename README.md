@@ -66,41 +66,6 @@ Fresh two-way comparison (**Gemini Direct** vs **Gemini + Tandem MCP**) built fr
 
 *\*`reading_git_log` timed out on `agy`'s 180 s per-MCP-tool-call deadline during un-grepped `digest_file`. Full report: [Hydrogen Suite Report](benchmarks/hydrogen_3_6_1/RESULTS.md) · [Run JSON](benchmarks/hydrogen_3_6_1/runs/20261117-190714/results.json).*
 
-### Measured Comparative Evaluation (Gemini 4 Hydrogen + Qwen 27B)
-
-Three-way comparison on frozen `v3.6.1` (`010cbb6`) fixtures: **Gemini Direct** vs **Gemini + Direct LM Studio** vs **Gemini + Tandem MCP** (`gemini-4-hydrogen-medium`, `qwen3.8-27b@iq3_s` on LM Studio, real cloud tokens measured via `agy --output-format json`). Negative savings mean Tandem used more total cloud tokens than Gemini Direct; `E2E Success` requires both completion before timeout and passing independent checks.
-
-| Workload | E2E Success | Cloud Tokens Saved | Median Time |
-| --- | ---: | ---: | ---: |
-| README QA (`n=3`) | 100% | -42.7% | 85.3 s |
-| Grep QA (`agent.py`, `n=3`) | 100% | -31.0% | 69.8 s |
-| Extraction (`pyproject.toml`, `n=3`) | 100% | -23.4% | 38.5 s |
-| Micro bugfix (6 lines, `n=3`) | 100% | -12.5% | 60.5 s |
-| Multi-file bugfix (4 files, `n=3`) | 100% | **+10.3%** | 85.1 s |
-| Orbital animation (`n=1`) | 0% (timeout) | N/A | 2,400.1 s |
-| 3D neon portal (`n=1`) | 0% (timeout) | N/A | 4,200.1 s |
-
-*(Note: vs. Direct LM Studio, Tandem used 14x–40x fewer local tokens on `grep`/package surveys. On `gen_orbital`, Tandem produced a valid artifact before the `2,400 s` timeout, but timed out before completion.)*
-
-### Context Reduction (Historical v3.6.1 Suite, Estimated)
-
-Derived from source bytes vs. returned digest/receipt bytes (`1 cloud tok = 3.6 chars`, **Estimated** context compression — not net cloud token savings):
-
-| Workload | Context Reduction (Est.) | Local Tokens | Time / Verified |
-| --- | --- | ---: | --- |
-| Full-file QA (`README.md`) | 90.4% (~2,127 tok) | 3,602 | 36.2 s · `contested` (1/3 quotes) |
-| Targeted grep QA (`agent.py`) | 99.5% (~27,572 tok)* | 837 | 22.2 s · `quote_only` (2/2 quotes) |
-| Multi-file survey (`8 files`) | 99.4% (~69,202 tok) | 107,172 | 864.0 s · `checked` (11/11 quotes) |
-| Git history (`30 commits`) | 96.8% (~3,554 tok) | 53,712 | 420.6 s · completed |
-| Extraction (`pyproject.toml`) | 85.6% (~187 tok) | 633 | 11.9 s · schema valid (0 loose) |
-| Micro bugfix (6 lines) | 58.7% (~171 tok) | 6,498 | 27.7 s · `VERIFIED` (0 repairs) |
-| Multi-file bugfix (4 files) | 92.2% (~1,561 tok) | 8,278 | 37.1 s · `VERIFIED` (0 repairs) |
-| Orbital animation (1 file) | 42.7% output (~1,748 tok)** | 63,324 | 984.2 s · `VERIFIED` (46/46 met) |
-| 3D neon portal (4 modules) | 51.0% output (~2,491 tok)** | 237,029 | 2,464.4 s · `VERIFIED` (69/69 met) |
-
-*\*Full-file Context Reduction (Estimated); vs. efficient-search Gemini Direct, actual cloud token savings were -31.0%.*
-*\*\*Excludes ~5,529 and ~9,708 est. cloud input tokens to inspect receipts and `job_evidence`.*
-
 ### Visual Demos (Vertical Previews)
 
 **Orbital Simulation — Direct (`Gemini 4 Hydrogen`) vs. Tandem (`v3.6.1` + `qwen3.8-27b@iq3_s`)**
