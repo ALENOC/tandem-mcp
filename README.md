@@ -49,7 +49,7 @@ Learn more -> [Architecture](docs/ARCHITECTURE.md) ([English PDF](docs/tandem-mc
 
 ---
 
-## Benchmarks — Tandem MCP v3.6.1
+## Benchmarks: Tandem MCP v3.6.1
 
 ### Gemini 4 Hydrogen + Qwen 27B (LM Studio)
 
@@ -74,6 +74,12 @@ Reproduced on `v3.6.1` (`010cbb6`), `qwen3.8-27b@iq3_s` (`65536` ctx, `23.6 tok/
 
 #### Code Generation
 
+| Orbital simulation, direct (`Gemini 4 Hydrogen`) | Orbital simulation, with Tandem (`Gemini 4 Hydrogen` + `qwen3.8-27b@iq3_s`) |
+| :---: | :---: |
+| <img src="benchmarks/gemini_3_6_1/animation_direct.gif" alt="Orbital simulation written directly by Gemini 4 Hydrogen" width="360" height="230" /> | <img src="benchmarks/gemini_3_6_1/animation_tandem.gif" alt="Orbital simulation written by qwen3.8-27b@iq3_s under a Tandem v3.6.1 contract" width="360" height="230" /> |
+| **3D neon portal, direct (`Gemini 4 Hydrogen`)** | **3D neon portal, with Tandem (`Gemini 4 Hydrogen` + `qwen3.8-27b@iq3_s`)** |
+| <img src="benchmarks/gemini_3_6_1/portal_direct.gif" alt="3D neon portal written directly by Gemini 4 Hydrogen" width="360" height="230" /> | <img src="benchmarks/gemini_3_6_1/portal_tandem.gif" alt="3D neon portal written by qwen3.8-27b@iq3_s under 4 Tandem v3.6.1 contracts" width="360" height="230" /> |
+
 | Workload | Cloud Output Saved (Est.) | Local Tokens | Time / Verified |
 | --- | --- | ---: | --- |
 | Orbital animation (1 file) | ~1,748 tok (42.7%)* | 63,324 | 984.2 s · `VERIFIED` (46/46 met) |
@@ -83,7 +89,7 @@ Reproduced on `v3.6.1` (`010cbb6`), `qwen3.8-27b@iq3_s` (`65536` ctx, `23.6 tok/
 
 - **[View Orbital Animation Comparison](https://alenoc.github.io/tandem-mcp/benchmarks/gemini_3_6_1/animation_comparison.html)** · **[View 3D Portal Comparison](https://alenoc.github.io/tandem-mcp/benchmarks/gemini_3_6_1/scene3d_comparison.html)**
 - **Reports & raw data:** [Gemini v3.6.1 Report](benchmarks/gemini_3_6_1/RESULTS.md) · [Raw JSON](benchmarks/gemini_3_6_1/results.json) · [Generation JSON](benchmarks/gemini_3_6_1/generation.json) · [Reproducible Script](benchmarks/gemini_3_6_1/run_benchmark.py)
-- **Historical Benchmark — Tandem 3.1.0 / Fable 5.2:** [Fable Report](benchmarks/RESULTS.md) · [Orbital Demo](https://alenoc.github.io/tandem-mcp/benchmarks/animation_comparison.html) · [3D Portal Demo](https://alenoc.github.io/tandem-mcp/benchmarks/scene3d_comparison.html)
+- **Historical Benchmark (Tandem 3.1.0 / Fable 5.2):** [Fable Report](benchmarks/RESULTS.md) · [Orbital Demo](https://alenoc.github.io/tandem-mcp/benchmarks/animation_comparison.html) · [3D Portal Demo](https://alenoc.github.io/tandem-mcp/benchmarks/scene3d_comparison.html)
 
 ---
 
@@ -179,8 +185,9 @@ See [Security Model](docs/SECURITY_MODEL.md) for full details and [SECURITY.md](
 
 Tandem trades local execution time for reduced cloud context on **reading** and **test-driven fixes**. Generating brand-new code from a contract preserves quality when design is written into constraints, but adds contract-authoring and review overhead so total cloud savings are smaller or negative compared to one cloud turn.
 
-- **Latest live validation (`3.5.1`, Nov 2026):** Measured on LM Studio (`qwen3.8-27b@iq3_s`, `10.7 tok/s` probed): `digest_file` `14.84 s`, `delegate` bugfix `23.78 s` (`5,124` local tokens, `VERIFIED`, `0` repairs) vs direct LM Studio completion `8.46 s` (`305` local tokens, unverified).
-- **Full suite (`3.1.0`, Nov 2026):** Measured with `Fable 5.2` + `qwen3.8-27b@iq3_s` on i9-9900K / RX 6800 XT (58.7%-99.3% estimated cloud input savings on reading/bugfixes; 19-31 min on full demo generation).
+- **Latest full suite (`3.6.1`, Nov 2026):** Measured with `Gemini 4 Hydrogen` + `qwen3.8-27b@iq3_s` on i9-9900K / RX 6800 XT (58.7%-99.5% estimated cloud input savings on reading/bugfixes; 46/46 and 69/69 constraints on full demo generation).
+- **Live validation (`3.5.1`, Nov 2026):** Measured on LM Studio (`qwen3.8-27b@iq3_s`, `10.7 tok/s` probed): `digest_file` `14.84 s`, `delegate` bugfix `23.78 s` (`5,124` local tokens, `VERIFIED`, `0` repairs) vs direct LM Studio completion `8.46 s` (`305` local tokens, unverified).
+- **Historical suite (`3.1.0`, Nov 2026):** Measured with `Fable 5.2` + `qwen3.8-27b@iq3_s` on i9-9900K / RX 6800 XT (58.7%-99.3% estimated cloud input savings on reading/bugfixes; 19-31 min on full demo generation).
 
 See [Benchmarks](docs/BENCHMARKS.md) for full tables, hardware specs, and methodology.
 
