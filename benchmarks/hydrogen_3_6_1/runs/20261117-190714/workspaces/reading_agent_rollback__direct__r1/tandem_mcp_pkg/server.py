@@ -1,0 +1,939 @@
+"""Tandem MCP server: a cloud orchestrator model and a local executor model.
+
+The orchestrator keeps the decisions and the final check; the local model does the reading and
+the mechanical work on the machine and reports in a few lines. The local model can be any model
+behind an OpenAI compatible server (LM Studio, Ollama, llama.cpp, vLLM and others). Four ideas
+shape the tools:
+
+1. Contracts. `delegate` gives the executor a workspace, write and command limits and the checks
+   that decide acceptance. The server runs the checks itself and returns a receipt.
+2. Checked evidence. `digest_*` answers come with quotes that the server looks up in the source;
+   a quote that is not there is dropped and reported, so a made-up answer is visible.
+3. Supervised memory. The verdict of the orchestrator on a job becomes a lesson that the executor
+   reads at its next task in that project, and the ledger shows where delegation pays.
+4. Any model. The server measures what the model can do and adapts the protocol to it.
+"""
+import atexit
+import json
+import logging
+import os
+import re
+import shlex
+import signal
+from pathlib import Path
+try:
+    from typing_extensions import TypedDict
+except ImportError:
+    from typing import TypedDict
+
+from mcp.server.mcpserver import MCPServer
+
+from . import __version__, agent, digest, engine, sandbox, store
+
+GUIDE = '''Hybrid orchestration (cloud model = architect & reviewer, local model = reader & bounded executor, free to use):
+- Reading & extraction: use digest_file (with grep when possible), digest_command, digest_many, and extract_from_file
+  instead of reading large files/logs into cloud context. Quotes and numbers are checked against the source;
+  if a result is flagged unsupported/contested or ask(samples>1) shows agreement < 1.0, inspect only the cited lines.
+- Bounded coding: delegate under a strict contract. Every task must name the files it may write (write_globs),
+  give verify_commands that fail until the work is done and that run the code (tests, build, a script), and list
+  as constraints every value, name and behaviour the result must have, one requirement per constraint (the executor
+  must cite a line for each, so a compound constraint hides requirements). A contract without them is refused.
+  The quality of the result is set by the contract: state interfaces, exact numbers and formulas, not wishes.
+  Design stays with you: write every design decision into the contract before the work (structure, layout, colors,
+  sizes, motion, edge cases). The executor takes the simplest reading of what is left unsaid, and after the work
+  you can only check the result against what the contract says, not against a solution you do not have.
+  For multi-file or >150-line features, split into small modular tasks via delegate_many (with `after` dependencies)
+  rather than asking a small local model for one giant single-shot file.
+- Keep frontier quality: verify_commands prove code runs/parses, not design or visual polish. Inspect every job:
+  job_evidence shows the lines the executor cited for each constraint (a few dozen lines, enough when the checks failed
+  before the work and every constraint has evidence), job_diff the whole change. Render the output for UI work; use job_continue(hint=...) for targeted fixes, job_rollback
+  to undo cleanly, and job_feedback / lesson_add so mistakes become standing project rules.
+- Skip delegation for trivial 1-line edits or purely open-ended design with no check.
+The executor is slow. If a call runs past the client timeout and moves to the background, do not cancel it
+or redo its work with the cloud model on your own: ask the user whether to keep waiting or to stop it with job_stop.'''
+mcp = MCPServer('tandem', version=__version__, instructions=GUIDE)
+logging.getLogger('httpx').setLevel(logging.WARNING)
+logging.getLogger('openai').setLevel(logging.WARNING)
+
+
+def _fail(exc):
+    return sandbox.redact_secrets(f'ERROR: {exc}')
+
+
+def _saved(tool, bytes_in, text, **more):
+    store.log(tool, kind='result', bytes_in=bytes_in, bytes_out=len(text), **more)
+    return sandbox.redact_secrets(text)
+
+
+def _caps_line(found):
+    return (f'tool calls: {"native" if found["tools"] else "JSON replies (no native tool calling)"}, '
+            f'JSON schema: {"forced by the server" if found["schema"] else "by prompt and repair"}, '
+            f'reasoning text: {"yes, stripped" if found["thinking"] else "no"}'
+            + (f', {found["tps"]} tokens/s' if found.get('tps') else ''))
+
+
+# status ----------------------------------------------------------------------------------------
+@mcp.tool()
+def executor_status() -> str:
+    """State of the local executor: server, models, which one is in use, its context length,
+    what it can do (when it has been probed) and how its commands are confined."""
+    try:
+        server = engine.connect(refresh=True)
+        rows = engine.models(refresh=True)
+        active = engine.default_model()
+    except Exception as exc:
+        return sandbox.redact_secrets(f'No local model server: {exc}')
+    lines = [f'{server["name"]} online at {server["url"]}', f'executor model: {active}  (context {engine.context_tokens(active)})']
+    routing = []
+    if os.environ.get('TANDEM_MODEL_DIGEST', '').strip():
+        routing.append(f'digest={os.environ["TANDEM_MODEL_DIGEST"].strip()}')
+    if os.environ.get('TANDEM_MODEL_DELEGATE', '').strip():
+        routing.append(f'delegate={os.environ["TANDEM_MODEL_DELEGATE"].strip()}')
+    if routing:
+        lines.append('  role routing: ' + ', '.join(routing))
+    known = store.model_caps(f'{server["url"]}|{active}')
+    lines.append('  ' + (_caps_line(known) if known and known.get('probed') else 'not probed yet: executor_probe measures what it can do'))
+    state = {True: 'loaded', False: 'not loaded', None: ''}
+    lines += [f'- {m["id"]}  {state[m["loaded"]]}  {m["type"]}  context {m["context"] or "unknown"}' for m in rows]
+    others = [f'{name} ({url})' for name, url in engine.servers() if url != server['url']]
+    if others:
+        lines.append('other servers that answer (TANDEM_BASE_URL selects one): ' + ', '.join(others))
+    lines.append('commands of the executor: ' + sandbox.describe_jail())
+    if engine.context_tokens(active) < 8000:
+        lines.append('NOTE: a context under 8000 tokens is enough for digest and ask, tight for delegate.')
+    return sandbox.redact_secrets('\n'.join(lines))
+
+
+@mcp.tool()
+def executor_probe(model: str = '', force: bool = False) -> str:
+    """Measure what a local model can do on this server: native tool calls, JSON schema forced
+    by the server, reasoning text, speed. The result is stored and the tools adapt to it: a model
+    without tool calling still does `delegate` through JSON replies. Runs by itself at the first
+    use of a model; force repeats it (after a change of server settings or of chat template)."""
+    try:
+        name = model or engine.default_model()
+        found = engine.probe(name, force)
+        notes = ''.join(f'\n  note: {n}' for n in found.get('notes', []))
+        return sandbox.redact_secrets(f'{name} on {engine.connect()["name"]}: {_caps_line(found)}{notes}')
+    except Exception as exc:
+        return _fail(exc)
+
+
+# plain text tasks ------------------------------------------------------------------------------
+@mcp.tool()
+def ask(prompt: str, system_prompt: str = '', json_schema: str = '', samples: int = 1, max_tokens: int = 3000,
+        model: str = '') -> str:
+    """A text task for the local executor (drafting, translation, boilerplate, classification).
+
+    json_schema: optional JSON schema (as a string) that the answer must follow.
+    samples: 2 to 5 runs the task several times and reports how many runs agree. Agreement
+    below 1.0 on a factual or structured task means the executor is unsure: check or do it yourself."""
+    try:
+        use_model = model or engine.default_model('digest')
+        schema = json.loads(json_schema) if json_schema.strip() else None
+        messages = ([{'role': 'system', 'content': system_prompt}] if system_prompt.strip() else []) + \
+                   [{'role': 'user', 'content': prompt}]
+        answers = []
+        for k in range(max(1, min(int(samples), 5))):
+            temperature = 0.1 if k == 0 else 0.7
+            if schema:
+                data, _ = engine.chat_json(messages, schema, tool='ask', model=use_model, max_tokens=max_tokens, temperature=temperature)
+                answers.append(data)
+            else:
+                reply, _ = engine.chat(messages, tool='ask', model=use_model, max_tokens=max_tokens, temperature=temperature)
+                answers.append(reply.content)
+        if len(answers) == 1:
+            text = answers[0] if isinstance(answers[0], str) else json.dumps(answers[0], indent=1)
+            return _saved('ask', 0, text)
+        share, best = digest.agreement(answers)
+        text = best if isinstance(best, str) else json.dumps(best, indent=1)
+        return _saved('ask', 0, f'[agreement {share:.2f} over {len(answers)} runs]\n{text}', agreement=share)
+    except Exception as exc:
+        return _fail(exc)
+
+
+# reading for the orchestrator ------------------------------------------------------------------
+def _evidence(result):
+    return {'model': result.get('model', ''), 'quotes_ok': len(result['evidence']),
+            'quotes_bad': result['rejected'] + result.get('notes_dropped', 0), 'cached': bool(result.get('cached')),
+            'contested': result.get('claim_supported') == 'contested'}
+
+
+@mcp.tool()
+def digest_file(path: str, question: str, max_words: int = 120, grep: str = '', model: str = '') -> str:
+    """Ask a question about a file (text, source, log, JSON, PDF) instead of reading it.
+
+    The executor reads the whole file, in parts sized to its context, and answers in at most
+    max_words with line references and quotes. The server checks every quote against the file
+    and lists the numbers of the answer that are not in the file.
+    grep: optional regular expression; only matching lines (with context) are read, which is
+    faster on large files when you know what to look for."""
+    try:
+        text = sandbox.read_text(Path(path).expanduser())
+        result = digest.answer(text, question, max_words, grep, tool='digest_file', model=model)
+        out = digest.render(result, Path(path).name)
+        cut = sandbox.cut_note(Path(path).expanduser())
+        if cut:
+            out += '\n' + cut
+        # an answer from the cache read nothing now: it is not counted as material saved again
+        return _saved('digest_file', 0 if result.get('cached') else len(text), out, executor_tokens=result['tokens'], **_evidence(result))
+    except Exception as exc:
+        return _fail(exc)
+
+
+@mcp.tool()
+def digest_command(command: str, cwd: str, question: str = '', max_words: int = 120, timeout: int = 600) -> str:
+    """Run a command of yours (build, tests, linter, DRC) and get the verdict instead of the output.
+
+    Returns the exit code, the answer of the executor to `question` (default: did it succeed,
+    and what are the errors) with checked quotes, the last lines of the output, and the path
+    of the full output in case you need to read a part yourself. The command runs as you wrote
+    it, with your rights: the limits apply only to commands the executor chooses."""
+    try:
+        job, folder = store.new_job('command')
+        full = folder / 'output.txt'
+        code, output = sandbox.run(command, Path(cwd).expanduser(), timeout, guard_symlinks=False, log_path=full)
+        if not full.exists():
+            full.write_text(output)
+        question = question or 'Did the command succeed? List each distinct error or failure with its file and line. Ignore progress noise.'
+        tail = '\n'.join(output.strip().splitlines()[-4:])
+        more = {}
+        if len(output) < 600:
+            out = f'exit {code}\n{output.strip()}'
+        else:
+            try:
+                result = digest.answer(output, question, max_words, tool='digest_command', cache=False)
+                more = _evidence(result)
+                verdict = digest.render(result, 'output')
+            except engine.ExecutorError as exc:          # the exit code and the output must not be lost with the reading
+                verdict = f'(output not read by the executor: {exc})'
+            out = f'exit {code}\n{verdict}\nLast lines:\n{tail}\nFull output: {full} ({len(output.splitlines())} lines)'
+        store.write_job(job, {'id': job, 'kind': 'command', 'state': 'done', 'command': command, 'exit': code})
+        return _saved('digest_command', len(output), out, **more)
+    except Exception as exc:
+        return _fail(exc)
+
+
+@mcp.tool()
+def digest_many(root: str, glob: str, question: str, max_files: int = 25, max_words_each: int = 40) -> str:
+    """Ask the same question of many files (for example every *.md under a folder).
+
+    Returns one short answer per file with a checked quote. Use it for surveys such as
+    "which of these documents still mention the old part" or "what does each module export"."""
+    try:
+        base = Path(root).expanduser().resolve()
+        files = sandbox.walk(base, glob, max_files + 1)
+        cut = len(files) > max_files
+        lines, total, good, bad = [], 0, 0, 0
+        for rel in files[:max_files]:
+            try:
+                text = sandbox.read_text(base / rel, 400_000)
+                result = digest.answer(text, question, max_words_each, tool='digest_many')
+            except Exception as exc:
+                lines.append(f'{rel}: (not read: {str(exc)[:120]})')
+                continue
+            total += 0 if result.get('cached') else len(text)
+            good += len(result['evidence'])
+            bad += result['rejected']
+            ev = result['evidence'][0] if result['evidence'] else None
+            flag = ' [UNVERIFIED]' if result['rejected'] and not result['evidence'] else ''
+            if sandbox.cut_note(base / rel, 400_000):
+                flag += ' [only the first 400000 bytes were read]'
+            lines.append(f'{rel}: {result["answer"]}{flag}' + (f'  ({rel}:{ev["line"]} "{ev["quote"][:70]}")' if ev else ''))
+        if cut:
+            lines.append(f'[only the first {max_files} files were read]')
+        return _saved('digest_many', total, '\n'.join(lines) or 'no file matches', quotes_ok=good, quotes_bad=bad)
+    except Exception as exc:
+        return _fail(exc)
+
+
+@mcp.tool()
+def extract_from_file(path: str, json_schema: str, instructions: str, grep: str = '') -> str:
+    """Structured data from a file, in the JSON schema you give (as a string).
+
+    Example: a pin table from a datasheet, the failing tests from a log, the parts of a BOM.
+    Values the file does not give come back as null. grep narrows a large file first.
+    Every extracted string and number is looked up in the file: those that are not there
+    are listed after the data, so an invented value is visible."""
+    try:
+        text = sandbox.read_text(Path(path).expanduser())
+        data, tokens, parts, conflicts = digest.extract_with_conflicts(text, json.loads(json_schema), instructions, grep)
+        loose = digest.loose_values(data, text)
+        out = json.dumps(data, separators=(',', ':'))
+        cut = sandbox.cut_note(Path(path).expanduser())
+        if cut:
+            out += '\n' + cut
+        if conflicts:
+            out += '\nCONFLICTS: ' + json.dumps(conflicts, separators=(',', ':'))
+        if loose:
+            out += '\nNOTE: not found in the file as written (reworded, computed or made up): ' + \
+                   ', '.join(json.dumps(v)[:60] for v in loose[:12]) + (f' and {len(loose) - 12} more' if len(loose) > 12 else '')
+        return _saved('extract', len(text), out, executor_tokens=tokens, values_loose=len(loose), conflicts=len(conflicts))
+    except Exception as exc:
+        return _fail(exc)
+
+
+# delegated work --------------------------------------------------------------------------------
+HINTS = {'verified': 'Checks passed. Read job_diff if the change is delicate, then job_feedback.',
+         'unverified': 'No check was given: read job_diff before you rely on it, then job_feedback.',
+         'checks_failed': 'Not accepted. job_diff shows the attempt; job_continue with a hint, or job_rollback.',
+         'blocked': 'The executor could not do it. job_continue with what it lacks, or do it yourself.',
+         'stuck': 'The executor went in circles. job_continue with a different approach, or job_rollback.',
+         'out_of_steps': 'Step limit reached. job_continue gives more steps; job_rollback undoes the partial work.',
+         'out_of_time': 'Time limit reached. job_continue gives more steps; job_rollback undoes the partial work.',
+         'stopped': 'Stopped on request. job_continue resumes from here, or job_rollback undoes the partial work.',
+         'partial_rollback': 'Some files could not be undone (see job_rollback output).',
+         'error': 'The run broke. job_rollback undoes any partial change.'}
+
+
+def _batch_receipt(job, data):
+    lines = [f'batch {job}: {data["state"].upper()}  ({len(data.get("tasks", []))} tasks, {data.get("seconds", 0)} s)']
+    for row in data.get('tasks', []):
+        sub = store.read_job(row['job']) if row.get('job') else None
+        state = sub['state'] if sub else row['state']
+        extra = row.get('why') or (sub.get('summary', '')[:110] if sub else '')
+        lines.append(f'  {row["name"]}: {state.upper()}' + (f'  job {row["job"]}' if row.get('job') else '') + (f'  {extra}' if extra else ''))
+    if data['state'] == 'running':
+        lines.append('Call job_status again.')
+    else:
+        lines.append('job_status of a task job gives its receipt, job_diff its changes; job_rollback of the batch undoes every task.')
+    return '\n'.join(lines)
+
+
+def _receipt(job):
+    data = store.read_job(job)
+    if not data:
+        return f'unknown job {job}'
+    if data.get('kind') == 'batch':
+        return _batch_receipt(job, data)
+    if data['state'] == 'running':
+        entries = store.read_json(store.JOBS / job / 'log.json', []) or []
+        last = f', last tool: {entries[-1]["tool"]}' if entries else ''
+        return f'job {job}: running, step {data.get("steps", 0)}{last}. Call job_status again.'
+    lines = [f'job {job}: {data["state"].upper()}  ({data.get("steps", 0)} steps, {data.get("repairs", 0)} repairs, '
+             f'{data.get("seconds", 0)} s, {data.get("tokens", 0)} executor tokens, {data.get("protocol", "")})']
+    if data.get('summary'):
+        lines.append(f'executor: {data["summary"]}')
+    for rel, kind, add, rem in data.get('changes', []):
+        lines.append(f'  {kind:7} {rel}  +{add} -{rem}')
+    if not data.get('changes'):
+        lines.append('  no file changed')
+    syntax = data.get('syntax') or {}
+    if syntax.get('bad'):
+        lines += [f'  syntax ERROR {rel}: {why}' for rel, why in syntax['bad']]
+    if syntax.get('ok') or syntax.get('unchecked'):
+        lines.append('  syntax ok: ' + (', '.join(syntax.get('ok', [])) or 'none') +
+                     (f'; no checker for: {", ".join(syntax["unchecked"])}' if syntax.get('unchecked') else ''))
+    before = {c['command']: c['exit'] for c in data.get('before', [])}
+    for c in data.get('checks', []):
+        was = before.get(c['command'])
+        note = '' if was is None else ('  (failed before the job)' if was != 0 else '  (already passed before the job)')
+        lines.append(f'  check {"PASS" if c["exit"] == 0 else "FAIL"}  $ {c["command"]}{note}')
+        if c['exit'] != 0:
+            lines.append('    ' + c['tail'][-500:].replace('\n', '\n    '))
+    if data.get('constraints'):
+        lines.append('Contract constraints to inspect:')
+        cited = data.get('evidence') or {}
+        for idx, c in enumerate(data['constraints'], 1):
+            lines.append(f'  - [ ] {idx}. {c}')
+            for row in cited.get(str(idx), [])[:3]:
+                lines.append(f'        cited: {row["path"]}:{row["line"]}  "{row["quote"]}"' if 'quote' in row else
+                             f'        cited: {row["path"]} does not hold "{row["absent"]}"')
+            if data.get('require_proof') and str(idx) not in cited and data['state'] != 'running':
+                lines.append('        NO EVIDENCE: the executor cited no line for this constraint')
+        if cited:
+            lines.append('  The cited lines exist in the files (checked). Whether they satisfy the constraint is yours to judge.')
+    if data.get('constraints') and any(_VISUAL.search(row[0]) for row in data.get('changes') or []):
+        lines.append('No check proves the look: render the result and compare it with each constraint above.')
+    if data.get('weak') and data['state'] == 'verified':
+        lines.append('INSPECTION REQUIRED: every check already passed before the job, so the checks do not prove this work. '
+                     f'Inspect job_diff({job!r}) before job_feedback(accepted=True).')
+    elif data['state'] == 'verified' and data.get('changes'):
+        churn = sum(add + rem for _, _, add, rem in data['changes'])
+        if churn > 40 or data.get('constraints'):
+            how = (f'Inspect job_evidence({job!r}), the lines cited for each constraint (enough for this job), or job_diff({job!r}), '
+                   'the whole change' if not _focused(data) else f'Inspect job_diff({job!r})')
+            lines.append(f'INSPECTION REQUIRED ({churn} lines changed): {how}. Verify every contract constraint before '
+                         'job_feedback(accepted=True), or use job_continue for a targeted fix.')
+    if data['state'] in ('stuck', 'out_of_steps') and not data.get('changes'):
+        lines.append('HINT: no file was changed; if the task was too large for one shot, split it into smaller modules with delegate_many.')
+    if data.get('restored'):
+        lines.append('NOTE: the executor changed files of the checks through a command; they were put back: ' + ', '.join(data['restored']))
+    if data.get('touched'):
+        status = data.get('backup_status')
+        unbacked = data.get('unbacked_files') or []
+        if not status:
+            has_snap = (store.JOBS / job / 'snapshot.json').exists()
+            status = 'fully_backed' if has_snap else 'unbacked'
+        if status == 'fully_backed':
+            note = 'fully_backed, covered by workspace snapshot (job_rollback undoes them)'
+        elif status == 'partially_backed':
+            note = f'partially_backed (unbacked, not undone by rollback: {", ".join(unbacked[:12])})'
+        else:
+            note = 'unbacked (outside the journal, job_rollback does not undo them)'
+        lines.append(f'NOTE: changed by commands, {note}: ' + ', '.join(data['touched'][:12]))
+        if unbacked:
+            lines.append(f'WARNING: {len(unbacked)} pre-existing file(s) were not snapshotted (size cap) and cannot be '
+                         f'restored by job_rollback: {", ".join(unbacked[:12])}. Raise TANDEM_SNAPSHOT_FILE_CAP / '
+                         'TANDEM_SNAPSHOT_TOTAL_CAP for full coverage.')
+    if data.get('created_dirs'):
+        lines.append('NOTE: generated folders created by commands, not shown in job_diff (job_rollback removes them): '
+                     + ', '.join(data['created_dirs'][:12]))
+    if data['state'] not in ('verified', 'unverified', 'rolled_back') and data.get('tried'):
+        lines.append('Last steps of the executor:')
+        lines += ['  ' + t for t in data['tried']]
+    hint = HINTS.get(data['state'], '')
+    return sandbox.redact_secrets('\n'.join(lines + ([hint] if hint else [])))
+
+
+def _wait(job, seconds):
+    entry = agent.RUNNING.get(job)
+    if entry:
+        entry[0].join(max(0.0, min(float(seconds), 1500.0)))
+
+
+_ANCHOR_RE = re.compile(r'[/\\`\'":=]|#[A-Za-z0-9_-]+|\.[A-Za-z0-9]{1,5}\b|\d')
+
+
+_CATCH_ALL = re.compile(r'^[*?./]*$')
+_SHELL_WORDS = {'do', 'then', 'else', 'elif', 'if', 'while', 'until', '!', '{', '('}
+_SHELL_ONLY = {'for', 'done', 'fi', 'case', 'esac', '}', ')'}
+_PRESENCE = {'grep', 'egrep', 'fgrep', 'rg', 'test', '[', 'ls', 'wc', 'stat', 'find', 'cat', 'head', 'tail'}
+_NO_PROOF = {'true', ':', 'echo', 'printf', 'exit', 'pwd', 'sleep', 'date'}
+_VISUAL = re.compile(r'\.(?:html?|css|scss|sass|less|svg|vue|svelte|jsx|tsx)$', re.I)
+
+
+def strict():
+    """The strict contract is the rule; TANDEM_STRICT=0 brings back the loose one."""
+    return os.environ.get('TANDEM_STRICT', '1').strip().lower() not in ('0', 'off', 'false', 'no')
+
+
+def _commands_of(check):
+    """Names of the commands a check runs, shell keywords left out."""
+    try:
+        parts, _ = sandbox.split_command(check)
+    except sandbox.SandboxError:
+        return ['(shell)']                               # a substitution: something does run
+    names = []
+    for part in parts:
+        try:
+            words = shlex.split(part)
+        except ValueError:
+            words = part.split()
+        while words and (words[0] in _SHELL_WORDS or sandbox._ASSIGNMENT.match(words[0])):
+            words.pop(0)
+        if words and words[0] not in _SHELL_ONLY:
+            names.append(os.path.basename(words[0]))
+    return names
+
+
+def _strict_contract(text, constraints, verify_commands, write_globs):
+    """What a delegated task must state before the executor starts: where it may write, what proves
+    the work, and what must hold that no command can prove."""
+    words = text.split()
+    if len(text) < 40 or len(words) < 8 or not _ANCHOR_RE.search(text):
+        raise ValueError('contract refused: the goal must name its targets (file paths, symbols, exact values) and say '
+                         'the expected behaviour, in at least 8 words')
+    for c in constraints:
+        if len(c) > 160 or re.search(r';\s+\S|[.!?]\s+[A-Z]', c):
+            raise ValueError(f'contract refused: one requirement per constraint, in at most 160 characters ({c[:60]!r}...). '
+                             'Split it: the executor cites one line of a file for each constraint, so a constraint that '
+                             'holds several requirements leaves all but one without evidence')
+    globs = [str(g).strip() for g in (write_globs or []) if str(g).strip()]
+    if not globs:
+        raise ValueError('contract refused: write_globs is required, name the files this task may write')
+    for g in globs:
+        if _CATCH_ALL.match(g):
+            raise ValueError(f'contract refused: write_globs {g!r} matches every file, name the files or the folder')
+    checks = [str(c).strip() for c in (verify_commands or []) if str(c).strip()]
+    if not checks:
+        raise ValueError('contract refused: verify_commands is required, give at least one command that fails '
+                         'until the work is done (a test, a build, a script that runs the code)')
+    names = []
+    for check in checks:
+        ran = _commands_of(check)
+        if ran and all(n in _NO_PROOF for n in ran):
+            raise ValueError(f'contract refused: the check {check[:60]!r} cannot fail, so it proves nothing')
+        names += ran
+    if any(_VISUAL.search(g) for g in globs) and not constraints:
+        raise ValueError('contract refused: this task writes files whose look no command can prove, so constraints are '
+                         'required: write your design decisions (layout, colors, sizes, motion, behaviour) as constraints. '
+                         'The executor makes no design choice for you, and you cannot recognise later what you did not ask')
+    if names and all(n in _PRESENCE or n in _NO_PROOF for n in names) and not constraints:
+        raise ValueError('contract refused: the checks only look for text or files and never run the work, so '
+                         'constraints are required: list what must hold (values, names, behaviour) for your inspection')
+
+
+def _validate_contract(goal: str, constraints: list[str] | None, verify_commands: list[str] | None,
+                       write_globs: list[str] | None = None) -> list[str]:
+    text = str(goal or '').strip()
+    if not text:
+        raise ValueError('vague goal refused: describe the exact target, files, and expected behaviour')
+    clean_constraints = [str(c).strip() for c in (constraints or []) if str(c).strip()]
+    for c in clean_constraints:
+        if len(c) < 10 or len(c.split()) < 2:
+            raise ValueError(f'vague constraint refused ({c!r}): each constraint must be a specific, checkable requirement')
+    if clean_constraints and not any(_ANCHOR_RE.search(c) for c in clean_constraints):
+        raise ValueError(
+            'vague constraints refused: include concrete anchors (file paths, selectors, symbols, or exact numbers)'
+        )
+    if not clean_constraints and not (verify_commands or []):
+        words = [w for w in text.split() if w]
+        if len(text) < 25 or len(words) < 5 or not _ANCHOR_RE.search(text):
+            raise ValueError(
+                'vague goal refused: specify concrete targets (file paths, symbols, exact values/numbers), '
+                'a non-empty constraints list, or verify_commands'
+            )
+    if strict():
+        _strict_contract(text, clean_constraints, verify_commands, write_globs)
+    return clean_constraints
+
+
+@mcp.tool()
+def delegate(goal: str, workspace: str, verify_commands: list[str] = [], write_globs: list[str] = [],
+             allow_run: list[str] = [], immutable: list[str] = [], context: str = '', max_steps: int = 30,
+             max_repairs: int = 2, wait_seconds: int = 240, model: str = '', baseline: bool = True,
+             max_seconds: int = 0, checks_network: bool = False, unjailed_checks: bool = False,
+             constraints: list[str] = [], read_globs: list[str] = []) -> str:
+    """Give the local executor a bounded task in a project and get a receipt.
+
+    The contract is strict (TANDEM_STRICT=0 relaxes it): a call is refused unless it gives a goal
+    with concrete targets, write_globs that name files, and verify_commands that can fail. When the
+    checks only look for text or files (grep, test, ls), or the task writes files whose look no
+    command proves (HTML, CSS, SVG, UI components), constraints are required too. For every
+    constraint the executor must cite, at finish, the line that satisfies it: the server looks the
+    quote up in the file, sends the work back when a constraint has none, and lists the cited lines
+    in the receipt. Constraints are atomic: one requirement each, at most 160 characters, so that
+    every requirement gets its own cited line. When every
+    check already passes before the work and no constraint is given, the job stops before the
+    executor starts, because nothing would prove the work. Accepting a job needs its job_evidence
+    (the cited lines) or its job_diff read.
+
+    goal: what to do, precise and self-contained (files, names, exact values, expected behaviour).
+    workspace: absolute path of the project folder; the executor cannot leave it.
+    verify_commands: shell commands that must exit 0 for the work to be accepted (tests, build,
+      a grep that must find or not find something). They run after the executor finishes in an
+      isolated sandbox with secret env vars stripped; their failures go back to it for up to
+      max_repairs attempts. Give at least one whenever you can. The files they name (and test
+      folders) are read only for the executor unless write_globs names them.
+    write_globs: files it may write, as globs relative to the workspace. Required; a glob that
+      matches every file ('*', '**/*') is refused.
+    allow_run: regular expressions of commands the executor itself may run (empty: none). Every
+      part of a pipeline or chain must match one. A pattern matches anywhere in the part: start it
+      with ^ (for example '^pytest\\b') so that it names the command and not one of its arguments.
+    immutable: files or globs relative to the workspace that are always read only.
+    read_globs: optional files or globs relative to the workspace the executor may read via
+      read_file, list_files, and search (empty: all workspace files). Note: if allow_run is also
+      set, shell commands run against the mounted workspace and are not filesystem-filtered by
+      read_globs; omit allow_run when strict read confinement is required.
+    context: facts it needs and cannot find in the files.
+    constraints: explicit, checkable contract requirements (coordinates, selectors, invariants)
+      injected into the executor prompt and listed in the receipt for post-run inspection.
+    wait_seconds: how long this call waits; a longer task keeps running, poll it with job_status.
+    baseline: run the checks once before the work. The executor starts from their failures, and
+      the receipt says when a check already passed, which means it proves nothing about this work.
+    max_seconds: time limit of the job (0: none).
+    checks_network: allow network access inside the sandbox when running verify_commands.
+    unjailed_checks: run verify_commands outside bubblewrap (for checks needing host resources).
+
+    Every file the executor changes is journalled (and command changes are snapshotted): job_diff
+    shows the change, job_rollback undoes it without overwriting later user edits.
+    The syntax of every changed file is checked before the checks run.
+    Good tasks: mechanical edits across files, a function plus its test, docs brought in line
+    with a change, renames. Poor tasks: design choices, anything without a check."""
+    try:
+        ws = sandbox.Workspace(workspace, write_globs, allow_run, immutable, read_globs=read_globs)
+        clean_constraints = _validate_contract(goal, constraints, verify_commands, write_globs)
+        job = agent.start(goal, ws, list(verify_commands), max(3, min(max_steps, 80)), max(0, min(max_repairs, 5)), model,
+                          context, baseline or strict(), max(0, int(max_seconds)),
+                          checks_network=checks_network, unjailed_checks=unjailed_checks,
+                          constraints=clean_constraints, require_proof=strict())
+        _wait(job, wait_seconds)
+        return _saved('delegate', 0, _receipt(job))
+    except Exception as exc:
+        return _fail(exc)
+
+
+class BatchTaskSpec(TypedDict, total=False):
+    name: str
+    goal: str
+    write_globs: list[str]
+    read_globs: list[str]
+    verify_commands: list[str]
+    after: list[str]
+    context: str
+    immutable: list[str]
+    checks_network: bool
+    unjailed_checks: bool
+    constraints: list[str]
+
+
+@mcp.tool()
+def delegate_many(tasks: list[BatchTaskSpec], workspace: str, allow_run: list[str] = [], immutable: list[str] = [],
+                  context: str = '', workers: int = 1, max_steps: int = 30, max_repairs: int = 2,
+                  wait_seconds: int = 240, model: str = '', checks_network: bool = False,
+                  unjailed_checks: bool = False, read_globs: list[str] = []) -> str:
+    """Give the executor several tasks with an order, each one a contract of its own.
+
+    tasks: a list of objects with
+      name             short unique name
+      goal             what to do, self-contained, with concrete targets
+      verify_commands  checks of this task that can fail (list of shell commands, required)
+      write_globs      files this task may write (list of globs, required)
+      constraints      explicit checkable requirements (required when the checks only look for text)
+      after            names of the tasks that must succeed first (list)
+      context          facts for this task (optional)
+      immutable        read-only files or globs for this task (optional)
+    workers: tasks run side by side, for a server with several request slots (default 1).
+
+    A task starts when the tasks it comes after are verified. A task whose prerequisite failed
+    is cancelled with the reason and not started. Two tasks that run at the same time cannot
+    write the same file: the first to write it owns it until it ends. Each task has its own job,
+    receipt, diff and rollback; job_rollback of the batch undoes all of them, newest first."""
+    try:
+        specs = []
+        for n, t in enumerate(tasks):
+            if not isinstance(t, dict) or not str(t.get('goal', '')).strip():
+                return _fail(f'task {n + 1} has no goal')
+            t_verify = list(t.get('verify_commands') or [])
+            t_constraints = _validate_contract(str(t['goal']), t.get('constraints'), t_verify, t.get('write_globs'))
+            specs.append({'name': str(t.get('name') or f'task{n + 1}'), 'goal': str(t['goal']),
+                          'verify_commands': t_verify, 'write_globs': list(t.get('write_globs') or []),
+                          'read_globs': list(t.get('read_globs') or []),
+                          'immutable': list(t.get('immutable') or []),
+                          'constraints': t_constraints,
+                          'checks_network': bool(t.get('checks_network', checks_network)),
+                          'unjailed_checks': bool(t.get('unjailed_checks', unjailed_checks)),
+                          'after': [str(a) for a in (t.get('after') or [])], 'context': str(t.get('context') or '')})
+        if not specs or len(specs) > 16:
+            return _fail('a batch holds 1 to 16 tasks')
+        job = agent.start_batch(specs, workspace, allow_run, max(1, min(int(workers), 8)), max(3, min(max_steps, 80)),
+                                max(0, min(max_repairs, 5)), model, context,
+                                checks_network=checks_network, unjailed_checks=unjailed_checks, immutable=immutable,
+                                require_proof=strict(), read_globs=read_globs)
+        _wait(job, wait_seconds)
+        return _saved('delegate', 0, _receipt(job))
+    except Exception as exc:
+        return _fail(exc)
+
+
+@mcp.tool()
+def job_status(job_id: str, wait_seconds: int = 120) -> str:
+    """Receipt of a delegated job or batch, waiting up to wait_seconds if it is still running."""
+    _wait(job_id, wait_seconds)
+    return _receipt(job_id)                              # a poll is not work: only delegate and job_continue enter the ledger
+
+
+@mcp.tool()
+def job_continue(job_id: str, hint: str, extra_steps: int = 15, wait_seconds: int = 240) -> str:
+    """Send a stopped job on with a hint of yours, in the same conversation of the executor.
+
+    For a job that ended blocked, stuck, checks_failed, out_of_steps or out_of_time, or a
+    finished one that needs a correction. The executor keeps what it read and tried, so one
+    sentence from you (the cause it missed, the file to look at, the approach to take) costs far
+    less than a new task. The journal goes on: job_rollback still undoes the whole job. It also
+    works after a restart of the server, since the conversation is saved at every step."""
+    try:
+        if not hint.strip():
+            return _fail('give a hint: what the executor missed or should do next')
+        data = store.read_job(job_id)
+        if data:
+            data['diff_inspected'] = False
+            data['diff_truncated'] = False
+            data['diff_paths'] = []
+            data['evidence_inspected'] = False
+            store.write_job(job_id, data)
+        agent.resume(job_id, hint, max(3, min(int(extra_steps), 60)))
+        _wait(job_id, wait_seconds)
+        return _saved('delegate', len(hint), _receipt(job_id))
+    except Exception as exc:
+        return _fail(exc)
+
+
+@mcp.tool()
+def job_diff(job_id: str, path: str = '', max_lines: int = 200) -> str:
+    """Unified diff of what a delegated job changed (one file if path is given)."""
+    entry = agent.RUNNING.get(job_id)
+    if (store.read_job(job_id) or {}).get('kind') == 'batch':
+        return 'this is a batch: ask for the diff of one of its task jobs (job_status lists them)'
+    if entry and entry[0].is_alive() and entry[1] is not None:
+        text = entry[1].diff(path)
+        lines = text.splitlines()
+        truncated = len(lines) > max_lines
+    else:
+        saved = store.JOBS / job_id / 'changes.diff'
+        data = store.read_job(job_id)
+        if not data or not saved.exists():
+            return f'no diff for job {job_id}'
+        text = saved.read_text()
+        if path:
+            blocks = ('\n' + text).split('\n--- ')
+            text = '\n'.join('--- ' + b for b in blocks[1:] if len(b.splitlines()) > 1 and b.splitlines()[1].endswith('b/' + path))
+        lines = text.splitlines()
+        truncated = len(lines) > max_lines
+        changed = {row[0] for row in data.get('changes') or []}
+        seen = set(data.get('diff_paths') or [])
+        if not truncated:
+            seen |= {path} & changed if path else changed
+        data['diff_paths'] = sorted(seen)
+        if not path or (changed and changed <= seen):
+            data['diff_inspected'] = True
+            data['diff_truncated'] = truncated and not (changed and changed <= seen)
+        store.write_job(job_id, data)
+    if truncated:
+        lines = lines[:max_lines] + [f'[{len(lines) - max_lines} more lines: ask for one path or raise max_lines]']
+    return _saved('job_diff', 0, sandbox.redact_secrets('\n'.join(lines)) or 'no change')
+
+
+@mcp.tool()
+def job_stop(job_id: str, wait_seconds: int = 10) -> str:
+    """Ask a running job or batch to stop at its next safe point. An in-flight model call is not
+    interrupted: it can take up to TANDEM_TIMEOUT seconds. Returns the receipt, which may still show running."""
+    try:
+        data = store.read_job(job_id)
+        if not data:
+            return f'no job {job_id}'
+        if data.get('kind') == 'batch':
+            for row in data.get('tasks') or []:
+                if row.get('job'):
+                    agent.request_stop(row['job'])
+        was_running = agent.request_stop(job_id)
+        if was_running and wait_seconds > 0:
+            _wait(job_id, min(wait_seconds, 30))
+        return _receipt(job_id)
+    except Exception as exc:
+        return _fail(exc)
+
+
+def _focused(data):
+    """Why the cited lines are not enough to accept this job, or ''. They are enough when checks that
+    failed before the work pass now and every constraint has evidence that was looked up."""
+    if data.get('state') != 'verified':
+        return f'the job is {data.get("state")}'
+    if not data.get('constraints') or not data.get('evidence'):
+        return 'the job has no constraint with cited evidence'
+    if data.get('unproven'):
+        return 'some constraints have no evidence'
+    if data.get('weak') or not data.get('checks'):
+        return 'no check failed before the work, so the checks do not prove it'
+    return ''
+
+
+@mcp.tool()
+def job_evidence(job_id: str, context: int = 1) -> str:
+    """The lines the executor cited for each contract constraint, with `context` lines around them,
+    read from the files as they are now. This is the focused inspection of a delegated job: a few
+    dozen lines instead of the whole diff. It satisfies the inspection asked by job_feedback when
+    the job is verified by checks that failed before the work and every constraint has checked
+    evidence; in any other case it says so and job_diff is still needed. Lines that no constraint
+    cites are covered only by the verify commands: use job_diff when you want to read them."""
+    data = store.read_job(job_id)
+    if not data:
+        return f'unknown job {job_id}'
+    constraints, cited = data.get('constraints') or [], data.get('evidence') or {}
+    if not constraints or not cited:
+        return f'job {job_id} has no cited evidence: inspect job_diff({job_id!r})'
+    context = max(0, min(int(context), 8))
+    root, texts, shown, stale, out = Path(data.get('workspace', '.')), {}, set(), [], []
+
+    def rows_of(rel):
+        if rel not in texts:
+            p = agent._safe_workspace_path(root, rel)
+            try:
+                texts[rel] = sandbox.read_text(p, 2_000_000).splitlines() if p is not None and p.is_file() else None
+            except Exception:
+                texts[rel] = None
+        return texts[rel]
+
+    for idx, text in enumerate(constraints, 1):
+        out.append(f'{idx}. {text[:90]}')
+        if not cited.get(str(idx)):
+            out.append('   NO EVIDENCE')
+            stale.append(idx)
+        for row in cited.get(str(idx), [])[:3]:
+            rows = rows_of(row['path'])
+            if rows is None:
+                out.append(f'   {row["path"]}: the file is gone')
+                stale.append(idx)
+            elif 'absent' in row:
+                still = agent._squash(row['absent']) not in agent._squash('\n'.join(rows))
+                out.append(f'   {row["path"]} does not hold "{row["absent"]}"' if still else f'   {row["path"]} now holds "{row["absent"]}"')
+                if not still:
+                    stale.append(idx)
+            else:
+                quote = agent._squash(row['quote'])
+                at = row.get('line') or 0
+                if not (1 <= at <= len(rows) and quote in agent._squash(rows[at - 1])):      # the file moved since the job ended
+                    at = next((k for k, line in enumerate(rows, 1) if quote in agent._squash(line)), 0)
+                if not at:
+                    out.append(f'   {row["path"]}: the cited line is no longer in the file: "{row["quote"]}"')
+                    stale.append(idx)
+                    continue
+                for k in range(max(1, at - context), min(len(rows), at + context) + 1):
+                    out.append(f'   {row["path"]}:{k}{">" if k == at else "|"} {rows[k - 1][:220]}')
+                    shown.add((row['path'], k))
+    added = sum(row[2] for row in data.get('changes') or [])
+    out.append(f'Shown {len(shown)} of {added} added or changed lines in {len(data.get("changes") or [])} file(s). '
+               'The other lines are covered by the verify commands only.')
+    why = _focused(data) or ('the evidence of constraint ' + ', '.join(str(n) for n in sorted(set(stale))) + ' no longer holds' if stale else '')
+    data['evidence_inspected'] = not why
+    store.write_job(job_id, data)
+    out.append(f'This view is not enough to accept the job ({why}): inspect job_diff({job_id!r}).' if why else
+               'Judge each constraint on its cited lines, then job_feedback(accepted=..., constraints_verified=True).')
+    return _saved('job_evidence', 0, '\n'.join(out))
+
+
+@mcp.tool()
+def job_rollback(job_id: str) -> str:
+    """Undo a delegated job: every file it changed goes back to its content before the job.
+    For a batch, every task is undone, newest first."""
+    entry = agent.RUNNING.get(job_id)
+    if entry and entry[0].is_alive():
+        return 'the job is still running'
+    if not store.read_job(job_id):
+        return f'unknown job {job_id}'
+    return sandbox.redact_secrets(agent.rollback(job_id))
+
+
+@mcp.tool()
+def job_feedback(job_id: str, accepted: bool, lesson: str = '', constraints_verified: bool = False) -> str:
+    """Your verdict on a delegated job. It feeds the acceptance statistics, and `lesson` (one
+    sentence on what to do differently, or what was right) is given to the executor at its
+    next tasks in the same project. For non-trivial changes, weak checks, or jobs with contract
+    constraints, and for any job that had no check, `accepted=True` requires inspecting `job_diff(job_id)` first (and setting
+    `constraints_verified=True` when constraints were provided)."""
+    data = store.read_job(job_id)
+    if not data:
+        return f'unknown job {job_id}'
+    if accepted:
+        if data.get('state') and data.get('state') not in ('verified', 'unverified'):
+            return _fail(f'cannot accept job in state {data.get("state")!r}: fix or job_continue until verified')
+        churn = sum(add + rem for _, _, add, rem in (data.get('changes') or []))
+        unbacked = bool(data.get('unbacked_files')) or data.get('backup_status') in ('partially_backed', 'unbacked')
+        if unbacked and agent._require_full_backup():
+            return _fail('TANDEM_REQUIRE_FULL_BACKUP=1: cannot accept job with unbacked changes; inspect job_diff and roll back or unset TANDEM_REQUIRE_FULL_BACKUP')
+        needs_diff = unbacked or (bool(data.get('changes')) and (churn > 40 or bool(data.get('constraints')) or bool(data.get('weak'))
+                                                                or data.get('state') == 'unverified'     # no check ran: the diff is the only proof
+                                                                or strict()))                            # strict: a verdict is given on a diff that was read
+        focused = (not unbacked) and bool(data.get('evidence_inspected')) and not _focused(data)      # the cited lines were read and are enough
+        if needs_diff and not focused and not data.get('diff_inspected'):
+            return _fail(f'inspection required before accepting: call job_evidence({job_id!r}) for the lines cited for each constraint, '
+                         f'or job_diff({job_id!r}) for the whole change')
+        if needs_diff and not focused and data.get('diff_truncated'):
+            return _fail(f'full diff inspection required: job_diff({job_id!r}) was truncated; inspect each file or raise max_lines before accepting')
+        if data.get('constraints') and not constraints_verified:
+            return _fail('constraints verification required: confirm all contract constraints were inspected by passing constraints_verified=True')
+    data['accepted'] = bool(accepted)
+    store.write_job(job_id, data)
+    store.log('feedback', kind='feedback', job=job_id, accepted=bool(accepted), state=data.get('state'),
+              model=data.get('used') or data.get('model') or 'default')
+    if lesson.strip():
+        store.add_lesson(store.scope_of(data.get('workspace', '.')), lesson, 'review of ' + job_id)
+    return 'recorded' + (' with a lesson' if lesson.strip() else '')
+
+
+# memory and accounting -------------------------------------------------------------------------
+@mcp.tool()
+def lesson_add(project_path: str, text: str) -> str:
+    """Teach the executor a standing rule for a project (or for every project with project_path '*').
+    Example: 'Comments in English, no em dashes.' The executor reads its lessons before each task."""
+    scope = '*' if project_path.strip() == '*' else store.scope_of(project_path)
+    return f'lesson stored for {scope}' if store.add_lesson(scope, text) else f'{scope} already has this lesson'
+
+
+@mcp.tool()
+def lessons(project_path: str, remove_containing: str = '') -> str:
+    """Lessons the executor has for a project. remove_containing deletes those with that text."""
+    scope = '*' if project_path.strip() == '*' else store.scope_of(project_path)
+    if remove_containing.strip():
+        return f'removed {store.drop_lesson(scope, remove_containing)} lesson(s)'
+    rows = store.lessons(scope, 50)
+    return sandbox.redact_secrets('\n'.join(f'- [{r["scope"]}] {r["text"]}' for r in rows) or 'no lesson yet')
+
+
+@mcp.tool()
+def ledger_report(days: float = 30.0) -> str:
+    """What the local executor did and what it saved: calls and executor tokens per tool, the
+    characters it read against the characters returned to you (with a token estimate), and per
+    model the speed, the share of quotes that failed the check, the outcome of delegated jobs
+    and your verdicts. Use it to decide what is worth delegating, and to which model."""
+    rows = store.ledger(days)
+    if not rows:
+        return 'no activity recorded'
+    tools, per_model = {}, {}
+    for r in rows:
+        kind = r.get('kind')
+        t = tools.setdefault(r['tool'], {'pt': 0, 'ct': 0, 'calls': 0, 'in': 0, 'out': 0})
+        m = per_model.setdefault(r.get('model') or 'default', {'ct': 0, 's': 0.0, 'ok': 0, 'bad': 0, 'jobs': {}, 'yes': 0, 'no': 0,
+                                                              'answers': 0, 'contested': 0, 'retries': 0})
+        if kind == 'llm':
+            t['pt'] += r.get('prompt_tokens', 0)
+            t['ct'] += r.get('completion_tokens', 0)
+            if r.get('seconds', 0) > 1:
+                m['ct'] += r.get('completion_tokens', 0)
+                m['s'] += r.get('seconds', 0)
+        elif kind == 'retry':
+            m['retries'] += 1
+        elif kind == 'result':
+            t['calls'] += 1
+            t['in'] += r.get('bytes_in', 0)
+            t['out'] += r.get('bytes_out', 0)
+            m['ok'] += r.get('quotes_ok', 0)
+            m['bad'] += r.get('quotes_bad', 0)
+            if 'contested' in r:
+                m['answers'] += 1
+                m['contested'] += bool(r['contested'])
+        elif kind == 'job':
+            t['in'] += r.get('bytes_in', 0)
+            m['jobs'][r.get('state')] = m['jobs'].get(r.get('state'), 0) + 1
+        elif kind == 'feedback':
+            m['yes' if r.get('accepted') else 'no'] += 1
+    lines = [f'Last {days:g} days', 'tool              calls  executor tokens (in/out)   read chars -> returned chars   est. orchestrator tokens saved']
+    total = 0
+    for name, t in sorted(tools.items()):
+        if name in ('feedback', 'probe'):
+            continue
+        saved = max(0, round((t['in'] - t['out']) / store.CHARS_PER_TOKEN))
+        total += saved
+        lines.append(f'{name:17} {t["calls"]:5}  {t["pt"]:>9}/{t["ct"]:<9}        {t["in"]:>9} -> {t["out"]:<9}        {saved}')
+    lines.append(f'Estimated orchestrator input tokens saved: {total} (material the executor read for you, minus what it '
+                 'returned; cached answers and repeated reads of a file count once)')
+    for name, m in sorted(per_model.items()):
+        parts = []
+        if m['s']:
+            parts.append(f'{m["ct"] / m["s"]:.0f} tokens/s')
+        if m['ok'] + m['bad']:
+            parts.append(f'quotes dropped {m["bad"]} of {m["ok"] + m["bad"]} ({100 * m["bad"] // (m["ok"] + m["bad"])} %)')
+        if m['answers']:
+            parts.append(f'answers contested {m["contested"]} of {m["answers"]}')
+        if m['jobs']:
+            parts.append('jobs: ' + ', '.join(f'{k} {v}' for k, v in sorted(m['jobs'].items(), key=str)))
+        if m['yes'] + m['no']:
+            parts.append(f'accepted by you {m["yes"]} of {m["yes"] + m["no"]}')
+        if m['retries']:
+            parts.append(f'transient retries {m["retries"]}')
+        if parts:
+            lines.append(f'{name}: ' + '; '.join(parts))
+    return sandbox.redact_secrets('\n'.join(lines))
+
+
+def _graceful_shutdown(_signum=None, _frame=None):
+    agent.stop_all(timeout=5.0)
+    if _signum is not None:
+        raise SystemExit(0)
+
+
+def main():
+    store.init()
+    store.reconcile_stale_jobs()
+    atexit.register(agent.stop_all, 2.0)
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            signal.signal(sig, _graceful_shutdown)
+        except (OSError, ValueError):
+            pass
+    mcp.run()
+
+
+if __name__ == '__main__':
+    main()

@@ -1,0 +1,159 @@
+--- /dev/null
++++ b/rate_limiter.py
+@@ -0,0 +1,42 @@
++"""Token-bucket rate limiter."""
++
++import time
++
++
++class TokenBucketRateLimiter:
++    """A deterministic token-bucket rate limiter."""
++
++    def __init__(self, capacity: float, refill_rate: float, time_fn=None):
++        if capacity <= 0:
++            raise ValueError("capacity must be > 0")
++        if refill_rate < 0:
++            raise ValueError("refill_rate must be >= 0")
++        self._capacity = float(capacity)
++        self._refill_rate = float(refill_rate)
++        self._time_fn = time_fn if time_fn is not None else time.monotonic
++        self._tokens = float(capacity)
++        self._last_time = self._time_fn()
++
++    def _refill(self):
++        now = self._time_fn()
++        elapsed = now - self._last_time
++        if elapsed > 0:
++            self._tokens = min(self._capacity, self._tokens + elapsed * self._refill_rate)
++        self._last_time = now
++
++    def allow(self, tokens: float = 1.0) -> bool:
++        if tokens <= 0:
++            raise ValueError("tokens must be > 0")
++        self._refill()
++        if self._tokens >= tokens:
++            self._tokens -= tokens
++            return True
++        return False
++
++    def available_tokens(self) -> float:
++        self._refill()
++        return self._tokens
++
++    def reset(self) -> None:
++        self._tokens = float(self._capacity)
++        self._last_time = self._time_fn()
+--- /dev/null
++++ b/test_rate_limiter.py
+@@ -0,0 +1,111 @@
++"""Unit tests for rate_limiter.TokenBucketRateLimiter."""
++
++import unittest
++from rate_limiter import TokenBucketRateLimiter
++
++
++class FakeClock:
++    """A fake clock for deterministic time control."""
++
++    def __init__(self, start=0.0):
++        self.now = start
++
++    def __call__(self):
++        return self.now
++
++    def advance(self, seconds):
++        self.now += seconds
++
++
++class TestInitializationValidation(unittest.TestCase):
++    def test_capacity_zero_raises(self):
++        with self.assertRaises(ValueError):
++            TokenBucketRateLimiter(0, 1.0)
++
++    def test_capacity_negative_raises(self):
++        with self.assertRaises(ValueError):
++            TokenBucketRateLimiter(-1, 1.0)
++
++    def test_refill_rate_negative_raises(self):
++        with self.assertRaises(ValueError):
++            TokenBucketRateLimiter(10, -0.5)
++
++    def test_valid_init(self):
++        clock = FakeClock()
++        limiter = TokenBucketRateLimiter(10, 1.0, time_fn=clock)
++        self.assertEqual(limiter.available_tokens(), 10.0)
++
++
++class TestConsumption(unittest.TestCase):
++    def test_allow_consumes_tokens(self):
++        clock = FakeClock()
++        limiter = TokenBucketRateLimiter(5, 1.0, time_fn=clock)
++        self.assertTrue(limiter.allow(1.0))
++        self.assertEqual(limiter.available_tokens(), 4.0)
++
++    def test_allow_more_than_available_returns_false(self):
++        clock = FakeClock()
++        limiter = TokenBucketRateLimiter(3, 1.0, time_fn=clock)
++        self.assertFalse(limiter.allow(4.0))
++        # tokens should not be subtracted on failure
++        self.assertEqual(limiter.available_tokens(), 3.0)
++
++    def test_allow_zero_raises(self):
++        clock = FakeClock()
++        limiter = TokenBucketRateLimiter(5, 1.0, time_fn=clock)
++        with self.assertRaises(ValueError):
++            limiter.allow(0)
++
++    def test_allow_negative_raises(self):
++        clock = FakeClock()
++        limiter = TokenBucketRateLimiter(5, 1.0, time_fn=clock)
++        with self.assertRaises(ValueError):
++            limiter.allow(-1)
++
++
++class TestRefillOverTime(unittest.TestCase):
++    def test_refill_after_elapsed_time(self):
++        clock = FakeClock()
++        limiter = TokenBucketRateLimiter(10, 2.0, time_fn=clock)
++        limiter.allow(10.0)
++        self.assertEqual(limiter.available_tokens(), 0.0)
++        clock.advance(3.0)
++        # 3 seconds * 2 tokens/sec = 6 tokens refilled
++        self.assertEqual(limiter.available_tokens(), 6.0)
++
++    def test_refill_capped_at_capacity(self):
++        clock = FakeClock()
++        limiter = TokenBucketRateLimiter(5, 1.0, time_fn=clock)
++        limiter.allow(5.0)
++        clock.advance(100.0)
++        # Should be capped at capacity
++        self.assertEqual(limiter.available_tokens(), 5.0)
++
++    def test_no_refill_without_elapsed_time(self):
++        clock = FakeClock()
++        limiter = TokenBucketRateLimiter(10, 1.0, time_fn=clock)
++        limiter.allow(5.0)
++        self.assertEqual(limiter.available_tokens(), 5.0)
++
++
++class TestReset(unittest.TestCase):
++    def test_reset_restores_full_capacity(self):
++        clock = FakeClock()
++        limiter = TokenBucketRateLimiter(8, 1.0, time_fn=clock)
++        limiter.allow(8.0)
++        self.assertEqual(limiter.available_tokens(), 0.0)
++        limiter.reset()
++        self.assertEqual(limiter.available_tokens(), 8.0)
++
++    def test_reset_updates_timestamp(self):
++        clock = FakeClock()
++        limiter = TokenBucketRateLimiter(10, 1.0, time_fn=clock)
++        limiter.allow(10.0)
++        clock.advance(5.0)
++        limiter.reset()
++        # After reset, no additional refill should occur immediately
++        self.assertEqual(limiter.available_tokens(), 10.0)
++
++
++if __name__ == "__main__":
++    unittest.main()

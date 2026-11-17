@@ -1,0 +1,5 @@
+{"ts": 1794940499.1899078, "tool": "probe", "kind": "llm", "model": "qwen3.8-27b@iq3_s", "prompt_tokens": 43, "completion_tokens": 48, "seconds": 19.17}
+{"ts": 1794940547.9418273, "tool": "probe", "kind": "llm", "model": "qwen3.8-27b@iq3_s", "prompt_tokens": 299, "completion_tokens": 42, "seconds": 48.75}
+{"ts": 1794940561.244652, "tool": "delegate", "kind": "llm", "model": "qwen3.8-27b@iq3_s", "prompt_tokens": 1796, "completion_tokens": 72, "seconds": 13.21}
+{"ts": 1794940619.319576, "tool": "delegate", "kind": "llm", "model": "qwen3.8-27b@iq3_s", "prompt_tokens": 2264, "completion_tokens": 240, "seconds": 58.07}
+{"ts": 1794940669.0107129, "tool": "delegate", "kind": "llm", "model": "qwen3.8-27b@iq3_s", "prompt_tokens": 2571, "completion_tokens": 69, "seconds": 49.69}

@@ -1,0 +1,9 @@
+{"ts": 1794939335.1160235, "tool": "probe", "kind": "llm", "model": "qwen3.8-27b@iq3_s", "prompt_tokens": 43, "completion_tokens": 48, "seconds": 59.76}
+{"ts": 1794939385.1740358, "tool": "probe", "kind": "llm", "model": "qwen3.8-27b@iq3_s", "prompt_tokens": 299, "completion_tokens": 42, "seconds": 50.06}
+{"ts": 1794939437.8997028, "tool": "digest_many", "kind": "llm", "model": "qwen3.8-27b@iq3_s", "prompt_tokens": 189, "completion_tokens": 171, "seconds": 52.72}
+{"ts": 1794939503.7568188, "tool": "digest_many", "kind": "llm", "model": "qwen3.8-27b@iq3_s", "prompt_tokens": 165, "completion_tokens": 119, "seconds": 65.84}
+{"ts": 1794939510.3458865, "tool": "digest_file", "kind": "llm", "model": "qwen3.8-27b@iq3_s", "prompt_tokens": 165, "completion_tokens": 119, "seconds": 37.1}
+{"ts": 1794939510.346801, "tool": "digest_file", "kind": "result", "bytes_in": 33, "bytes_out": 269, "executor_tokens": 284, "model": "qwen3.8-27b@iq3_s", "quotes_ok": 2, "quotes_bad": 0, "cached": false, "contested": false}
+{"ts": 1794939636.3613644, "tool": "digest_many", "kind": "llm", "model": "qwen3.8-27b@iq3_s", "prompt_tokens": 10779, "completion_tokens": 498, "seconds": 132.59}
+{"ts": 1794939658.4238977, "tool": "digest_file", "kind": "llm", "model": "qwen3.8-27b@iq3_s", "prompt_tokens": 10779, "completion_tokens": 478, "seconds": 146.65}
+{"ts": 1794939827.1796682, "tool": "digest_many", "kind": "llm", "model": "qwen3.8-27b@iq3_s", "prompt_tokens": 10314, "completion_tokens": 1300, "seconds": 190.82}

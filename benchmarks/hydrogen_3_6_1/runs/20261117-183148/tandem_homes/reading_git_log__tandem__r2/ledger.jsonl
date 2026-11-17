@@ -1,0 +1,2 @@
+{"ts": 1794941342.4615672, "tool": "digest_file", "kind": "llm", "model": "qwen3.8-27b@iq3_s", "prompt_tokens": 2043, "completion_tokens": 720, "seconds": 31.61}
+{"ts": 1794941374.6583426, "tool": "digest_file", "kind": "llm", "model": "qwen3.8-27b@iq3_s", "prompt_tokens": 1750, "completion_tokens": 600, "seconds": 57.72}

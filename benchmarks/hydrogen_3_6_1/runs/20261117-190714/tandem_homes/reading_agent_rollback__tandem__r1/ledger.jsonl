@@ -1,0 +1,6 @@
+{"ts": 1794939032.6748004, "tool": "probe", "kind": "llm", "model": "qwen3.8-27b@iq3_s", "prompt_tokens": 43, "completion_tokens": 48, "seconds": 37.37}
+{"ts": 1794939101.497188, "tool": "probe", "kind": "llm", "model": "qwen3.8-27b@iq3_s", "prompt_tokens": 299, "completion_tokens": 42, "seconds": 68.82}
+{"ts": 1794939150.757438, "tool": "digest_file", "kind": "llm", "model": "qwen3.8-27b@iq3_s", "prompt_tokens": 1117, "completion_tokens": 921, "seconds": 49.26}
+{"ts": 1794939150.7731135, "tool": "digest_file", "kind": "result", "bytes_in": 99739, "bytes_out": 1331, "executor_tokens": 2038, "model": "qwen3.8-27b@iq3_s", "quotes_ok": 6, "quotes_bad": 0, "cached": false, "contested": true}
+{"ts": 1794939259.477483, "tool": "digest_file", "kind": "llm", "model": "qwen3.8-27b@iq3_s", "prompt_tokens": 4811, "completion_tokens": 781, "seconds": 103.22}
+{"ts": 1794939259.4987464, "tool": "digest_file", "kind": "result", "bytes_in": 99739, "bytes_out": 1052, "executor_tokens": 5592, "model": "qwen3.8-27b@iq3_s", "quotes_ok": 12, "quotes_bad": 0, "cached": false, "contested": false}

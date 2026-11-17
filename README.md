@@ -51,6 +51,21 @@ Learn more -> [Architecture](docs/ARCHITECTURE.md) ([English PDF](docs/tandem-mc
 
 ## Benchmarks — Tandem MCP v3.6.1
 
+### Hydrogen 3.6.1 Suite (Gemini 4 Hydrogen + Qwen3.8 27B)
+
+Fresh two-way comparison (**Gemini Direct** vs **Gemini + Tandem MCP**) built from scratch in [`benchmarks/hydrogen_3_6_1/`](benchmarks/hydrogen_3_6_1/README.md) (`gemini-4-hydrogen-medium` via `agy` 1.5.10 + `qwen3.8-27b@iq3_s` on LM Studio, run `20261117-190714`):
+
+| Workload | Direct (Time / Cloud Tok) | Tandem (Time / Cloud Tok / Local Tok) | E2E (Direct / Tandem) |
+| --- | ---: | ---: | :---: |
+| Targeted QA (`agent.py` rollback) | 26.76 s · 20,073 | 278.96 s · 21,977 · 8,062 | Pass / Pass |
+| Package survey (`tandem_mcp/*.py`) | 20.56 s · 27,327 | 620.79 s · 54,416 · 35,508 | Pass / Pass |
+| Git history (`25 commits`) | 34.66 s · 24,439 | 401.16 s · 26,478 · 9,688 | Pass / Fail* |
+| Extraction (`pyproject.toml`) | 12.20 s · 15,490 | 176.07 s · 17,893 · 1,324 | Pass / Pass |
+| Multi-file bugfix (4 modules) | 28.68 s · 24,702 | 237.86 s · 44,096 · 7,444 | Pass / Pass |
+| Bounded feature (`rate_limiter.py`) | 28.62 s · 23,593 | 576.54 s · 48,147 · 33,767 | Pass / Pass |
+
+*\*`reading_git_log` timed out on `agy`'s 180 s per-MCP-tool-call deadline during un-grepped `digest_file`. Full report: [Hydrogen Suite Report](benchmarks/hydrogen_3_6_1/RESULTS.md) · [Run JSON](benchmarks/hydrogen_3_6_1/runs/20261117-190714/results.json).*
+
 ### Measured Comparative Evaluation (Gemini 4 Hydrogen + Qwen 27B)
 
 Three-way comparison on frozen `v3.6.1` (`010cbb6`) fixtures: **Gemini Direct** vs **Gemini + Direct LM Studio** vs **Gemini + Tandem MCP** (`gemini-4-hydrogen-medium`, `qwen3.8-27b@iq3_s` on LM Studio, real cloud tokens measured via `agy --output-format json`). Negative savings mean Tandem used more total cloud tokens than Gemini Direct; `E2E Success` requires both completion before timeout and passing independent checks.

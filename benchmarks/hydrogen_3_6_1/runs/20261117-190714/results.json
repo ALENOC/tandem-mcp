@@ -1,0 +1,536 @@
+{
+  "run_id": "20261117-190714",
+  "preflight": {
+    "timestamp": "2026-11-17T18:07:14.194866+00:00",
+    "lm_studio_url": "http://127.0.0.1:1234/v1",
+    "lm_studio_models": [
+      "qwen3.8-27b@iq3_s",
+      "qwen3.8-27b@q4_0",
+      "text-embedding-nomic-embed-text-v1.5"
+    ],
+    "executor_model": "qwen3.8-27b@iq3_s",
+    "orchestrator_model": "gemini-4-hydrogen-medium",
+    "agy_version": "1.5.10",
+    "initial_tandem_mcp_enabled": true
+  },
+  "summary": [
+    {
+      "task_id": "reading_agent_rollback",
+      "task_name": "Targeted code QA (agent.py rollback)",
+      "scenario": "direct",
+      "n": 1,
+      "e2e_success_count": 1,
+      "e2e_success_pct": 100.0,
+      "mean_cloud_tokens": 20073,
+      "cloud_savings_vs_direct_pct": null,
+      "median_wall_seconds": 26.76,
+      "mean_local_tokens": 0
+    },
+    {
+      "task_id": "reading_agent_rollback",
+      "task_name": "Targeted code QA (agent.py rollback)",
+      "scenario": "tandem",
+      "n": 1,
+      "e2e_success_count": 1,
+      "e2e_success_pct": 100.0,
+      "mean_cloud_tokens": 21977,
+      "cloud_savings_vs_direct_pct": -9.5,
+      "median_wall_seconds": 278.96,
+      "mean_local_tokens": 8062
+    },
+    {
+      "task_id": "reading_package_survey",
+      "task_name": "Multi-file package survey (tandem_mcp/*.py)",
+      "scenario": "direct",
+      "n": 1,
+      "e2e_success_count": 1,
+      "e2e_success_pct": 100.0,
+      "mean_cloud_tokens": 27327,
+      "cloud_savings_vs_direct_pct": null,
+      "median_wall_seconds": 20.56,
+      "mean_local_tokens": 0
+    },
+    {
+      "task_id": "reading_package_survey",
+      "task_name": "Multi-file package survey (tandem_mcp/*.py)",
+      "scenario": "tandem",
+      "n": 1,
+      "e2e_success_count": 1,
+      "e2e_success_pct": 100.0,
+      "mean_cloud_tokens": 54416,
+      "cloud_savings_vs_direct_pct": -99.1,
+      "median_wall_seconds": 620.79,
+      "mean_local_tokens": 35508
+    },
+    {
+      "task_id": "reading_git_log",
+      "task_name": "Git history digestion (25 commits)",
+      "scenario": "direct",
+      "n": 1,
+      "e2e_success_count": 1,
+      "e2e_success_pct": 100.0,
+      "mean_cloud_tokens": 24439,
+      "cloud_savings_vs_direct_pct": null,
+      "median_wall_seconds": 34.66,
+      "mean_local_tokens": 0
+    },
+    {
+      "task_id": "reading_git_log",
+      "task_name": "Git history digestion (25 commits)",
+      "scenario": "tandem",
+      "n": 1,
+      "e2e_success_count": 0,
+      "e2e_success_pct": 0.0,
+      "mean_cloud_tokens": 26478,
+      "cloud_savings_vs_direct_pct": -8.3,
+      "median_wall_seconds": 401.16,
+      "mean_local_tokens": 9688
+    },
+    {
+      "task_id": "extraction_manifest",
+      "task_name": "Structured JSON extraction (pyproject.toml)",
+      "scenario": "direct",
+      "n": 1,
+      "e2e_success_count": 1,
+      "e2e_success_pct": 100.0,
+      "mean_cloud_tokens": 15490,
+      "cloud_savings_vs_direct_pct": null,
+      "median_wall_seconds": 12.2,
+      "mean_local_tokens": 0
+    },
+    {
+      "task_id": "extraction_manifest",
+      "task_name": "Structured JSON extraction (pyproject.toml)",
+      "scenario": "tandem",
+      "n": 1,
+      "e2e_success_count": 1,
+      "e2e_success_pct": 100.0,
+      "mean_cloud_tokens": 17893,
+      "cloud_savings_vs_direct_pct": -15.5,
+      "median_wall_seconds": 176.07,
+      "mean_local_tokens": 1324
+    },
+    {
+      "task_id": "bugfix_multifile",
+      "task_name": "Multi-file bugfix (4 modules + tests)",
+      "scenario": "direct",
+      "n": 1,
+      "e2e_success_count": 1,
+      "e2e_success_pct": 100.0,
+      "mean_cloud_tokens": 24702,
+      "cloud_savings_vs_direct_pct": null,
+      "median_wall_seconds": 28.68,
+      "mean_local_tokens": 0
+    },
+    {
+      "task_id": "bugfix_multifile",
+      "task_name": "Multi-file bugfix (4 modules + tests)",
+      "scenario": "tandem",
+      "n": 1,
+      "e2e_success_count": 1,
+      "e2e_success_pct": 100.0,
+      "mean_cloud_tokens": 44096,
+      "cloud_savings_vs_direct_pct": -78.5,
+      "median_wall_seconds": 237.86,
+      "mean_local_tokens": 7444
+    },
+    {
+      "task_id": "feature_rate_limiter",
+      "task_name": "Bounded module + tests (rate_limiter.py)",
+      "scenario": "direct",
+      "n": 1,
+      "e2e_success_count": 1,
+      "e2e_success_pct": 100.0,
+      "mean_cloud_tokens": 23593,
+      "cloud_savings_vs_direct_pct": null,
+      "median_wall_seconds": 28.62,
+      "mean_local_tokens": 0
+    },
+    {
+      "task_id": "feature_rate_limiter",
+      "task_name": "Bounded module + tests (rate_limiter.py)",
+      "scenario": "tandem",
+      "n": 1,
+      "e2e_success_count": 1,
+      "e2e_success_pct": 100.0,
+      "mean_cloud_tokens": 48147,
+      "cloud_savings_vs_direct_pct": -104.1,
+      "median_wall_seconds": 576.54,
+      "mean_local_tokens": 33767
+    }
+  ],
+  "attempts": [
+    {
+      "attempt_id": "reading_agent_rollback__direct__r1",
+      "task_id": "reading_agent_rollback",
+      "task_name": "Targeted code QA (agent.py rollback)",
+      "category": "reading",
+      "scenario": "direct",
+      "repeat": 1,
+      "completed": true,
+      "timed_out": false,
+      "artifact_valid": true,
+      "eval_reason": "Verified rollback None=unbacked/skip and string=blob-restore",
+      "e2e_success": true,
+      "duration_seconds": 23.977463254,
+      "wall_seconds": 26.76,
+      "num_turns": 1,
+      "conversation_id": "b75f9dc3-30a4-49c9-ae2e-2d3a04ea8cd2",
+      "cloud_usage": {
+        "input_tokens": 17491,
+        "output_tokens": 2582,
+        "thinking_tokens": 1227,
+        "cache_read_tokens": 24832,
+        "total_tokens": 20073
+      },
+      "local_usage": {
+        "local_calls": 0,
+        "local_prompt_tokens": 0,
+        "local_completion_tokens": 0,
+        "local_total_tokens": 0,
+        "estimated_saved_tokens": 0
+      }
+    },
+    {
+      "attempt_id": "reading_package_survey__direct__r1",
+      "task_id": "reading_package_survey",
+      "task_name": "Multi-file package survey (tandem_mcp/*.py)",
+      "category": "reading",
+      "scenario": "direct",
+      "repeat": 1,
+      "completed": true,
+      "timed_out": false,
+      "artifact_valid": true,
+      "eval_reason": "Found 6/6 modules",
+      "e2e_success": true,
+      "duration_seconds": 17.354573325,
+      "wall_seconds": 20.56,
+      "num_turns": 1,
+      "conversation_id": "eac654c6-102f-4e58-89c2-91ec3ccb42fd",
+      "cloud_usage": {
+        "input_tokens": 25137,
+        "output_tokens": 2190,
+        "thinking_tokens": 614,
+        "cache_read_tokens": 21557,
+        "total_tokens": 27327
+      },
+      "local_usage": {
+        "local_calls": 0,
+        "local_prompt_tokens": 0,
+        "local_completion_tokens": 0,
+        "local_total_tokens": 0,
+        "estimated_saved_tokens": 0
+      }
+    },
+    {
+      "attempt_id": "reading_git_log__direct__r1",
+      "task_id": "reading_git_log",
+      "task_name": "Git history digestion (25 commits)",
+      "category": "reading",
+      "scenario": "direct",
+      "repeat": 1,
+      "completed": true,
+      "timed_out": false,
+      "artifact_valid": true,
+      "eval_reason": "Matched 3/3 top files (['README.md', 'tests/test_offline.py', 'tandem_mcp/sandbox.py'])",
+      "e2e_success": true,
+      "duration_seconds": 31.614913732,
+      "wall_seconds": 34.66,
+      "num_turns": 1,
+      "conversation_id": "36231951-f667-48b2-8b53-8f255575310b",
+      "cloud_usage": {
+        "input_tokens": 21957,
+        "output_tokens": 2482,
+        "thinking_tokens": 1143,
+        "cache_read_tokens": 28977,
+        "total_tokens": 24439
+      },
+      "local_usage": {
+        "local_calls": 0,
+        "local_prompt_tokens": 0,
+        "local_completion_tokens": 0,
+        "local_total_tokens": 0,
+        "estimated_saved_tokens": 0
+      }
+    },
+    {
+      "attempt_id": "extraction_manifest__direct__r1",
+      "task_id": "extraction_manifest",
+      "task_name": "Structured JSON extraction (pyproject.toml)",
+      "category": "extraction",
+      "scenario": "direct",
+      "repeat": 1,
+      "completed": true,
+      "timed_out": false,
+      "artifact_valid": true,
+      "eval_reason": "Schema and values verified",
+      "e2e_success": true,
+      "duration_seconds": 9.260690266,
+      "wall_seconds": 12.2,
+      "num_turns": 1,
+      "conversation_id": "d3573c63-0f72-4caa-a898-cee69672daeb",
+      "cloud_usage": {
+        "input_tokens": 14220,
+        "output_tokens": 1270,
+        "thinking_tokens": 1123,
+        "cache_read_tokens": 9490,
+        "total_tokens": 15490
+      },
+      "local_usage": {
+        "local_calls": 0,
+        "local_prompt_tokens": 0,
+        "local_completion_tokens": 0,
+        "local_total_tokens": 0,
+        "estimated_saved_tokens": 0
+      }
+    },
+    {
+      "attempt_id": "bugfix_multifile__direct__r1",
+      "task_id": "bugfix_multifile",
+      "task_name": "Multi-file bugfix (4 modules + tests)",
+      "category": "bugfix",
+      "scenario": "direct",
+      "repeat": 1,
+      "completed": true,
+      "timed_out": false,
+      "artifact_valid": true,
+      "eval_reason": "test_suite.py passed",
+      "e2e_success": true,
+      "duration_seconds": 25.642295131,
+      "wall_seconds": 28.68,
+      "num_turns": 1,
+      "conversation_id": "2710187c-4e23-4820-b789-94741396c0d1",
+      "cloud_usage": {
+        "input_tokens": 22980,
+        "output_tokens": 1722,
+        "thinking_tokens": 500,
+        "cache_read_tokens": 46789,
+        "total_tokens": 24702
+      },
+      "local_usage": {
+        "local_calls": 0,
+        "local_prompt_tokens": 0,
+        "local_completion_tokens": 0,
+        "local_total_tokens": 0,
+        "estimated_saved_tokens": 0
+      }
+    },
+    {
+      "attempt_id": "feature_rate_limiter__direct__r1",
+      "task_id": "feature_rate_limiter",
+      "task_name": "Bounded module + tests (rate_limiter.py)",
+      "category": "feature",
+      "scenario": "direct",
+      "repeat": 1,
+      "completed": true,
+      "timed_out": false,
+      "artifact_valid": true,
+      "eval_reason": "Hidden eval + user tests passed",
+      "e2e_success": true,
+      "duration_seconds": 25.242100634,
+      "wall_seconds": 28.62,
+      "num_turns": 1,
+      "conversation_id": "b2285421-f4d9-4060-b2ba-f69768af35cc",
+      "cloud_usage": {
+        "input_tokens": 19908,
+        "output_tokens": 3685,
+        "thinking_tokens": 763,
+        "cache_read_tokens": 35273,
+        "total_tokens": 23593
+      },
+      "local_usage": {
+        "local_calls": 0,
+        "local_prompt_tokens": 0,
+        "local_completion_tokens": 0,
+        "local_total_tokens": 0,
+        "estimated_saved_tokens": 0
+      }
+    },
+    {
+      "attempt_id": "reading_agent_rollback__tandem__r1",
+      "task_id": "reading_agent_rollback",
+      "task_name": "Targeted code QA (agent.py rollback)",
+      "category": "reading",
+      "scenario": "tandem",
+      "repeat": 1,
+      "completed": true,
+      "timed_out": false,
+      "artifact_valid": true,
+      "eval_reason": "Verified rollback None=unbacked/skip and string=blob-restore",
+      "e2e_success": true,
+      "duration_seconds": 276.147312233,
+      "wall_seconds": 278.96,
+      "num_turns": 1,
+      "conversation_id": "14714f5f-860c-4a7f-86e4-4caf078571fe",
+      "cloud_usage": {
+        "input_tokens": 20014,
+        "output_tokens": 1963,
+        "thinking_tokens": 789,
+        "cache_read_tokens": 32014,
+        "total_tokens": 21977
+      },
+      "local_usage": {
+        "local_calls": 6,
+        "local_prompt_tokens": 6270,
+        "local_completion_tokens": 1792,
+        "local_total_tokens": 8062,
+        "estimated_saved_tokens": 0
+      }
+    },
+    {
+      "attempt_id": "reading_package_survey__tandem__r1",
+      "task_id": "reading_package_survey",
+      "task_name": "Multi-file package survey (tandem_mcp/*.py)",
+      "category": "reading",
+      "scenario": "tandem",
+      "repeat": 1,
+      "completed": true,
+      "timed_out": false,
+      "artifact_valid": true,
+      "eval_reason": "Found 6/6 modules",
+      "e2e_success": true,
+      "duration_seconds": 617.793506544,
+      "wall_seconds": 620.79,
+      "num_turns": 1,
+      "conversation_id": "9e005040-b622-4034-9597-f0de2f13f65c",
+      "cloud_usage": {
+        "input_tokens": 50929,
+        "output_tokens": 3487,
+        "thinking_tokens": 2329,
+        "cache_read_tokens": 45975,
+        "total_tokens": 54416
+      },
+      "local_usage": {
+        "local_calls": 9,
+        "local_prompt_tokens": 32733,
+        "local_completion_tokens": 2775,
+        "local_total_tokens": 35508,
+        "estimated_saved_tokens": 0
+      }
+    },
+    {
+      "attempt_id": "reading_git_log__tandem__r1",
+      "task_id": "reading_git_log",
+      "task_name": "Git history digestion (25 commits)",
+      "category": "reading",
+      "scenario": "tandem",
+      "repeat": 1,
+      "completed": true,
+      "timed_out": false,
+      "artifact_valid": false,
+      "eval_reason": "Only matched [] of top3 ['README.md', 'tests/test_offline.py', 'tandem_mcp/sandbox.py']",
+      "e2e_success": false,
+      "duration_seconds": 397.684805056,
+      "wall_seconds": 401.16,
+      "num_turns": 1,
+      "conversation_id": "822888cb-3f3f-4bfc-82e2-6e84a19400ed",
+      "cloud_usage": {
+        "input_tokens": 24092,
+        "output_tokens": 2386,
+        "thinking_tokens": 1446,
+        "cache_read_tokens": 54639,
+        "total_tokens": 26478
+      },
+      "local_usage": {
+        "local_calls": 3,
+        "local_prompt_tokens": 8098,
+        "local_completion_tokens": 1590,
+        "local_total_tokens": 9688,
+        "estimated_saved_tokens": 0
+      }
+    },
+    {
+      "attempt_id": "extraction_manifest__tandem__r1",
+      "task_id": "extraction_manifest",
+      "task_name": "Structured JSON extraction (pyproject.toml)",
+      "category": "extraction",
+      "scenario": "tandem",
+      "repeat": 1,
+      "completed": true,
+      "timed_out": false,
+      "artifact_valid": true,
+      "eval_reason": "Schema and values verified",
+      "e2e_success": true,
+      "duration_seconds": 173.266043846,
+      "wall_seconds": 176.07,
+      "num_turns": 1,
+      "conversation_id": "b3e356c0-77c8-48e4-b96a-844844a766ef",
+      "cloud_usage": {
+        "input_tokens": 17089,
+        "output_tokens": 804,
+        "thinking_tokens": 472,
+        "cache_read_tokens": 20234,
+        "total_tokens": 17893
+      },
+      "local_usage": {
+        "local_calls": 4,
+        "local_prompt_tokens": 801,
+        "local_completion_tokens": 523,
+        "local_total_tokens": 1324,
+        "estimated_saved_tokens": 0
+      }
+    },
+    {
+      "attempt_id": "bugfix_multifile__tandem__r1",
+      "task_id": "bugfix_multifile",
+      "task_name": "Multi-file bugfix (4 modules + tests)",
+      "category": "bugfix",
+      "scenario": "tandem",
+      "repeat": 1,
+      "completed": true,
+      "timed_out": false,
+      "artifact_valid": true,
+      "eval_reason": "test_suite.py passed",
+      "e2e_success": true,
+      "duration_seconds": 234.841817859,
+      "wall_seconds": 237.86,
+      "num_turns": 1,
+      "conversation_id": "d854ccdb-8b25-4d77-9caf-ac53f8cb76ee",
+      "cloud_usage": {
+        "input_tokens": 38927,
+        "output_tokens": 5169,
+        "thinking_tokens": 3030,
+        "cache_read_tokens": 169346,
+        "total_tokens": 44096
+      },
+      "local_usage": {
+        "local_calls": 5,
+        "local_prompt_tokens": 6973,
+        "local_completion_tokens": 471,
+        "local_total_tokens": 7444,
+        "estimated_saved_tokens": 0
+      }
+    },
+    {
+      "attempt_id": "feature_rate_limiter__tandem__r1",
+      "task_id": "feature_rate_limiter",
+      "task_name": "Bounded module + tests (rate_limiter.py)",
+      "category": "feature",
+      "scenario": "tandem",
+      "repeat": 1,
+      "completed": true,
+      "timed_out": false,
+      "artifact_valid": true,
+      "eval_reason": "Hidden eval + user tests passed",
+      "e2e_success": true,
+      "duration_seconds": 573.635327018,
+      "wall_seconds": 576.54,
+      "num_turns": 1,
+      "conversation_id": "17c33c08-8cfb-4bd6-8e0f-f2483cd56f48",
+      "cloud_usage": {
+        "input_tokens": 43341,
+        "output_tokens": 4806,
+        "thinking_tokens": 2187,
+        "cache_read_tokens": 196579,
+        "total_tokens": 48147
+      },
+      "local_usage": {
+        "local_calls": 16,
+        "local_prompt_tokens": 29718,
+        "local_completion_tokens": 4049,
+        "local_total_tokens": 33767,
+        "estimated_saved_tokens": 0
+      }
+    }
+  ]
+}

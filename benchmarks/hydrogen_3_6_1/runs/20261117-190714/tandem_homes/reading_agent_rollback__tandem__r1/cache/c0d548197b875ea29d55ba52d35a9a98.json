@@ -1,0 +1,80 @@
+{
+ "answer": "In both functions, when `snapshot[rel]` is `None`, the file is added to the `unbacked` list and skipped \u2014 no restoration is attempted. When `snapshot[rel]` is a string (a digest), the function reads `blobs/<digest>`, decompresses it with zlib, writes the bytes back to the file, restores the file mode from `snapshot_modes`, and adds the path to `reverted` (in `_revert_from_snapshot`) or `done` (in `rollback`).",
+ "evidence": [
+  {
+   "line": 973,
+   "quote": "if rel in snapshot:",
+   "quote_found": true
+  },
+  {
+   "line": 974,
+   "quote": "digest = snapshot[rel]",
+   "quote_found": true
+  },
+  {
+   "line": 975,
+   "quote": "if digest is None:",
+   "quote_found": true
+  },
+  {
+   "line": 976,
+   "quote": "unbacked.append(rel)",
+   "quote_found": true
+  },
+  {
+   "line": 983,
+   "quote": "p.write_bytes(zlib.decompress(blob.read_bytes()))",
+   "quote_found": true
+  },
+  {
+   "line": 987,
+   "quote": "reverted.append(rel)",
+   "quote_found": true
+  },
+  {
+   "line": 1806,
+   "quote": "if rel in snapshot:",
+   "quote_found": true
+  },
+  {
+   "line": 1807,
+   "quote": "digest = snapshot[rel]",
+   "quote_found": true
+  },
+  {
+   "line": 1808,
+   "quote": "if digest is None:",
+   "quote_found": true
+  },
+  {
+   "line": 1809,
+   "quote": "unbacked.append(rel)",
+   "quote_found": true
+  },
+  {
+   "line": 1816,
+   "quote": "p.write_bytes(zlib.decompress(blob.read_bytes()))",
+   "quote_found": true
+  },
+  {
+   "line": 1820,
+   "quote": "done.append(rel)",
+   "quote_found": true
+  }
+ ],
+ "rejected": 0,
+ "notes_dropped": 0,
+ "notes_capped": 0,
+ "notes_omitted": 0,
+ "loose": [],
+ "quote_found": true,
+ "claim_supported": "quote_only",
+ "claim_warnings": [],
+ "truncated_lines": 0,
+ "chunks": 1,
+ "parts_read": 1,
+ "read_lines": 301,
+ "lines": 1972,
+ "tokens": 5592,
+ "model": "qwen3.8-27b@iq3_s"
+}
