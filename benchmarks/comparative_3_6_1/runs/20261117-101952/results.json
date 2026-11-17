@@ -1,0 +1,568 @@
+{
+  "run_id": "20261117-101952",
+  "date": "2026-11-17 12:07:24",
+  "tandem_version": "3.6.1",
+  "environment_check": {
+    "tandem_dir": "/home/ale/tools/tandem-mcp",
+    "commit": {
+      "expected_commit": "010cbb6",
+      "actual_commit": "010cbb6",
+      "matches": true,
+      "overridden": false
+    },
+    "git_clean": true,
+    "imported_version": "3.6.1",
+    "version_matches": true,
+    "imported_path": "/home/ale/tools/tandem-mcp/tandem_mcp/__init__.py",
+    "path_matches": true,
+    "source_hashes": {
+      "__init__.py": "297aa346bdfb312329c4d630f21937ec08add549dad939f79b91d88c6689fc88",
+      "__main__.py": "ddd60a1df996b2b744c45953165711e5afe2711f5f0249f4e98875e1342411df",
+      "agent.py": "0d2f3417389235b023dac965305391d8e5525f4840eb6ccd2cc4ee0761403bd7",
+      "digest.py": "1a57ed4a5000886a3fd937bb11bc5703cafbd4300ede96d6255e525b29fe5295",
+      "engine.py": "719cbf1c86d6c860fbc78bb105409014cab6801d56342f11f4013651e2f32ebb",
+      "sandbox.py": "1e3c527704fb7f5f89ebd6eaf4ca0017d76ba7acf838cac4234ee688af27564e",
+      "server.py": "37a15ba4fc4aa3b9705afe332d04707b1dc03039b9fb62f3ec8e521fdd3589ea",
+      "store.py": "8ef715982b379488ad549de3386ac7c1088c4ad1c17b5dfc47bb20315c0f0d2c"
+    },
+    "verified": true
+  },
+  "fixture_check": {
+    "checked_files": 24,
+    "git_commit": "010cbb697ec22fa96a77b1b2cf495411557e4fba",
+    "ok": true
+  },
+  "orchestrator": {
+    "name": "Gemini 4 Hydrogen",
+    "model_id": "gemini-4-hydrogen-medium",
+    "identity_verified": false,
+    "verified_runs": 2,
+    "total_runs": 3
+  },
+  "executor": {
+    "model_id": "qwen3.8-27b@iq3_s",
+    "server": "LM Studio",
+    "endpoint": "http://127.0.0.1:1234/v1",
+    "context_length": 65536
+  },
+  "cloud_tokens_collection": "agy_cli_json_usage",
+  "records": [
+    {
+      "task_id": "gen_portal",
+      "category": "generation",
+      "scenario": "gemini_direct",
+      "repeat": 1,
+      "status": "COMPLETED",
+      "outcome": {
+        "execution_status": "COMPLETED",
+        "execution_completed": true,
+        "artifact_valid": true,
+        "end_to_end_success": true
+      },
+      "conversation_id": "b3a235b0-796c-4015-a525-0499cd69ca1b",
+      "model_identity": {
+        "requested_model_id": "gemini-4-hydrogen-medium",
+        "provider_reported_model_id": "gemini-4-hydrogen-medium",
+        "verification_method": "agy_transcript_jsonl",
+        "identity_verified": true,
+        "limitation": null
+      },
+      "wall_seconds": 93.35,
+      "cloud_usage": {
+        "cloud_input_tokens": 40164,
+        "cloud_output_tokens": 18116,
+        "cloud_reasoning_tokens": 7984,
+        "cloud_cached_tokens": 150695,
+        "cloud_total_tokens": 58280,
+        "cloud_calls": 1,
+        "thinking_included_in_output": true,
+        "cloud_tokens_status": "measured",
+        "provenance": "measured",
+        "collection_method": "agy_cli_json_usage"
+      },
+      "local_compute": {
+        "local_prompt_tokens": 0,
+        "local_completion_tokens": 0,
+        "local_total_tokens": 0,
+        "local_inference_seconds": 0.0,
+        "local_tps": 0.0,
+        "local_requests": 0,
+        "retry_attempts": 0,
+        "repair_attempts": 0,
+        "provenance": "measured",
+        "collection_method": "none_direct_cloud"
+      },
+      "tool_context": {
+        "tool_call_count": 8,
+        "total_request_bytes": 24154,
+        "total_response_bytes": 12371,
+        "truncated_calls": 0,
+        "interactions": [
+          {
+            "tool_name": "run_command",
+            "request_bytes": 141,
+            "response_bytes": 438,
+            "truncated": false
+          },
+          {
+            "tool_name": "read_file",
+            "request_bytes": 73,
+            "response_bytes": 2024,
+            "truncated": false
+          },
+          {
+            "tool_name": "read_file",
+            "request_bytes": 79,
+            "response_bytes": 9011,
+            "truncated": false
+          },
+          {
+            "tool_name": "write_file",
+            "request_bytes": 4929,
+            "response_bytes": 169,
+            "truncated": false
+          },
+          {
+            "tool_name": "write_file",
+            "request_bytes": 3305,
+            "response_bytes": 169,
+            "truncated": false
+          },
+          {
+            "tool_name": "write_file",
+            "request_bytes": 13129,
+            "response_bytes": 169,
+            "truncated": false
+          },
+          {
+            "tool_name": "write_file",
+            "request_bytes": 1540,
+            "response_bytes": 169,
+            "truncated": false
+          },
+          {
+            "tool_name": "run_command",
+            "request_bytes": 958,
+            "response_bytes": 222,
+            "truncated": false
+          }
+        ],
+        "source_reduction": {
+          "input_source_bytes": 567,
+          "summarized_output_bytes": 12371,
+          "source_reduction_pct": -2081.8,
+          "est_tokens_saved": -3279,
+          "provenance": "derived",
+          "est_tokens_provenance": "estimated",
+          "collection_method": "agy_transcript_tool_calls"
+        },
+        "provenance": "measured",
+        "collection_method": "agy_transcript_tool_calls"
+      },
+      "quality": {
+        "evaluated": true,
+        "passed": true,
+        "multi_file": true,
+        "harness_ok": true,
+        "harness_output": "engine ok",
+        "browser": {
+          "browser_available": true,
+          "browser_passed": true,
+          "console_errors": [],
+          "pixels_changed": true,
+          "time_advanced": null,
+          "after_click": null,
+          "dom_info": {
+            "hasCanvas": true,
+            "w": 1280,
+            "h": 720,
+            "hasPause": true,
+            "hasOrbit": true,
+            "hasReset": true,
+            "hasSpeed": true,
+            "polys": "84",
+            "parts": "110"
+          }
+        },
+        "output_bytes": 23254,
+        "constraint_compliance_pct": 100.0
+      },
+      "answer_preview": "Created the 3D neon portal web demo in `/tmp/cmp-gen_portal-gemini_direct-r1-lrki9gn7`:\n\n- [index.html](file:///tmp/cmp-gen_portal-gemini_direct-r1-lrki9gn7/index.html) \u2014 Full-viewport `<canvas id=\"c\">` over the dark radial-gradient space background, glassmorphism `.hud` (`NEON PORTAL 3D` + `TANDEM MCP` badge, `FPS`/`POLYS`/`PARTS` stat cells, `Pause`/`Orbit ON`/`Reset` buttons, and `#speed` slide"
+    },
+    {
+      "task_id": "gen_portal",
+      "category": "generation",
+      "scenario": "gemini_lmstudio",
+      "repeat": 1,
+      "status": "COMPLETED",
+      "outcome": {
+        "execution_status": "COMPLETED",
+        "execution_completed": true,
+        "artifact_valid": true,
+        "end_to_end_success": true
+      },
+      "conversation_id": "d7b4ac30-20ea-43aa-bd3c-ab5b99e5d81a",
+      "model_identity": {
+        "requested_model_id": "gemini-4-hydrogen-medium",
+        "provider_reported_model_id": "gemini-4-hydrogen-medium",
+        "verification_method": "agy_transcript_jsonl",
+        "identity_verified": true,
+        "limitation": null
+      },
+      "wall_seconds": 2152.57,
+      "cloud_usage": {
+        "cloud_input_tokens": 200061,
+        "cloud_output_tokens": 8670,
+        "cloud_reasoning_tokens": 2563,
+        "cloud_cached_tokens": 354378,
+        "cloud_total_tokens": 208731,
+        "cloud_calls": 1,
+        "thinking_included_in_output": true,
+        "cloud_tokens_status": "measured",
+        "provenance": "measured",
+        "collection_method": "agy_cli_json_usage"
+      },
+      "local_compute": {
+        "local_prompt_tokens": 13012,
+        "local_completion_tokens": 4146,
+        "local_total_tokens": 17158,
+        "local_inference_seconds": 302.35,
+        "local_tps": 13.7,
+        "local_requests": 3,
+        "retry_attempts": 0,
+        "repair_attempts": 0,
+        "provenance": "measured",
+        "collection_method": "lm_studio_harness_usage"
+      },
+      "tool_context": {
+        "tool_call_count": 17,
+        "total_request_bytes": 14060,
+        "total_response_bytes": 46619,
+        "truncated_calls": 1,
+        "interactions": [
+          {
+            "tool_name": "run_command",
+            "request_bytes": 152,
+            "response_bytes": 505,
+            "truncated": false
+          },
+          {
+            "tool_name": "read_file",
+            "request_bytes": 107,
+            "response_bytes": 2024,
+            "truncated": false
+          },
+          {
+            "tool_name": "read_file",
+            "request_bytes": 113,
+            "response_bytes": 9011,
+            "truncated": false
+          },
+          {
+            "tool_name": "read_file",
+            "request_bytes": 112,
+            "response_bytes": 3585,
+            "truncated": false
+          },
+          {
+            "tool_name": "run_command",
+            "request_bytes": 779,
+            "response_bytes": 1221,
+            "truncated": false
+          },
+          {
+            "tool_name": "run_command",
+            "request_bytes": 153,
+            "response_bytes": 684,
+            "truncated": false
+          },
+          {
+            "tool_name": "read_file",
+            "request_bytes": 114,
+            "response_bytes": 6466,
+            "truncated": true
+          },
+          {
+            "tool_name": "run_command",
+            "request_bytes": 901,
+            "response_bytes": 224,
+            "truncated": false
+          },
+          {
+            "tool_name": "run_command",
+            "request_bytes": 737,
+            "response_bytes": 1179,
+            "truncated": false
+          },
+          {
+            "tool_name": "run_command",
+            "request_bytes": 143,
+            "response_bytes": 684,
+            "truncated": false
+          },
+          {
+            "tool_name": "run_command",
+            "request_bytes": 703,
+            "response_bytes": 1136,
+            "truncated": false
+          },
+          {
+            "tool_name": "read_file",
+            "request_bytes": 100,
+            "response_bytes": 4902,
+            "truncated": false
+          },
+          {
+            "tool_name": "read_file",
+            "request_bytes": 102,
+            "response_bytes": 4621,
+            "truncated": false
+          },
+          {
+            "tool_name": "run_command",
+            "request_bytes": 4464,
+            "response_bytes": 4877,
+            "truncated": false
+          },
+          {
+            "tool_name": "run_command",
+            "request_bytes": 1144,
+            "response_bytes": 1597,
+            "truncated": false
+          },
+          {
+            "tool_name": "run_command",
+            "request_bytes": 3243,
+            "response_bytes": 3681,
+            "truncated": false
+          },
+          {
+            "tool_name": "run_command",
+            "request_bytes": 993,
+            "response_bytes": 222,
+            "truncated": false
+          }
+        ],
+        "source_reduction": {
+          "input_source_bytes": 567,
+          "summarized_output_bytes": 46619,
+          "source_reduction_pct": -8122.0,
+          "est_tokens_saved": -12792,
+          "provenance": "derived",
+          "est_tokens_provenance": "estimated",
+          "collection_method": "agy_transcript_tool_calls"
+        },
+        "provenance": "measured",
+        "collection_method": "agy_transcript_tool_calls"
+      },
+      "quality": {
+        "evaluated": true,
+        "passed": true,
+        "multi_file": true,
+        "harness_ok": true,
+        "harness_output": "engine ok",
+        "browser": {
+          "browser_available": true,
+          "browser_passed": true,
+          "console_errors": [],
+          "pixels_changed": true,
+          "time_advanced": null,
+          "after_click": null,
+          "dom_info": {
+            "hasCanvas": true,
+            "w": 1280,
+            "h": 720,
+            "hasPause": true,
+            "hasOrbit": true,
+            "hasReset": true,
+            "hasSpeed": true,
+            "polys": "84",
+            "parts": "110"
+          }
+        },
+        "output_bytes": 20909,
+        "constraint_compliance_pct": 100.0
+      },
+      "answer_preview": "I have delegated the 3D neon portal web demo task to the local Qwen model via `lm_studio_harness.py` and am waiting for it to complete.\n`index.html` and `scene.js` were generated and verified. The previous run reached its 600s timeout before writing `engine3d.js` and `app.js`, so I have launched `lm_studio_harness.py` with `--timeout 1200` to complete `engine3d.js` and `app.js` and run the verific"
+    },
+    {
+      "task_id": "gen_portal",
+      "category": "generation",
+      "scenario": "gemini_tandem",
+      "repeat": 1,
+      "status": "TIMEOUT",
+      "outcome": {
+        "execution_status": "TIMEOUT",
+        "execution_completed": false,
+        "artifact_valid": false,
+        "end_to_end_success": false
+      },
+      "conversation_id": null,
+      "model_identity": {
+        "requested_model_id": "gemini-4-hydrogen-medium",
+        "provider_reported_model_id": null,
+        "verification_method": "agy_transcript_jsonl",
+        "identity_verified": false,
+        "limitation": "No conversation_id returned (e.g. timeout or CLI error); model identity cannot be verified."
+      },
+      "wall_seconds": 4200.13,
+      "cloud_usage": {
+        "cloud_input_tokens": null,
+        "cloud_output_tokens": null,
+        "cloud_reasoning_tokens": null,
+        "cloud_cached_tokens": null,
+        "cloud_total_tokens": null,
+        "cloud_calls": null,
+        "thinking_included_in_output": true,
+        "cloud_tokens_status": "unavailable",
+        "provenance": "unavailable",
+        "collection_method": "agy_cli_json_usage"
+      },
+      "local_compute": {
+        "local_prompt_tokens": 232081,
+        "local_completion_tokens": 35914,
+        "local_total_tokens": 267995,
+        "local_inference_seconds": 3966.8,
+        "local_tps": 9.1,
+        "local_requests": 24,
+        "retry_attempts": 0,
+        "repair_attempts": 0,
+        "provenance": "measured",
+        "collection_method": "tandem_ledger_and_jobs"
+      },
+      "tool_context": {
+        "tool_call_count": null,
+        "total_request_bytes": null,
+        "total_response_bytes": null,
+        "truncated_calls": null,
+        "interactions": [],
+        "source_reduction": {
+          "input_source_bytes": 567,
+          "summarized_output_bytes": null,
+          "source_reduction_pct": null,
+          "est_tokens_saved": null,
+          "provenance": "unavailable",
+          "collection_method": "unavailable_no_transcript"
+        },
+        "provenance": "unavailable",
+        "collection_method": "unavailable_no_transcript"
+      },
+      "quality": {
+        "evaluated": true,
+        "passed": false,
+        "multi_file": false,
+        "harness_ok": null,
+        "harness_output": "",
+        "browser": {
+          "browser_available": true,
+          "browser_passed": false,
+          "console_errors": [
+            "Failed to load resource: net::ERR_FILE_NOT_FOUND"
+          ],
+          "pixels_changed": false,
+          "time_advanced": null,
+          "after_click": null,
+          "dom_info": {
+            "hasCanvas": true,
+            "w": 300,
+            "h": 150,
+            "hasPause": true,
+            "hasOrbit": true,
+            "hasReset": true,
+            "hasSpeed": true,
+            "polys": "0",
+            "parts": "0"
+          }
+        },
+        "output_bytes": 18076,
+        "constraint_compliance_pct": 0.0
+      },
+      "answer_preview": ""
+    }
+  ],
+  "aggregates": {
+    "gen_portal": {
+      "gemini_direct": {
+        "n": 1,
+        "completed_executions": 1,
+        "end_to_end_successes": 1,
+        "artifact_valid_count": 1,
+        "failed_executions": 0,
+        "timeouts": 0,
+        "interrupted_or_partial": 0,
+        "evaluation_errors": 0,
+        "end_to_end_success_rate": 100.0,
+        "artifact_pass_rate": 100.0,
+        "failure_rate": 0.0,
+        "measured_usage_count": 1,
+        "missing_usage_count": 0,
+        "usage_coverage_pct": 100.0,
+        "total_measured_cloud_tokens": 58280,
+        "mean_cloud_tokens_per_attempt": 58280,
+        "cloud_tokens_per_success": 58280.0,
+        "cloud_tokens_per_success_complete": true,
+        "median_seconds": 93.35,
+        "mean_seconds": 93.35,
+        "local_tokens_total": 0,
+        "local_tokens_mean_per_attempt": 0,
+        "repair_attempts_total": 0,
+        "constraint_compliance_mean": 100.0,
+        "statistically_representative": false
+      },
+      "gemini_lmstudio": {
+        "n": 1,
+        "completed_executions": 1,
+        "end_to_end_successes": 1,
+        "artifact_valid_count": 1,
+        "failed_executions": 0,
+        "timeouts": 0,
+        "interrupted_or_partial": 0,
+        "evaluation_errors": 0,
+        "end_to_end_success_rate": 100.0,
+        "artifact_pass_rate": 100.0,
+        "failure_rate": 0.0,
+        "measured_usage_count": 1,
+        "missing_usage_count": 0,
+        "usage_coverage_pct": 100.0,
+        "total_measured_cloud_tokens": 208731,
+        "mean_cloud_tokens_per_attempt": 208731,
+        "cloud_tokens_per_success": 208731.0,
+        "cloud_tokens_per_success_complete": true,
+        "median_seconds": 2152.57,
+        "mean_seconds": 2152.57,
+        "local_tokens_total": 17158,
+        "local_tokens_mean_per_attempt": 17158,
+        "repair_attempts_total": 0,
+        "constraint_compliance_mean": 100.0,
+        "statistically_representative": false
+      },
+      "gemini_tandem": {
+        "n": 1,
+        "completed_executions": 0,
+        "end_to_end_successes": 0,
+        "artifact_valid_count": 0,
+        "failed_executions": 1,
+        "timeouts": 1,
+        "interrupted_or_partial": 0,
+        "evaluation_errors": 0,
+        "end_to_end_success_rate": 0.0,
+        "artifact_pass_rate": 0.0,
+        "failure_rate": 100.0,
+        "measured_usage_count": 0,
+        "missing_usage_count": 1,
+        "usage_coverage_pct": 0.0,
+        "total_measured_cloud_tokens": null,
+        "mean_cloud_tokens_per_attempt": null,
+        "cloud_tokens_per_success": null,
+        "cloud_tokens_per_success_complete": false,
+        "median_seconds": 4200.13,
+        "mean_seconds": 4200.13,
+        "local_tokens_total": 267995,
+        "local_tokens_mean_per_attempt": 267995,
+        "repair_attempts_total": 0,
+        "constraint_compliance_mean": 0.0,
+        "statistically_representative": false
+      }
+    }
+  }
+}

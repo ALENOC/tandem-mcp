@@ -23,7 +23,6 @@ import subprocess
 import sys
 import tempfile
 import time
-import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -215,7 +214,7 @@ def run_single(
     dry_run: bool = False,
 ) -> dict[str, Any]:
     ws_dir = Path(tempfile.mkdtemp(prefix=f'cmp-{task["id"]}-{scenario}-r{repeat_idx}-'))
-    tandem_home = Path(tempfile.mkdtemp(prefix=f'cmp-thome-'))
+    tandem_home = Path(tempfile.mkdtemp(prefix='cmp-thome-'))
     source_bytes = _prepare_workspace(task, scenario, fixtures_dir, ws_dir)
     prompt = _build_prompt(task, scenario, ws_dir, fixtures_dir)
 
@@ -245,11 +244,12 @@ def run_single(
     ]
 
     t0 = time.perf_counter()
+    raw_status = 'FAILED'
+    agy_json = None
     try:
         proc = subprocess.run(cmd, cwd=ws_dir, env=env, capture_output=True, text=True, timeout=timeout)
         wall_s = round(time.perf_counter() - t0, 2)
         raw_out = proc.stdout.strip()
-        agy_json = None
         for line in reversed(raw_out.splitlines()):
             line = line.strip()
             if line.startswith('{') and line.endswith('}'):
@@ -258,16 +258,29 @@ def run_single(
                     break
                 except Exception:
                     pass
+        if agy_json and agy_json.get('status'):
+            raw_status = metrics.normalize_status(agy_json['status'])
+        elif proc.returncode == 0 and agy_json is not None:
+            raw_status = 'COMPLETED'
+        else:
+            raw_status = 'FAILED'
     except subprocess.TimeoutExpired:
         wall_s = round(time.perf_counter() - t0, 2)
+        raw_status = 'TIMEOUT'
         agy_json = {'status': 'TIMEOUT', 'response': '', 'num_turns': None, 'usage': None}
+    except KeyboardInterrupt:
+        wall_s = round(time.perf_counter() - t0, 2)
+        raw_status = 'INTERRUPTED'
+        agy_json = {'status': 'INTERRUPTED', 'response': '', 'num_turns': None, 'usage': None}
 
+    conv_id = (agy_json or {}).get('conversation_id')
     answer_text = (agy_json or {}).get('response') or ''
     cloud_usage = metrics.build_cloud_usage_record(
         (agy_json or {}).get('usage'),
         num_turns=(agy_json or {}).get('num_turns'),
         collection_method='agy_cli_json_usage',
     )
+    identity = metrics.verify_agy_model_identity(cfg['orchestrator']['model_id'], conv_id)
 
     if scenario == 'gemini_direct':
         local_compute = metrics.build_local_compute_record(0, 0, 0.0, 0, 0, 0, provenance='measured', collection_method='none_direct_cloud')
@@ -300,70 +313,140 @@ def run_single(
             collection_method='tandem_ledger_and_jobs',
         )
 
-    ctx_bytes = len(answer_text.encode('utf-8', errors='replace'))
-    ctx_red = metrics.compute_context_reduction(
-        source_bytes,
-        ctx_bytes,
-        chars_per_token=cfg['chars_per_token'],
-        collection_method='response_bytes_vs_source_bytes',
+    # Measure actual tool payloads from agy transcript (never from final assistant response)
+    interactions = metrics.extract_tool_interactions_from_transcript(conv_id)
+    tool_context = metrics.build_tool_context_record(
+        interactions,
+        source_bytes=source_bytes,
+        collection_method='agy_transcript_tool_calls' if interactions is not None else 'unavailable_no_transcript',
     )
+
     quality = evaluate.evaluate_task(task['id'], answer_text, ws_dir, fixtures_dir)
+    outcome = metrics.classify_outcome(raw_status, quality)
 
     return {
         'task_id': task['id'],
         'category': task['category'],
         'scenario': scenario,
         'repeat': repeat_idx,
-        'status': (agy_json or {}).get('status', 'ERROR'),
-        'conversation_id': (agy_json or {}).get('conversation_id'),
+        'status': outcome['execution_status'],
+        'outcome': outcome,
+        'conversation_id': conv_id,
+        'model_identity': identity,
         'wall_seconds': wall_s,
         'cloud_usage': cloud_usage,
         'local_compute': local_compute,
-        'context_reduction': ctx_red,
+        'tool_context': tool_context,
         'quality': quality,
         'answer_preview': answer_text[:400],
     }
 
 
 def render_markdown_report(report: dict[str, Any]) -> str:
+    env_chk = report.get('environment_check', {})
+    orch = report.get('orchestrator', {})
     lines = [
         '# Comparative Benchmark Results — Tandem MCP v3.6.1',
         '',
         f'- **Run ID**: `{report["run_id"]}`',
         f'- **Date**: {report["date"]}',
-        f'- **Git commit**: `{report["version_check"]["actual_commit"]}` (expected `{report["version_check"]["expected_commit"]}`)',
-        f'- **Orchestrator**: `{report["orchestrator"]["model_id"]}` (identity verified: `{report["orchestrator"]["identity_verified"]}`)',
+        f'- **Tandem Commit**: `{env_chk.get("commit", {}).get("actual_commit", report.get("version_check", {}).get("actual_commit", "unknown"))}` '
+        f'(clean=`{env_chk.get("git_clean", "N/A")}`, version=`{env_chk.get("imported_version", report.get("tandem_version"))}`)',
+        f'- **Orchestrator**: requested=`{orch.get("model_id")}`, verified_runs=`{orch.get("verified_runs", 0)}/{orch.get("total_runs", 0)}`',
         f'- **Local executor**: `{report["executor"]["model_id"]}` via {report["executor"]["server"]} (`{report["executor"]["endpoint"]}`)',
-        f'- **Cloud token collection**: `{report["cloud_tokens_collection"]}`',
+        f'- **Cloud token collection**: `{report["cloud_tokens_collection"]}` (thinking included in `output_tokens`, not double-counted; cached tokens separate)',
         '',
         '## Aggregated Comparison',
         '',
-        '| Task | Scenario | n | Success | Median Time (s) | Cloud Tokens (mean) | Cloud Savings vs Direct | Local Tokens (mean) |',
-        '| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |',
+        '| Task | Scenario | n | Completed | E2E Success | Artifact Valid | Timeouts | Cloud Tokens / Attempt (mean) | Usage Coverage | Cloud Tokens / Success | Cloud Savings vs Direct | Median Time (s) | Local Tokens (mean) |',
+        '| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |',
     ]
     agg = report.get('aggregates', {})
-    # Group by task to compute Cloud Savings vs gemini_direct
     for task_id, scen_map in agg.items():
         direct_agg = scen_map.get('gemini_direct', {})
-        direct_tok = direct_agg.get('cloud_tokens_per_success_mean')
+        direct_tok = direct_agg.get('mean_cloud_tokens_per_attempt')
+        direct_cov = direct_agg.get('usage_coverage_pct', 0.0)
         for scen, st in scen_map.items():
-            ctok = st.get('cloud_tokens_per_success_mean')
-            ltok = st.get('local_tokens_per_success_mean')
+            mean_att = st.get('mean_cloud_tokens_per_attempt')
+            cov = st.get('usage_coverage_pct', 0.0)
+            per_succ = st.get('cloud_tokens_per_success')
+            if per_succ is not None and not st.get('cloud_tokens_per_success_complete', False):
+                per_succ_str = f'{per_succ} (incomplete)'
+            elif per_succ is not None:
+                per_succ_str = str(per_succ)
+            else:
+                per_succ_str = 'N/A'
+
             if scen == 'gemini_direct':
                 sav_str = 'baseline'
-            elif direct_tok and ctok:
-                sav = round(100.0 * (direct_tok - ctok) / direct_tok, 1)
-                sav_str = f'{sav:+.1f}%'
             else:
-                sav_str = 'N/A'
+                sav = metrics.compute_cloud_token_savings(
+                    direct_tok, mean_att,
+                    direct_status='measured' if direct_tok else 'unavailable',
+                    candidate_status='measured' if mean_att else 'unavailable',
+                    direct_coverage_pct=direct_cov,
+                    candidate_coverage_pct=cov,
+                )
+                if sav['cloud_savings_pct'] is None:
+                    sav_str = 'N/A'
+                elif not sav['coverage_comparable']:
+                    sav_str = f'{sav["cloud_savings_pct"]:+.1f}% (incomplete)'
+                else:
+                    sav_str = f'{sav["cloud_savings_pct"]:+.1f}%'
+
             lines.append(
-                f'| `{task_id}` | `{scen}` | {st.get("n", 0)} | {st.get("success_rate", 0)}% | '
+                f'| `{task_id}` | `{scen}` | {st.get("n", 0)} | '
+                f'{st.get("completed_executions", 0)} | '
+                f'{st.get("end_to_end_success_rate", 0.0)}% | '
+                f'{st.get("artifact_pass_rate", 0.0)}% | '
+                f'{st.get("timeouts", 0)} | '
+                f'{mean_att if mean_att is not None else "N/A"} | '
+                f'{cov}% | '
+                f'{per_succ_str} | '
+                f'{sav_str} | '
                 f'{st.get("median_seconds") if st.get("median_seconds") is not None else "N/A"} | '
-                f'{ctok if ctok is not None else "N/A"} | {sav_str} | '
-                f'{ltok if ltok is not None else "N/A"} |'
+                f'{st.get("local_tokens_mean_per_attempt") if st.get("local_tokens_mean_per_attempt") is not None else "N/A"} |'
             )
     lines.append('')
     return '\n'.join(lines)
+
+
+def _save_report(run_id, run_dir, cfg, env_check, fixture_check, records):
+    agg: dict[str, dict[str, Any]] = {}
+    verified_runs = 0
+    total_runs = 0
+    for r in records:
+        if r.get('dry_run'):
+            continue
+        total_runs += 1
+        if r.get('model_identity', {}).get('identity_verified'):
+            verified_runs += 1
+        agg.setdefault(r['task_id'], {}).setdefault(r['scenario'], []).append(r)
+
+    agg_summary = {
+        tid: {scen: metrics.aggregate_runs(recs) for scen, recs in scens.items()}
+        for tid, scens in agg.items()
+    }
+    report = {
+        'run_id': run_id,
+        'date': time.strftime('%Y-%m-%d %H:%M:%S'),
+        'tandem_version': cfg['tandem_version'],
+        'environment_check': env_check,
+        'fixture_check': fixture_check,
+        'orchestrator': {
+            'name': cfg['orchestrator']['name'],
+            'model_id': cfg['orchestrator']['model_id'],
+            'identity_verified': (total_runs > 0 and verified_runs == total_runs),
+            'verified_runs': verified_runs,
+            'total_runs': total_runs,
+        },
+        'executor': cfg['executor'],
+        'cloud_tokens_collection': 'agy_cli_json_usage',
+        'records': records,
+        'aggregates': agg_summary,
+    }
+    (run_dir / 'results.json').write_text(json.dumps(report, indent=2) + '\n')
+    (run_dir / 'RESULTS.md').write_text(render_markdown_report(report))
 
 
 def main():
@@ -384,7 +467,12 @@ def main():
     fixtures_dir = HERE / 'fixtures'
     tandem_under_test = Path('/home/ale/tools/tandem-mcp')
     target_repo = tandem_under_test if tandem_under_test.exists() else REPO_ROOT
-    version_check = metrics.verify_git_commit(target_repo, cfg['expected_commit'], allow_override=args.allow_dirty_commit)
+    env_check = metrics.verify_tandem_environment(
+        target_repo,
+        expected_commit=cfg['expected_commit'],
+        expected_version=cfg['tandem_version'],
+        allow_override=args.allow_dirty_commit,
+    )
     fixture_check = metrics.verify_fixtures_manifest(fixtures_dir)
 
     tasks = cfg['tasks']
@@ -408,14 +496,12 @@ def main():
         records = prev.get('records', [])
         done_keys = {(r['task_id'], r['scenario'], r['repeat']) for r in records if not r.get('dry_run')}
 
-    rng = random.Random(args.seed)
     orig_mcp = None if args.dry_run else _agy_mcp_state()
     try:
         for task in tasks:
             n_rep = args.repeats if args.repeats > 0 else cfg['default_repeats'][task['category']]
             t_timeout = args.timeout if args.timeout > 0 else cfg['timeouts_seconds'][task['category']]
             for rep in range(1, n_rep + 1):
-                # Rotate scenario order across repetitions to avoid ordering bias
                 order = list(scenarios)
                 if len(order) > 1:
                     shift = (rep - 1) % len(order)
@@ -428,43 +514,12 @@ def main():
                     print(f'[run={run_id}] task={task["id"]} scenario={scen} repeat={rep}/{n_rep}', flush=True)
                     rec = run_single(task, scen, rep, cfg, fixtures_dir, t_timeout, dry_run=args.dry_run)
                     records.append(rec)
-                    # Save incrementally for resume support
-                    _save_report(run_id, run_dir, cfg, version_check, fixture_check, records)
+                    _save_report(run_id, run_dir, cfg, env_check, fixture_check, records)
     finally:
         if orig_mcp is not None:
             _restore_agy_mcp(orig_mcp)
 
     print(f'Completed run {run_id}. Results: {results_path}')
-
-
-def _save_report(run_id, run_dir, cfg, version_check, fixture_check, records):
-    agg: dict[str, dict[str, Any]] = {}
-    for r in records:
-        if r.get('dry_run'):
-            continue
-        agg.setdefault(r['task_id'], {}).setdefault(r['scenario'], []).append(r)
-    agg_summary = {
-        tid: {scen: metrics.aggregate_runs(recs) for scen, recs in scens.items()}
-        for tid, scens in agg.items()
-    }
-    report = {
-        'run_id': run_id,
-        'date': time.strftime('%Y-%m-%d %H:%M:%S'),
-        'tandem_version': cfg['tandem_version'],
-        'version_check': version_check,
-        'fixture_check': fixture_check,
-        'orchestrator': {
-            'name': cfg['orchestrator']['name'],
-            'model_id': cfg['orchestrator']['model_id'],
-            'identity_verified': True,
-        },
-        'executor': cfg['executor'],
-        'cloud_tokens_collection': 'agy_cli_json_usage',
-        'records': records,
-        'aggregates': agg_summary,
-    }
-    (run_dir / 'results.json').write_text(json.dumps(report, indent=2) + '\n')
-    (run_dir / 'RESULTS.md').write_text(render_markdown_report(report))
 
 
 if __name__ == '__main__':

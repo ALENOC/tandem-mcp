@@ -2,90 +2,67 @@
 
 Rigorous three-way comparison of **Gemini 4 Hydrogen** (`gemini-4-hydrogen-medium`), **Gemini 4 Hydrogen + Direct LM Studio** (`qwen3.8-27b@iq3_s` via minimal tool harness), and **Gemini 4 Hydrogen + Tandem MCP v3.6.1** (`010cbb6` + `qwen3.8-27b@iq3_s`).
 
-Raw data: [`runs/20261117-075357/results.json`](runs/20261117-075357/results.json) · Suite runner: [`run_comparison.py`](run_comparison.py) · Evaluator: [`evaluate.py`](evaluate.py) · Metrics: [`metrics.py`](metrics.py)
+- **Corrected re-analysis (Tasks 1–8)**: [`runs/20261117-075357_corrected/RESULTS.md`](runs/20261117-075357_corrected/RESULTS.md) · [`results.json`](runs/20261117-075357_corrected/results.json) (derived from immutable [`runs/20261117-075357/results.json`](runs/20261117-075357/results.json))
+- **3D Portal 3-way run (Task 9)**: [`runs/20261117-101952/RESULTS.md`](runs/20261117-101952/RESULTS.md) · [`results.json`](runs/20261117-101952/results.json)
+- **Methodological Corrections**: [`METHODOLOGY_CORRECTION.md`](METHODOLOGY_CORRECTION.md)
 
 ---
 
-## 1. Environment & Identity Verification
+## 1. Environment & Integrity Verification
 
-- **Date**: 2026-11-17
-- **Run ID**: `20261117-075357`
-- **Tandem MCP**: `3.6.1`, commit `010cbb6` (verified against `/home/ale/tools/tandem-mcp`)
-- **Orchestrator**: `gemini-4-hydrogen-medium` (`orchestrator_identity_verified: true`, executed via `agy --model gemini-4-hydrogen-medium --output-format json`)
-- **Cloud token collection**: `measured` via `agy --output-format json` (`input_tokens`, `output_tokens`, `thinking_tokens`, `cache_read_tokens`, `total_tokens`, `num_turns`)
-- **Local executor**: `qwen3.8-27b@iq3_s` on LM Studio (`http://127.0.0.1:1234/v1`), context `65536`
-- **Hardware**: Intel Core i9-9900K @ 3.60GHz (16 threads), 22 GiB RAM, AMD Radeon Navi 21 (RX 6800/6900 XT, 16 GiB VRAM), Linux x86_64
-- **Frozen fixtures**: 24 files from tag `v3.6.1` (`010cbb6`), SHA-256 verified before every run ([`fixtures/manifest.json`](fixtures/manifest.json))
-- **Cache policy**: Isolated temporary `TANDEM_HOME` and fresh workspace per run; scenario order rotated across repetitions (`A,B,C`, `B,C,A`, `C,A,B`).
+- **Tandem MCP**: `3.6.1`, commit `010cbb6` (clean working tree, imported path `/home/ale/tools/tandem-mcp/tandem_mcp`, SHA-256 verified)
+- **Requested Orchestrator**: `gemini-4-hydrogen-medium`
+- **Model Identity Verification**: `53/54` runs in `20261117-075357_corrected` and `2/3` runs in `20261117-101952` independently verified as `gemini-4-hydrogen-medium` via `transcript.jsonl`; timed-out runs have `identity_verified: false` (no `conversation_id`).
+- **Cloud Token Accounting**: `agy_cli_json_usage` (`total_tokens == input_tokens + output_tokens`; `thinking_tokens` is already included in `output_tokens` and is not double-counted; `cache_read_tokens` is tracked separately).
+- **Local Executor**: `qwen3.8-27b@iq3_s` on LM Studio (`http://127.0.0.1:1234/v1`, `65536` context).
+- **Frozen Fixtures**: 24 files from tag `v3.6.1` (`010cbb6`), SHA-256 verified ([`fixtures/manifest.json`](fixtures/manifest.json)).
 
 ---
 
-## 2. Comparative Results (Measured Cloud Tokens, Local Tokens, Time & Quality)
+## 2. Three-Way Comparative Results (All 9 Workloads)
 
-> **Important:** Negative `Cloud Savings vs Direct` means Tandem (or Direct LM Studio) consumed **more** total cloud tokens than `Gemini Direct` for that task. Values are never clamped to zero.
+> **Definitions:**
+> - `end_to_end_success = execution_completed AND artifact_valid`. A `TIMEOUT` run that produced a valid artifact reports `Artifact Valid = 100.0%`, `Completed = 0`, `E2E Success = 0.0%`.
+> - `Cloud Tokens / Attempt` averages **all** measured attempts (both successful and failed).
+> - `Cloud Savings vs Direct` is never clamped to zero; negative percentages indicate higher cloud token consumption than `gemini_direct`.
 
-| Task | Scenario | n | Success | Median Time (s) | Cloud Tokens (mean, measured) | Cloud Savings vs Direct | Local Tokens (mean, measured) |
-| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `reading_readme` | `gemini_direct` | 3 | 33.3% | 11.06 | 15,920.0 | baseline | 0 |
-| `reading_readme` | `gemini_lmstudio` | 3 | 0.0% | 83.46 | N/A | N/A | N/A |
-| `reading_readme` | `gemini_tandem` | 3 | 33.3% | 85.25 | 20,787.0 | **-30.6%** | 5,313.0 |
-| `reading_grep_agent` | `gemini_direct` | 3 | 100.0% | 15.58 | 19,627.3 | baseline | 0 |
-| `reading_grep_agent` | `gemini_lmstudio` | 3 | 100.0% | 145.09 | 24,371.0 | **-24.2%** | 18,124.3 |
-| `reading_grep_agent` | `gemini_tandem` | 3 | 100.0% | 69.77 | 25,704.7 | **-31.0%** | 1,262.7 |
-| `reading_package_survey` | `gemini_direct` | 1 | 100.0% | 26.75 | 27,564.0 | baseline | 0 |
-| `reading_package_survey` | `gemini_lmstudio` | 1 | 100.0% | 474.46 | 29,014.0 | **-5.3%** | 45,520.0 |
-| `reading_package_survey` | `gemini_tandem` | 1 | 100.0% | 220.57 | 40,437.0 | **-46.7%** | 1,113.0 |
-| `reading_git_history` | `gemini_direct` | 1 | 100.0% | 17.90 | 22,127.0 | baseline | 0 |
-| `reading_git_history` | `gemini_lmstudio` | 1 | 100.0% | 181.77 | 18,374.0 | **+17.0%** | 18,591.0 |
-| `reading_git_history` | `gemini_tandem` | 1 | 0.0% | 318.98 | 43,707.0 | **-97.5%** | 17,202.0 |
-| `extraction_manifest` | `gemini_direct` | 3 | 100.0% | 8.11 | 14,463.3 | baseline | 0 |
-| `extraction_manifest` | `gemini_lmstudio` | 3 | 33.3% | 32.94 | 20,532.0 | **-42.0%** | 2,019.0 |
-| `extraction_manifest` | `gemini_tandem` | 3 | 100.0% | 38.54 | 17,853.7 | **-23.4%** | 1,065.0 |
-| `bugfix_micro` | `gemini_direct` | 3 | 100.0% | 16.22 | 19,155.3 | baseline | 0 |
-| `bugfix_micro` | `gemini_lmstudio` | 3 | 100.0% | 54.99 | 28,489.3 | **-48.7%** | 5,202.0 |
-| `bugfix_micro` | `gemini_tandem` | 3 | 100.0% | 60.46 | 21,540.7 | **-12.5%** | 6,391.0 |
-| `bugfix_multifile` | `gemini_direct` | 3 | 100.0% | 17.40 | 23,470.7 | baseline | 0 |
-| `bugfix_multifile` | `gemini_lmstudio` | 3 | 100.0% | 90.90 | 22,166.3 | **+5.6%** | 12,599.0 |
-| `bugfix_multifile` | `gemini_tandem` | 3 | 100.0% | 85.10 | 21,055.3 | **+10.3%** | 9,010.7 |
-| `gen_orbital` | `gemini_direct` | 1 | 100.0% | 56.75 | 35,975.0 | baseline | 0 |
-| `gen_orbital` | `gemini_lmstudio` | 1 | 100.0% | 816.11 | 40,847.0 | **-13.5%** | 37,149.0 |
-| `gen_orbital` | `gemini_tandem` | 1 | 100.0% | 2,400.12 (timeout) | `unavailable` | `N/A` | 125,923.0 |
+| Task | Scenario | n | Completed | E2E Success | Artifact Valid | Timeouts | Cloud Tokens / Attempt | Usage Coverage | Cloud Tokens / Success | Cloud Savings vs Direct | Median Time (s) | Local Tokens (mean) |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `reading_readme` | `gemini_direct` | 3 | 3 | 100.0% | 100.0% | 0 | 15,652.7 | 100.0% | 15,652.7 | baseline | 11.06 | 0 |
+| `reading_readme` | `gemini_lmstudio` | 3 | 3 | 100.0% | 100.0% | 0 | 20,731.0 | 100.0% | 20,731.0 | **-32.4%** | 83.46 | 6,496.7 |
+| `reading_readme` | `gemini_tandem` | 3 | 3 | 100.0% | 100.0% | 0 | 22,336.3 | 100.0% | 22,336.3 | **-42.7%** | 85.25 | 4,469.3 |
+| `reading_grep_agent` | `gemini_direct` | 3 | 3 | 100.0% | 100.0% | 0 | 19,627.3 | 100.0% | 19,627.3 | baseline | 15.58 | 0 |
+| `reading_grep_agent` | `gemini_lmstudio` | 3 | 3 | 100.0% | 100.0% | 0 | 24,371.0 | 100.0% | 24,371.0 | **-24.2%** | 145.09 | 18,124.3 |
+| `reading_grep_agent` | `gemini_tandem` | 3 | 3 | 100.0% | 100.0% | 0 | 25,704.7 | 100.0% | 25,704.7 | **-31.0%** | 69.77 | 1,262.7 |
+| `reading_package_survey` | `gemini_direct` | 1 | 1 | 100.0% | 100.0% | 0 | 27,564.0 | 100.0% | 27,564.0 | baseline | 26.75 | 0 |
+| `reading_package_survey` | `gemini_lmstudio` | 1 | 1 | 100.0% | 100.0% | 0 | 29,014.0 | 100.0% | 29,014.0 | **-5.3%** | 474.46 | 45,520.0 |
+| `reading_package_survey` | `gemini_tandem` | 1 | 1 | 100.0% | 100.0% | 0 | 40,437.0 | 100.0% | 40,437.0 | **-46.7%** | 220.57 | 1,113.0 |
+| `reading_git_history` | `gemini_direct` | 1 | 1 | 100.0% | 100.0% | 0 | 22,127.0 | 100.0% | 22,127.0 | baseline | 17.90 | 0 |
+| `reading_git_history` | `gemini_lmstudio` | 1 | 1 | 100.0% | 100.0% | 0 | 18,374.0 | 100.0% | 18,374.0 | **+17.0%** | 181.77 | 18,591.0 |
+| `reading_git_history` | `gemini_tandem` | 1 | 1 | 100.0% | 100.0% | 0 | 43,707.0 | 100.0% | 43,707.0 | **-97.5%** | 318.98 | 17,202.0 |
+| `extraction_manifest` | `gemini_direct` | 3 | 3 | 100.0% | 100.0% | 0 | 14,463.3 | 100.0% | 14,463.3 | baseline | 8.11 | 0 |
+| `extraction_manifest` | `gemini_lmstudio` | 3 | 3 | 100.0% | 100.0% | 0 | 20,375.7 | 100.0% | 20,375.7 | **-40.9%** | 32.94 | 2,014.3 |
+| `extraction_manifest` | `gemini_tandem` | 3 | 3 | 100.0% | 100.0% | 0 | 17,853.7 | 100.0% | 17,853.7 | **-23.4%** | 38.54 | 1,065.0 |
+| `bugfix_micro` | `gemini_direct` | 3 | 3 | 100.0% | 100.0% | 0 | 19,155.3 | 100.0% | 19,155.3 | baseline | 16.22 | 0 |
+| `bugfix_micro` | `gemini_lmstudio` | 3 | 3 | 100.0% | 100.0% | 0 | 28,489.3 | 100.0% | 28,489.3 | **-48.7%** | 54.99 | 5,202.0 |
+| `bugfix_micro` | `gemini_tandem` | 3 | 3 | 100.0% | 100.0% | 0 | 21,540.7 | 100.0% | 21,540.7 | **-12.5%** | 60.46 | 6,391.0 |
+| `bugfix_multifile` | `gemini_direct` | 3 | 3 | 100.0% | 100.0% | 0 | 23,470.7 | 100.0% | 23,470.7 | baseline | 17.40 | 0 |
+| `bugfix_multifile` | `gemini_lmstudio` | 3 | 3 | 100.0% | 100.0% | 0 | 22,166.3 | 100.0% | 22,166.3 | **+5.6%** | 90.90 | 12,599.0 |
+| `bugfix_multifile` | `gemini_tandem` | 3 | 3 | 100.0% | 100.0% | 0 | 21,055.3 | 100.0% | 21,055.3 | **+10.3%** | 85.10 | 9,010.7 |
+| `gen_orbital` | `gemini_direct` | 1 | 1 | 100.0% | 100.0% | 0 | 35,975.0 | 100.0% | 35,975.0 | baseline | 56.75 | 0 |
+| `gen_orbital` | `gemini_lmstudio` | 1 | 1 | 100.0% | 100.0% | 0 | 40,847.0 | 100.0% | 40,847.0 | **-13.5%** | 816.11 | 37,149.0 |
+| `gen_orbital` | `gemini_tandem` | 1 | 0 | **0.0%** | 100.0% | 1 | N/A | 0.0% | N/A | N/A | 2,400.12 | 125,923.0 |
+| `gen_portal` | `gemini_direct` | 1 | 1 | 100.0% | 100.0% | 0 | 58,280.0 | 100.0% | 58,280.0 | baseline | 93.35 | 0 |
+| `gen_portal` | `gemini_lmstudio` | 1 | 1 | 100.0% | 100.0% | 0 | 208,731.0 | 100.0% | 208,731.0 | **-258.2%** | 2,152.57 | 17,158.0 |
+| `gen_portal` | `gemini_tandem` | 1 | 0 | **0.0%** | 0.0% | 1 | N/A | 0.0% | N/A | N/A | 4,200.13 | 267,995.0 |
 
-*(Scope note: `gen_portal` was not re-run in the 3-way comparative suite due to ~40+ min per local generation run; historical single-run data for `gen_portal` is preserved separately in [`../gemini_3_6_1/RESULTS.md`](../gemini_3_6_1/RESULTS.md). Single-run tasks `n=1` are not statistically representative.)*
-
----
-
-## 3. Targeted Grep Dual-Baseline Analysis (`reading_grep_agent`)
-
-In the historical suite, `digest_file (grep)` compared its 480 B response against the full 99,739 B `agent.py` file, reporting `99.5%` savings. Under the corrected methodology:
-
-1. **Full-file Context Reduction (Estimated)**: `99.5%` (99,739 B source vs ~480 B digest output; measures text compression relative to reading the entire file).
-2. **Efficient-search Baseline (`gemini_direct` with `grep`/line-range reads)**: Gemini Direct found the answer in `15.58 s` (median) using `19,627.3` actual cloud tokens (mean). Tandem took `69.77 s` (median) and `25,704.7` actual cloud tokens (`-31.0%`), because MCP tool-call round-trips and system/tool schema overhead outweigh reading a few targeted lines when the orchestrator already has fast local search tools.
+*(Note: Single-run tasks `n=1` are not statistically representative.)*
 
 ---
 
-## 4. Key Findings: When Tandem Pays and When It Does Not
+## 3. When Tandem Pays vs. When Direct Execution Wins
 
-1. **Multi-file bugfix with existing tests (`bugfix_multifile`) is where Tandem won on both cloud tokens and reliability:**
-   - Tandem achieved **+10.3% actual cloud token savings** vs Gemini Direct (`21,055.3` vs `23,470.7` cloud tokens) with **100% success** (`n=3`), and used fewer local tokens (`9,010.7`) than Direct LM Studio (`12,599.0`).
-2. **Tandem vs Direct LM Studio (`gemini_lmstudio`) on quality & local efficiency:**
-   - On `extraction_manifest`, `gemini_tandem` achieved **100% schema-valid extraction** (`n=3`, `1,065` local tokens) whereas `gemini_lmstudio` succeeded only **33.3%** (`1/3`).
-   - On `reading_grep_agent` and `reading_package_survey`, `gemini_tandem` used **14x–40x fewer local tokens** (`1,262.7` vs `18,124.3`; `1,113` vs `45,520`) because `digest_file (grep)` and `digest_many` bound what the local model reads.
-3. **Small single-file tasks (`extraction_manifest`, `bugfix_micro`, `reading_grep_agent`) do NOT save actual cloud tokens vs Gemini Direct:**
-   - Each `agy` session carries ~12–15K base system/tool-definition input tokens per turn. Adding MCP tool calls adds turns and tool schemas, resulting in `-12.5%` to `-46.7%` actual cloud token overhead on small tasks where Gemini Direct can read/grep directly in 1–2 turns.
-4. **Code generation (`gen_orbital`)**:
-   - All three scenarios passed `node check_page.js` and headless Chromium rendering with 0 console errors.
-   - `gemini_direct` completed in `56.75 s` (`35,975` cloud tokens).
-   - `gemini_lmstudio` completed in `816.11 s` (`40,847` cloud tokens, `-13.5%` total, though cloud output tokens dropped from `10,200` to `3,282`).
-   - `gemini_tandem` produced a passing `13,019 B` `index.html` (`125,923` local tokens) but hit the `2,400 s` CLI timeout, leaving cloud token usage `unavailable`.
-
----
-
-## 5. Phase 10 Analysis: High Local Token Usage in `digest_command` (`git log -n 30 --stat`)
-
-In the historical 3.6.1 campaign (`53,712` local tokens, `420.63 s`) and the comparative run (`17,202` local tokens, `318.98 s`), `digest_command` consumed disproportionately many local tokens for a `13,221 B` (~3,700 token) input. Inspection of `tandem_mcp/digest.py` and `tandem_mcp/engine.py` identifies the root cause (not a code regression, but an interaction with thinking models):
-
-- `digest.answer()` sets `max_tokens = max(600, max_words * 6)` (`720` tokens for `max_words=120`).
-- `qwen3.8-27b@iq3_s` has **thinking enabled**; on an aggregation prompt ("Which files were changed most often..."), reasoning consumes the 720-token budget before emitting JSON (`finish_reason == 'length'`, empty `content`).
-- `engine.chat()` triples the budget (`2,160`) and re-sends the full ~3,700-token prompt; if JSON is still incomplete/invalid, `engine.chat_json()` retries up to 3 attempts (up to 6 total LLM calls), multiplying prompt and reasoning tokens.
-- **Proposed future optimization (not applied to `v3.6.1`)**: Increase `digest.answer()`'s `max_tokens` floor when `caps(model)['thinking']` is `True` (e.g. `max(2048, max_words * 6)`), and log `retry_attempts` / `quotes_ok` for `digest_command` in `ledger.jsonl`.
+1. **Multi-file bugfix with existing tests (`bugfix_multifile`, `n=3`)**: Tandem achieved **+10.3% actual cloud token savings** (`21,055.3` vs `23,470.7` cloud tokens), `100.0%` E2E success, and fewer local tokens (`9,010.7`) than Direct LM Studio (`12,599.0`).
+2. **Bounded local reading (`reading_grep_agent`, `reading_package_survey`)**: Tandem used **14x–40x fewer local tokens** than Direct LM Studio (`1,262.7` vs `18,124.3`; `1,113.0` vs `45,520.0`) because `digest_file (grep)` and `digest_many` bound what the local model reads.
+3. **Small single-file tasks (`reading_readme`, `reading_grep_agent`, `extraction_manifest`, `bugfix_micro`)**: `gemini_direct` is **4x–8x faster** (`8–17 s`) and uses **12%–43% fewer actual cloud tokens** because `agy` carries ~12–15K base system/tool-declaration tokens per session and Gemini's native `grep`/file-read tools solve small tasks in 1–2 turns.
+4. **Complex multi-module generation (`gen_orbital`, `gen_portal`)**: On `qwen3.8-27b@iq3_s` (~6–23 tok/s), Tandem's contract + verification + evidence loop exceeded the `2,400 s` (`gen_orbital`) and `4,200 s` (`gen_portal`) CLI timeouts (`0.0%` E2E success), whereas `gemini_direct` completed both in `56.75 s` and `93.35 s` with `100.0%` E2E success.

@@ -151,6 +151,7 @@ def run_task(workspace: Path, prompt: str, endpoint: str = DEFAULT_ENDPOINT, mod
         'local_requests': 0,
         'retry_attempts': 0,
         'bytes_read_local': 0,
+        'tool_interactions': [],
     }
     t_start = time.perf_counter()
     final_answer = ''
@@ -189,11 +190,18 @@ def run_task(workspace: Path, prompt: str, endpoint: str = DEFAULT_ENDPOINT, mod
         messages.append(msg)
         for c in calls:
             fn = c['function']['name']
+            raw_args = c['function'].get('arguments') or '{}'
             try:
-                args = json.loads(c['function'].get('arguments') or '{}')
+                args = json.loads(raw_args)
             except json.JSONDecodeError:
                 args = {}
             out = _exec_tool(workspace, fn, args, stats)
+            stats['tool_interactions'].append({
+                'tool_name': fn,
+                'request_bytes': len(raw_args.encode('utf-8', errors='replace')),
+                'response_bytes': len(out.encode('utf-8', errors='replace')),
+                'truncated': (fn == 'read_file' and len(out) >= 24000) or (fn == 'run_command' and len(out) >= 12000),
+            })
             messages.append({'role': 'tool', 'tool_call_id': c['id'], 'content': out})
 
     stats['local_inference_seconds'] = round(stats['local_inference_seconds'], 2)

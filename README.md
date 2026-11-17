@@ -53,17 +53,19 @@ Learn more -> [Architecture](docs/ARCHITECTURE.md) ([English PDF](docs/tandem-mc
 
 ### Measured Comparative Evaluation (Gemini 4 Hydrogen + Qwen 27B)
 
-Three-way comparison on frozen `v3.6.1` (`010cbb6`) fixtures: **Gemini Direct** vs **Gemini + Direct LM Studio** vs **Gemini + Tandem MCP** (`gemini-4-hydrogen-medium`, `qwen3.8-27b@iq3_s` on LM Studio, real cloud tokens measured via `agy --output-format json`). Negative savings mean Tandem used more total cloud tokens than Gemini Direct.
+Three-way comparison on frozen `v3.6.1` (`010cbb6`) fixtures: **Gemini Direct** vs **Gemini + Direct LM Studio** vs **Gemini + Tandem MCP** (`gemini-4-hydrogen-medium`, `qwen3.8-27b@iq3_s` on LM Studio, real cloud tokens measured via `agy --output-format json`). Negative savings mean Tandem used more total cloud tokens than Gemini Direct; `E2E Success` requires both completion before timeout and passing independent checks.
 
-| Workload | Cloud Tokens Saved | Success | Median Time |
+| Workload | E2E Success | Cloud Tokens Saved | Median Time |
 | --- | ---: | ---: | ---: |
-| Reading (`grep` on `agent.py`, `n=3`) | -31.0% | 100% | 69.8 s |
-| Extraction (`pyproject.toml`, `n=3`) | -23.4% | 100% | 38.5 s |
-| Micro bugfix (6 lines, `n=3`) | -12.5% | 100% | 60.5 s |
-| Multi-file bugfix (4 files, `n=3`) | **+10.3%** | 100% | 85.1 s |
-| Orbital animation (`n=1`) | N/A (timeout) | 100% | 2,400.1 s |
+| README QA (`n=3`) | 100% | -42.7% | 85.3 s |
+| Grep QA (`agent.py`, `n=3`) | 100% | -31.0% | 69.8 s |
+| Extraction (`pyproject.toml`, `n=3`) | 100% | -23.4% | 38.5 s |
+| Micro bugfix (6 lines, `n=3`) | 100% | -12.5% | 60.5 s |
+| Multi-file bugfix (4 files, `n=3`) | 100% | **+10.3%** | 85.1 s |
+| Orbital animation (`n=1`) | 0% (timeout) | N/A | 2,400.1 s |
+| 3D neon portal (`n=1`) | 0% (timeout) | N/A | 4,200.1 s |
 
-*(Note: vs. Direct LM Studio, Tandem achieved higher schema reliability on extraction [100% vs 33.3%] and used 14x–40x fewer local tokens on `grep`/package surveys.)*
+*(Note: vs. Direct LM Studio, Tandem used 14x–40x fewer local tokens on `grep`/package surveys. On `gen_orbital`, Tandem produced a valid artifact before the `2,400 s` timeout, but timed out before completion.)*
 
 ### Context Reduction (Historical v3.6.1 Suite, Estimated)
 
@@ -104,7 +106,7 @@ Derived from source bytes vs. returned digest/receipt bytes (`1 cloud tok = 3.6 
   <img src="benchmarks/gemini_3_6_1/portal_tandem.gif" alt="3D neon portal written by qwen3.8-27b@iq3_s under 4 Tandem v3.6.1 contracts" width="420" />
 </p>
 
-- **Comparative Suite (v3.6.1):** [Comparative Report](benchmarks/comparative_3_6_1/RESULTS.md) · [Suite README](benchmarks/comparative_3_6_1/README.md) · [Raw JSON](benchmarks/comparative_3_6_1/runs/20261117-075357/results.json)
+- **Comparative Suite (v3.6.1):** [Comparative Report](benchmarks/comparative_3_6_1/RESULTS.md) · [Methodology Corrections](benchmarks/comparative_3_6_1/METHODOLOGY_CORRECTION.md) · [Corrected JSON](benchmarks/comparative_3_6_1/runs/20261117-075357_corrected/results.json)
 - **Historical Gemini (v3.6.1):** [Gemini Report](benchmarks/gemini_3_6_1/RESULTS.md) · [Orbital Comparison](https://alenoc.github.io/tandem-mcp/benchmarks/gemini_3_6_1/animation_comparison.html) · [3D Portal Comparison](https://alenoc.github.io/tandem-mcp/benchmarks/gemini_3_6_1/scene3d_comparison.html)
 - **Historical Fable (v3.1.0):** [Fable Report](benchmarks/RESULTS.md) · [Orbital Comparison](https://alenoc.github.io/tandem-mcp/benchmarks/animation_comparison.html) · [3D Portal Comparison](https://alenoc.github.io/tandem-mcp/benchmarks/scene3d_comparison.html)
 

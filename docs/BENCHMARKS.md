@@ -11,31 +11,32 @@ This document separates three distinct campaigns (do not conflate datasets acros
 
 ## Comparative — Gemini Direct vs. Direct LM Studio vs. Tandem 3.6.1
 
-Suite: [`benchmarks/comparative_3_6_1/run_comparison.py`](../benchmarks/comparative_3_6_1/run_comparison.py) · Full report: [`benchmarks/comparative_3_6_1/RESULTS.md`](../benchmarks/comparative_3_6_1/RESULTS.md) · Raw JSON: [`results.json`](../benchmarks/comparative_3_6_1/runs/20261117-075357/results.json)
+Suite: [`benchmarks/comparative_3_6_1/run_comparison.py`](../benchmarks/comparative_3_6_1/run_comparison.py) · Full report: [`benchmarks/comparative_3_6_1/RESULTS.md`](../benchmarks/comparative_3_6_1/RESULTS.md) · Corrections: [`METHODOLOGY_CORRECTION.md`](../benchmarks/comparative_3_6_1/METHODOLOGY_CORRECTION.md)
 
-Measured with `gemini-4-hydrogen-medium` (`agy --output-format json`, `orchestrator_identity_verified: true`) and `qwen3.8-27b@iq3_s` on LM Studio (`http://127.0.0.1:1234/v1`) over 24 SHA-256 frozen `v3.6.1` (`010cbb6`) fixtures.
+Measured with `gemini-4-hydrogen-medium` (`53/54` + `2/3` runs verified via `transcript.jsonl`) and `qwen3.8-27b@iq3_s` on LM Studio (`http://127.0.0.1:1234/v1`) over 24 SHA-256 frozen `v3.6.1` (`010cbb6`) fixtures. `E2E Success = execution_completed AND artifact_valid`.
 
-| Task | Scenario | n | Success | Median Time | Cloud Tokens (mean) | Cloud Savings vs Direct | Local Tokens (mean) |
+| Task | Scenario | n | E2E Success | Median Time | Cloud Tokens / Attempt | Cloud Savings vs Direct | Local Tokens (mean) |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `reading_readme` | `gemini_direct` | 3 | 100.0% | 11.1 s | 15,652.7 | baseline | 0 |
+| `reading_readme` | `gemini_tandem` | 3 | 100.0% | 85.3 s | 22,336.3 | -42.7% | 4,469.3 |
 | `reading_grep_agent` | `gemini_direct` | 3 | 100.0% | 15.6 s | 19,627.3 | baseline | 0 |
-| `reading_grep_agent` | `gemini_lmstudio` | 3 | 100.0% | 145.1 s | 24,371.0 | -24.2% | 18,124.3 |
 | `reading_grep_agent` | `gemini_tandem` | 3 | 100.0% | 69.8 s | 25,704.7 | -31.0% | 1,262.7 |
 | `extraction_manifest` | `gemini_direct` | 3 | 100.0% | 8.1 s | 14,463.3 | baseline | 0 |
-| `extraction_manifest` | `gemini_lmstudio` | 3 | 33.3% | 32.9 s | 20,532.0 | -42.0% | 2,019.0 |
 | `extraction_manifest` | `gemini_tandem` | 3 | 100.0% | 38.5 s | 17,853.7 | -23.4% | 1,065.0 |
 | `bugfix_micro` | `gemini_direct` | 3 | 100.0% | 16.2 s | 19,155.3 | baseline | 0 |
-| `bugfix_micro` | `gemini_lmstudio` | 3 | 100.0% | 55.0 s | 28,489.3 | -48.7% | 5,202.0 |
 | `bugfix_micro` | `gemini_tandem` | 3 | 100.0% | 60.5 s | 21,540.7 | -12.5% | 6,391.0 |
 | `bugfix_multifile` | `gemini_direct` | 3 | 100.0% | 17.4 s | 23,470.7 | baseline | 0 |
-| `bugfix_multifile` | `gemini_lmstudio` | 3 | 100.0% | 90.9 s | 22,166.3 | +5.6% | 12,599.0 |
 | `bugfix_multifile` | `gemini_tandem` | 3 | 100.0% | 85.1 s | 21,055.3 | **+10.3%** | 9,010.7 |
 | `reading_package_survey` | `gemini_direct` | 1 | 100.0% | 26.8 s | 27,564.0 | baseline | 0 |
 | `reading_package_survey` | `gemini_tandem` | 1 | 100.0% | 220.6 s | 40,437.0 | -46.7% | 1,113.0 |
 | `reading_git_history` | `gemini_direct` | 1 | 100.0% | 17.9 s | 22,127.0 | baseline | 0 |
-| `reading_git_history` | `gemini_tandem` | 1 | 0.0% | 319.0 s | 43,707.0 | -97.5% | 17,202.0 |
+| `reading_git_history` | `gemini_tandem` | 1 | 100.0% | 319.0 s | 43,707.0 | -97.5% | 17,202.0 |
 | `gen_orbital` | `gemini_direct` | 1 | 100.0% | 56.8 s | 35,975.0 | baseline | 0 |
-| `gen_orbital` | `gemini_lmstudio` | 1 | 100.0% | 816.1 s | 40,847.0 | -13.5% | 37,149.0 |
-| `gen_orbital` | `gemini_tandem` | 1 | 100.0% | 2,400.1 s (timeout) | `unavailable` | `N/A` | 125,923.0 |
+| `gen_orbital` | `gemini_tandem` | 1 | **0.0%** (timeout, artifact valid) | 2,400.1 s | N/A | N/A | 125,923.0 |
+| `gen_portal` | `gemini_direct` | 1 | 100.0% | 93.4 s | 58,280.0 | baseline | 0 |
+| `gen_portal` | `gemini_tandem` | 1 | **0.0%** (timeout) | 4,200.1 s | N/A | N/A | 267,995.0 |
+
+*(See [`benchmarks/comparative_3_6_1/RESULTS.md`](../benchmarks/comparative_3_6_1/RESULTS.md) for all `gemini_lmstudio` rows and full coverage metrics.)*
 
 ---
 
