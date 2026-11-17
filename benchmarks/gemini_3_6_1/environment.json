@@ -1,0 +1,35 @@
+{
+  "date": "2026-11-17",
+  "tandem_version": "3.6.1",
+  "git_tag": "v3.6.1",
+  "git_commit": "010cbb6",
+  "local_install": "/home/ale/tools/tandem-mcp",
+  "orchestrator": "Gemini 4 Hydrogen",
+  "executor": {
+    "model": "qwen3.8-27b@iq3_s",
+    "server": "LM Studio",
+    "endpoint": "http://127.0.0.1:1234/v1",
+    "context": 65536,
+    "probed_tps": 23.6,
+    "caps": {
+      "tools": true,
+      "schema": true,
+      "thinking": true
+    }
+  },
+  "sandbox": "bubblewrap (allowlist system dirs, home hidden, workspace writable, env secrets stripped, no network)",
+  "strict_contract": true,
+  "cache_policy": "disabled (isolated temporary TANDEM_HOME for run_benchmark.py; fresh workspace for generation)",
+  "token_estimation": "1 cloud token = 3.6 characters (store.CHARS_PER_TOKEN)",
+  "hardware": {
+    "cpu": "Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz (16 threads)",
+    "ram": "22 GiB",
+    "gpu": "AMD Radeon Navi 21 (RX 6800/6900 XT, 16 GiB VRAM)",
+    "os": "Linux 7.0.0-43-generic x86_64"
+  },
+  "runtimes": {
+    "python_venv": "3.13.17",
+    "python_system": "3.14.4",
+    "node": "v22.23.4"
+  }
+}

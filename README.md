@@ -49,6 +49,44 @@ Learn more -> [Architecture](docs/ARCHITECTURE.md) ([English PDF](docs/tandem-mc
 
 ---
 
+## Benchmarks — Tandem MCP v3.6.1
+
+### Gemini 4 Hydrogen + Qwen 27B (LM Studio)
+
+Reproduced on `v3.6.1` (`010cbb6`), `qwen3.8-27b@iq3_s` (`65536` ctx, `23.6 tok/s`), `bubblewrap` sandbox, cache disabled, `1 cloud tok = 3.6 chars` (**Estimated**).
+
+#### Reading & Extraction
+
+| Workload | Cloud Saved (Est.) | Local Tokens | Time / Verified |
+| --- | --- | ---: | --- |
+| Full-file QA (`README.md`) | ~2,127 tok (90.4%) | 3,602 | 36.2 s · 1/3 quotes (`contested`) |
+| Targeted grep QA (`agent.py`) | ~27,572 tok (99.5%) | 837 | 22.2 s · 2/2 quotes (`quote_only`) |
+| Multi-file survey (`8 files`) | ~69,202 tok (99.4%) | 107,172 | 864.0 s · 11/11 quotes (`checked`) |
+| Git history (`30 commits`) | ~3,554 tok (96.8%) | 53,712 | 420.6 s · completed |
+| Structured extraction (`pyproject.toml`) | ~187 tok (85.6%) | 633 | 11.9 s · schema valid (0 loose) |
+
+#### Delegated Fixes
+
+| Workload | Cloud Saved (Est.) | Local Tokens | Time / Verified |
+| --- | --- | ---: | --- |
+| Micro bugfix (6 lines) | ~171 tok (58.7%) | 6,498 | 27.7 s · `VERIFIED` (0 repairs) |
+| Multi-file bugfix (`config_loader.py`) | ~1,561 tok (92.2%) | 8,278 | 37.1 s · `VERIFIED` (0 repairs) |
+
+#### Code Generation
+
+| Workload | Cloud Output Saved (Est.) | Local Tokens | Time / Verified |
+| --- | --- | ---: | --- |
+| Orbital animation (1 file) | ~1,748 tok (42.7%)* | 63,324 | 984.2 s · `VERIFIED` (46/46 met) |
+| 3D neon portal (4 modules) | ~2,491 tok (51.0%)* | 237,029 | 2,464.4 s · `VERIFIED` (69/69 met) |
+
+*\*Excludes ~5,529 and ~9,708 est. cloud input tokens to inspect receipts and `job_evidence`.*
+
+- **[View Orbital Animation Comparison](https://alenoc.github.io/tandem-mcp/benchmarks/gemini_3_6_1/animation_comparison.html)** · **[View 3D Portal Comparison](https://alenoc.github.io/tandem-mcp/benchmarks/gemini_3_6_1/scene3d_comparison.html)**
+- **Reports & raw data:** [Gemini v3.6.1 Report](benchmarks/gemini_3_6_1/RESULTS.md) · [Raw JSON](benchmarks/gemini_3_6_1/results.json) · [Generation JSON](benchmarks/gemini_3_6_1/generation.json) · [Reproducible Script](benchmarks/gemini_3_6_1/run_benchmark.py)
+- **Historical Benchmark — Tandem 3.1.0 / Fable 5.2:** [Fable Report](benchmarks/RESULTS.md) · [Orbital Demo](https://alenoc.github.io/tandem-mcp/benchmarks/animation_comparison.html) · [3D Portal Demo](https://alenoc.github.io/tandem-mcp/benchmarks/scene3d_comparison.html)
+
+---
+
 ## Quick Start
 
 **Prerequisites:** Python 3.11+, a local OpenAI-compatible server (e.g. **LM Studio**), and `bubblewrap` on Linux for OS-level sandboxing.

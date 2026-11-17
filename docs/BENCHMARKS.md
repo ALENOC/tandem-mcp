@@ -2,6 +2,44 @@
 
 > **Trade-off first.** Tandem can save cloud tokens on reading and test-driven fixes, at the cost of local execution time (which depends on your hardware). Writing brand-new code from a contract often uses similar or more total cloud tokens once contract authoring and inspection are counted.
 
+## Latest Reproducible Benchmark (Tandem 3.6.1 — Gemini 4 Hydrogen + Qwen 27B)
+
+Reproducible suite: [benchmarks/gemini_3_6_1/run_benchmark.py](../benchmarks/gemini_3_6_1/run_benchmark.py) · Full report: [benchmarks/gemini_3_6_1/RESULTS.md](../benchmarks/gemini_3_6_1/RESULTS.md) · Raw JSON: [results.json](../benchmarks/gemini_3_6_1/results.json) · [generation.json](../benchmarks/gemini_3_6_1/generation.json)
+
+Orchestrator `Gemini 4 Hydrogen` (cloud) and executor `qwen3.8-27b@iq3_s` (LM Studio, `http://127.0.0.1:1234/v1`, `65536` ctx, `23.6 tok/s` probed), Tandem `3.6.1` (commit `010cbb6`) with strict contract, cache disabled, `1 cloud tok = 3.6 chars`, on **Intel Core i9-9900K @ 3.60GHz (16 threads)**, **22 GiB RAM**, **AMD Radeon Navi 21 (RX 6800/6900 XT, 16 GiB VRAM)**, Linux x86_64.
+
+### Reading, Command Digest & Extraction (3.6.1)
+
+| Task | Source -> Cloud | Cloud saved (est.) | Local tokens | Time | Evidence |
+| --- | --- | ---: | ---: | ---: | --- |
+| Full-file doc QA (`README.md`) | 8.5 KB -> 811 B | **~2,127 tok (90.4%)** | 3,602 | 36.2 s | 1 ok / 2 dropped (`contested`) |
+| Targeted grep QA (`agent.py`) | 99.7 KB -> 480 B | **~27,572 tok (99.5%)** | 837 | 22.2 s | 2 ok / 0 dropped (`quote_only`) |
+| Multi-file package survey (`tandem_mcp/*.py`) | 250.6 KB -> 1.5 KB | **~69,202 tok (99.4%)** | 107,172 | 864.0 s | 11 ok / 0 dropped (`checked`) |
+| Recent git history (`git log -n 30 --stat`) | 13.2 KB -> 425 B | **~3,554 tok (96.8%)** | 53,712 | 420.6 s | `quotes_ok: null` |
+| Project manifest (`pyproject.toml`) | 786 B -> 113 B | **~187 tok (85.6%)** | 633 | 11.9 s | schema validated, 0 loose values |
+
+### Delegated Fixes with an Existing Test (3.6.1)
+
+| Task | Baseline -> Receipt | Cloud saved (est.) | Local tokens | Time | Result |
+| --- | --- | ---: | ---: | ---: | --- |
+| Micro bugfix (1 tiny file, 6 lines) | 1.0 KB -> 432 B | **~171 tok (58.7%)** | 6,498 | 27.7 s | `VERIFIED` (4 steps, 0 repairs) |
+| Multi-file bugfix (`config_loader.py` + 3 files) | 6.1 KB -> 476 B | **~1,561 tok (92.2%)** | 8,278 | 37.1 s | `VERIFIED` (4 steps, 0 repairs) |
+
+### Generation From a Contract (3.6.1)
+
+| Metric | Orbital (Direct) | Orbital (Tandem) | 3D Portal (Direct) | 3D Portal (Tandem) |
+| --- | ---: | ---: | ---: | ---: |
+| Output | 14,726 B, 466 lines | 13,295 B, 509 lines | 17,593 B, 518 lines | 21,211 B, 730 lines (4 files) |
+| Cloud output tokens saved (est.) | n/a | **42.7%** (~1,748 tok) | n/a | **51.0%** (~2,491 tok) |
+| Cloud input tokens to inspect (est.) | 0 | ~5,529 | 0 | ~9,708 |
+| Local tokens | 0 | 63,324 | 0 | 237,029 |
+| Wall time | 1 cloud turn | **984.2 s** (16.4 min) | 1 cloud turn | **2,464.4 s** (41.1 min) |
+| Constraints met on inspection | n/a | **46 of 46** | n/a | **69 of 69** |
+
+Live demos (all four interactive comparisons):
+- **Gemini 4 Hydrogen + Tandem v3.6.1**: [Orbital Animation Comparison](https://alenoc.github.io/tandem-mcp/benchmarks/gemini_3_6_1/animation_comparison.html) · [3D Portal Comparison](https://alenoc.github.io/tandem-mcp/benchmarks/gemini_3_6_1/scene3d_comparison.html)
+- **Historical Fable 5.2 + Tandem v3.1.0**: [Orbital Animation Comparison](https://alenoc.github.io/tandem-mcp/benchmarks/animation_comparison.html) · [3D Portal Comparison](https://alenoc.github.io/tandem-mcp/benchmarks/scene3d_comparison.html)
+
 ## 1. Live Profiling & Micro-Benchmark (Tandem 3.6.0, Nov 2026)
 
 Measured on **LM Studio** (`http://127.0.0.1:1234/v1`) running **`qwen3.8-27b@iq3_s`**:
@@ -34,7 +72,7 @@ Measured on **LM Studio** (`http://127.0.0.1:1234/v1`) running **`qwen3.8-27b@iq
 
 *(Note: Scenario B measures only raw inference without contract validation, sandboxed test execution, or rollback; Scenario C includes the full baseline check, tool loop, post-edit verification, and journal/snapshot overhead.)*
 
-## 2. Historical Benchmark Suite (Tandem 3.1.0)
+## Historical Benchmark (Tandem 3.1.0 — Fable 5.2 + Qwen 27B)
 
 Reproducible suite: [benchmarks/run_benchmark.py](../benchmarks/run_benchmark.py) · Full report: [benchmarks/RESULTS.md](../benchmarks/RESULTS.md)
 

@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Orbital Particle Simulation</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #060913;
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  }
+  #sky {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    cursor: crosshair;
+  }
+  #hud {
+    position: fixed;
+    top: 16px;
+    left: 16px;
+    width: 248px;
+    background: rgba(18, 28, 54, 0.42);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgba(140, 180, 255, 0.22);
+    border-radius: 14px;
+    padding: 16px 18px;
+    color: #cdd8ff;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+    user-select: none;
+  }
+  #hud h1 {
+    margin: 0 0 12px 0;
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 2.5px;
+    color: #9fb4ff;
+  }
+  .btnrow {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  .btnrow button {
+    flex: 1 1 0;
+    white-space: nowrap;
+    padding: 8px 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #dfe8ff;
+    background: rgba(90, 120, 220, 0.18);
+    border: 1px solid rgba(140, 180, 255, 0.3);
+    border-radius: 9px;
+    cursor: pointer;
+    transition: background 0.15s ease, transform 0.05s ease;
+  }
+  .btnrow button:hover {
+    background: rgba(110, 140, 240, 0.32);
+  }
+  .btnrow button:active {
+    transform: translateY(1px);
+  }
+  .sliderwrap {
+    margin-bottom: 14px;
+  }
+  .sliderwrap label {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: 11px;
+    letter-spacing: 0.5px;
+    color: #9fb4ff;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+  }
+  #speedVal {
+    font-variant-numeric: tabular-nums;
+    color: #eaf0ff;
+    font-weight: 700;
+  }
+  #speed {
+    width: 100%;
+    accent-color: #6f8dff;
+    cursor: pointer;
+  }
+  .stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 12px;
+    font-variant-numeric: tabular-nums;
+  }
+  .stat {
+    display: flex;
+    flex-direction: column;
+  }
+  .stat .k {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #7f93d6;
+  }
+  .stat .v {
+    font-size: 15px;
+    font-weight: 700;
+    color: #eaf0ff;
+  }
+</style>
+</head>
+<body>
+<canvas id="sky"></canvas>
+<div id="hud">
+  <h1>Orbital Sim</h1>
+  <div class="btnrow">
+    <button id="btnPlay">Pause</button>
+    <button id="btnTrails">Trails ON</button>
+    <button id="btnReset">Reset</button>
+  </div>
+  <div class="sliderwrap">
+    <label>Speed <span id="speedVal">1.0x</span></label>
+    <input type="range" id="speed" min="0.2" max="3.0" step="0.1" value="1.0">
+  </div>
+  <div class="stats">
+    <div class="stat"><span class="k">FPS</span><span class="v" id="fps">0</span></div>
+    <div class="stat"><span class="k">Time</span><span class="v" id="simTime">0.0 s</span></div>
+    <div class="stat"><span class="k">Bursts</span><span class="v" id="bursts">0</span></div>
+  </div>
+</div>
+<script>
+(function () {
+  'use strict';
+
+  var canvas = document.getElementById('sky');
+  var ctx = canvas.getContext('2d');
+  var btnPlay = document.getElementById('btnPlay');
+  var btnTrails = document.getElementById('btnTrails');
+  var btnReset = document.getElementById('btnReset');
+  var speedEl = document.getElementById('speed');
+  var speedVal = document.getElementById('speedVal');
+  var fpsEl = document.getElementById('fps');
+  var simTimeEl = document.getElementById('simTime');
+  var burstsEl = document.getElementById('bursts');
+
+  var W = 0, H = 0, DPR = 1, scale = 1, cx = 0, cy = 0;
+
+  function resize() {
+    DPR = window.devicePixelRatio || 1;
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = Math.round(W * DPR);
+    canvas.height = Math.round(H * DPR);
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    scale = Math.min(W, H) / 700;
+    cx = W / 2;
+    cy = H / 2;
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  // ---- Planets ----
+  var ORBIT_RADII = [62, 98, 140, 186, 246, 304];
+  var PERIODS = [4.2, 7, 10.5, 15, 24, 36];
+  var SIZES = [4.5, 6.5, 7.5, 5.5, 13, 9];
+  var COLORS = ['#ff9b6b', '#7be0a4', '#5fb4ff', '#e2674e', '#e6c288', '#a58bff'];
+  var MOON_COUNTS = [0, 1, 1, 2, 2, 1];
+  var TRAIL_LEN = 90;
+
+  var planets = [];
+  for (var i = 0; i < ORBIT_RADII.length; i++) {
+    planets.push({
+      orbit: ORBIT_RADII[i],
+      period: PERIODS[i],
+      size: SIZES[i],
+      color: COLORS[i],
+      phase: i * 1.37 + 0.4,
+      moons: MOON_COUNTS[i],
+      trail: []
+    });
+  }
+
+  // ---- Background starfield ----
+  var BG_STARS = [];
+  for (var s = 0; s < 180; s++) {
+    var tint = s % 5;
+    var col;
+    if (tint === 0) col = 'rgb(255, 214, 170)';
+    else if (tint === 1) col = 'rgb(170, 205, 255)';
+    else col = 'rgb(255, 255, 255)';
+    BG_STARS.push({
+      x: Math.random(),
+      y: Math.random(),
+      r: 0.3 + Math.random() * 1.3,
+      base: 0.35 + Math.random() * 0.5,
+      rate: 0.6 + Math.random() * 2.4,
+      phase: Math.random() * Math.PI * 2,
+      col: col
+    });
+  }
+
+  // ---- Burst particles ----
+  var bursts = [];
+
+  // ---- State ----
+  var playing = true;
+  var trailsOn = true;
+  var speed = 1.0;
+  var simTime = 0;
+  var lastNow = 0;
+  var fps = 0;
+  var fpsAccum = 0;
+  var fpsFrames = 0;
+
+  function resetSim() {
+    simTime = 0;
+    for (var i = 0; i < planets.length; i++) {
+      planets[i].phase = i * 1.37 + 0.4;
+      planets[i].trail.length = 0;
+    }
+    bursts.length = 0;
+  }
+
+  // ---- HUD wiring ----
+  function updatePlayBtn() {
+    btnPlay.textContent = playing ? 'Pause' : 'Play';
+  }
+  function updateTrailsBtn() {
+    btnTrails.textContent = trailsOn ? 'Trails ON' : 'Trails OFF';
+  }
+  function updateSpeedVal() {
+    speedVal.textContent = speed.toFixed(1) + 'x';
+  }
+
+  btnPlay.addEventListener('click', function () {
+    playing = !playing;
+    updatePlayBtn();
+  });
+  btnTrails.addEventListener('click', function () {
+    trailsOn = !trailsOn;
+    if (!trailsOn) {
+      for (var i = 0; i < planets.length; i++) planets[i].trail.length = 0;
+    }
+    updateTrailsBtn();
+  });
+  btnReset.addEventListener('click', function () {
+    resetSim();
+  });
+  speedEl.addEventListener('input', function (e) {
+    var v = parseFloat((e.target || speedEl).value);
+    if (!isNaN(v)) speed = v;
+    updateSpeedVal();
+  });
+
+  canvas.addEventListener('click', function (e) {
+    var x = e.offsetX != null ? e.offsetX : e.clientX;
+    var y = e.offsetY != null ? e.offsetY : e.clientY;
+    var n = 46 + Math.floor(Math.random() * 19); // 46..64
+    for (var i = 0; i < n; i++) {
+      var ang = (i / n) * Math.PI * 2 + Math.random() * 0.2;
+      var spd = 70 + Math.random() * 210; // 70..280 px/s
+      bursts.push({
+        x: x,
+        y: y,
+        vx: Math.cos(ang) * spd,
+        vy: Math.sin(ang) * spd,
+        size: 1.5 + Math.random() * 2.5,
+        hue: Math.floor(Math.random() * 360),
+        life: 1,
+        decay: 0.45 + Math.random() * 0.55
+      });
+    }
+  });
+
+  // ---- Drawing helpers ----
+  function drawStarfield(t) {
+    for (var i = 0; i < BG_STARS.length; i++) {
+      var st = BG_STARS[i];
+      var alpha = st.base + 0.28 * Math.sin(t * st.rate + st.phase);
+      if (alpha < 0) alpha = 0;
+      if (alpha > 1) alpha = 1;
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = st.col;
+      ctx.beginPath();
+      ctx.arc(st.x * W, st.y * H, st.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawCentralStar(t) {
+    var coreR = 24 * scale;
+    var pulse = 1 + 0.07 * Math.sin(1.7 * t);
+    var coronaR = coreR * 5.2 * pulse;
+
+    // corona
+    var cg = ctx.createRadialGradient(cx, cy, coreR * 0.4, cx, cy, coronaR);
+    cg.addColorStop(0, 'rgba(255, 214, 130, 0.55)');
+    cg.addColorStop(1, 'rgba(255, 214, 130, 0)');
+    ctx.fillStyle = cg;
+    ctx.beginPath();
+    ctx.arc(cx, cy, coronaR, 0, Math.PI * 2);
+    ctx.fill();
+
+    // core
+    var gg = ctx.createRadialGradient(cx, cy, 0, cx, cy, coreR);
+    gg.addColorStop(0, '#fffbe6');
+    gg.addColorStop(0.45, '#ffd76a');
+    gg.addColorStop(1, '#ff8a2b');
+    ctx.fillStyle = gg;
+    ctx.beginPath();
+    ctx.arc(cx, cy, coreR, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function drawOrbits() {
+    ctx.strokeStyle = 'rgba(130, 160, 220, 0.11)';
+    ctx.lineWidth = 1;
+    for (var i = 0; i < planets.length; i++) {
+      var rx = planets[i].orbit * scale;
+      var ry = rx * 0.62;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+
+  function planetPos(p, t) {
+    var ang = p.phase + (t / p.period) * Math.PI * 2;
+    var rx = p.orbit * scale;
+    var ry = rx * 0.62;
+    return {
+      x: cx + Math.cos(ang) * rx,
+      y: cy + Math.sin(ang) * ry
+    };
+  }
+
+  function drawTrails() {
+    ctx.lineCap = 'round';
+    for (var i = 0; i < planets.length; i++) {
+      var p = planets[i];
+      var n = p.trail.length;
+      if (n < 2) continue;
+      ctx.strokeStyle = p.color;
+      for (var j = 1; j < n; j++) {
+        var a = p.trail[j - 1];
+        var b = p.trail[j];
+        ctx.globalAlpha = (j / n) * 0.55;
+        ctx.lineWidth = Math.max(0.6, p.size * scale * 0.42 * j / n);
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawPlanet(p, x, y) {
+    var size = p.size * scale;
+
+    // glow
+    var glowR = size * 3;
+    var gg = ctx.createRadialGradient(x, y, 0, x, y, glowR);
+    gg.addColorStop(0, p.color + '55');
+    gg.addColorStop(1, p.color + '00');
+    ctx.fillStyle = gg;
+    ctx.beginPath();
+    ctx.arc(x, y, glowR, 0, Math.PI * 2);
+    ctx.fill();
+
+    // disc
+    var dx = x - 0.35 * size;
+    var dy = y - 0.35 * size;
+    var dg = ctx.createRadialGradient(dx, dy, 0, x, y, size);
+    dg.addColorStop(0, '#ffffff');
+    dg.addColorStop(0.25, p.color);
+    dg.addColorStop(1, '#0a0f1f');
+    ctx.fillStyle = dg;
+    ctx.beginPath();
+    ctx.arc(x, y, size, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function drawRing(x, y, size) {
+    ctx.save();
+    ctx.strokeStyle = 'rgba(230, 194, 136, 0.55)';
+    ctx.lineWidth = Math.max(1, size * 0.18);
+    ctx.beginPath();
+    ctx.ellipse(x, y, size * 2.1, size * 0.7, -0.5, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawMoons(p, x, y, t) {
+    var size = p.size * scale;
+    for (var m = 0; m < p.moons; m++) {
+      var mAng = t * (1.5 + m * 0.4) + m * 2.1 + p.phase;
+      var mR = size * (2.2 + m * 0.9);
+      var mx = x + Math.cos(mAng) * mR;
+      var my = y + Math.sin(mAng) * mR * 0.6;
+      var mr = Math.max(1.2, size * 0.28);
+      ctx.fillStyle = 'rgba(200, 210, 235, 0.85)';
+      ctx.beginPath();
+      ctx.arc(mx, my, mr, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function drawBursts(dt) {
+    if (bursts.length === 0) return;
+    ctx.globalCompositeOperation = 'lighter';
+    for (var i = bursts.length - 1; i >= 0; i--) {
+      var b = bursts[i];
+      b.x += b.vx * dt;
+      b.y += b.vy * dt;
+      var damp = Math.pow(0.12, dt);
+      b.vx *= damp;
+      b.vy *= damp;
+      b.life -= b.decay * dt;
+      if (b.life <= 0) {
+        bursts.splice(i, 1);
+        continue;
+      }
+      var r = b.size * scale * 3;
+      var g = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, r);
+      g.addColorStop(0, 'hsla(' + b.hue + ', 100%, 75%, ' + b.life + ')');
+      g.addColorStop(1, 'hsla(' + b.hue + ', 100%, 75%, 0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  // ---- HUD readouts ----
+  function updateReadouts() {
+    fpsEl.textContent = String(fps);
+    simTimeEl.textContent = simTime.toFixed(1) + ' s';
+    burstsEl.textContent = String(bursts.length);
+  }
+
+  // ---- Main loop ----
+  function frame(now) {
+    if (!lastNow) lastNow = now;
+    var rawDt = (now - lastNow) / 1000;
+    lastNow = now;
+    var dt = rawDt;
+    if (dt > 0.05) dt = 0.05;
+
+    // fps
+    fpsAccum += rawDt;
+    fpsFrames++;
+    if (fpsAccum >= 0.5) {
+      fps = Math.round(fpsFrames / fpsAccum);
+      fpsAccum = 0;
+      fpsFrames = 0;
+    }
+
+    if (playing) {
+      simTime += dt * speed;
+    }
+
+    // clear
+    ctx.fillStyle = '#060913';
+    ctx.fillRect(0, 0, W, H);
+
+    drawStarfield(simTime);
+    drawOrbits();
+    drawCentralStar(simTime);
+
+    if (trailsOn) drawTrails();
+
+    for (var i = 0; i < planets.length; i++) {
+      var p = planets[i];
+      var pos = planetPos(p, simTime);
+      if (trailsOn) {
+        p.trail.push({ x: pos.x, y: pos.y });
+        if (p.trail.length > TRAIL_LEN) p.trail.shift();
+      }
+      if (i === 4) drawRing(pos.x, pos.y, p.size * scale);
+      drawPlanet(p, pos.x, pos.y);
+      drawMoons(p, pos.x, pos.y, simTime);
+    }
+
+    drawBursts(dt);
+
+    updateReadouts();
+    requestAnimationFrame(frame);
+  }
+
+  updatePlayBtn();
+  updateTrailsBtn();
+  updateSpeedVal();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
