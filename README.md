@@ -49,47 +49,64 @@ Learn more -> [Architecture](docs/ARCHITECTURE.md) ([English PDF](docs/tandem-mc
 
 ---
 
-## Benchmarks: Tandem MCP v3.6.1
+## Benchmarks — Tandem MCP v3.6.1
 
-### Gemini 4 Hydrogen + Qwen 27B (LM Studio)
+### Measured Comparative Evaluation (Gemini 4 Hydrogen + Qwen 27B)
 
-Reproduced on `v3.6.1` (`010cbb6`), `qwen3.8-27b@iq3_s` (`65536` ctx, `23.6 tok/s`), `bubblewrap` sandbox, cache disabled, `1 cloud tok = 3.6 chars` (**Estimated**).
+Three-way comparison on frozen `v3.6.1` (`010cbb6`) fixtures: **Gemini Direct** vs **Gemini + Direct LM Studio** vs **Gemini + Tandem MCP** (`gemini-4-hydrogen-medium`, `qwen3.8-27b@iq3_s` on LM Studio, real cloud tokens measured via `agy --output-format json`). Negative savings mean Tandem used more total cloud tokens than Gemini Direct.
 
-#### Reading & Extraction
+| Workload | Cloud Tokens Saved | Success | Median Time |
+| --- | ---: | ---: | ---: |
+| Reading (`grep` on `agent.py`, `n=3`) | -31.0% | 100% | 69.8 s |
+| Extraction (`pyproject.toml`, `n=3`) | -23.4% | 100% | 38.5 s |
+| Micro bugfix (6 lines, `n=3`) | -12.5% | 100% | 60.5 s |
+| Multi-file bugfix (4 files, `n=3`) | **+10.3%** | 100% | 85.1 s |
+| Orbital animation (`n=1`) | N/A (timeout) | 100% | 2,400.1 s |
 
-| Workload | Cloud Saved (Est.) | Local Tokens | Time / Verified |
+*(Note: vs. Direct LM Studio, Tandem achieved higher schema reliability on extraction [100% vs 33.3%] and used 14x–40x fewer local tokens on `grep`/package surveys.)*
+
+### Context Reduction (Historical v3.6.1 Suite, Estimated)
+
+Derived from source bytes vs. returned digest/receipt bytes (`1 cloud tok = 3.6 chars`, **Estimated** context compression — not net cloud token savings):
+
+| Workload | Context Reduction (Est.) | Local Tokens | Time / Verified |
 | --- | --- | ---: | --- |
-| Full-file QA (`README.md`) | ~2,127 tok (90.4%) | 3,602 | 36.2 s · 1/3 quotes (`contested`) |
-| Targeted grep QA (`agent.py`) | ~27,572 tok (99.5%) | 837 | 22.2 s · 2/2 quotes (`quote_only`) |
-| Multi-file survey (`8 files`) | ~69,202 tok (99.4%) | 107,172 | 864.0 s · 11/11 quotes (`checked`) |
-| Git history (`30 commits`) | ~3,554 tok (96.8%) | 53,712 | 420.6 s · completed |
-| Structured extraction (`pyproject.toml`) | ~187 tok (85.6%) | 633 | 11.9 s · schema valid (0 loose) |
+| Full-file QA (`README.md`) | 90.4% (~2,127 tok) | 3,602 | 36.2 s · `contested` (1/3 quotes) |
+| Targeted grep QA (`agent.py`) | 99.5% (~27,572 tok)* | 837 | 22.2 s · `quote_only` (2/2 quotes) |
+| Multi-file survey (`8 files`) | 99.4% (~69,202 tok) | 107,172 | 864.0 s · `checked` (11/11 quotes) |
+| Git history (`30 commits`) | 96.8% (~3,554 tok) | 53,712 | 420.6 s · completed |
+| Extraction (`pyproject.toml`) | 85.6% (~187 tok) | 633 | 11.9 s · schema valid (0 loose) |
+| Micro bugfix (6 lines) | 58.7% (~171 tok) | 6,498 | 27.7 s · `VERIFIED` (0 repairs) |
+| Multi-file bugfix (4 files) | 92.2% (~1,561 tok) | 8,278 | 37.1 s · `VERIFIED` (0 repairs) |
+| Orbital animation (1 file) | 42.7% output (~1,748 tok)** | 63,324 | 984.2 s · `VERIFIED` (46/46 met) |
+| 3D neon portal (4 modules) | 51.0% output (~2,491 tok)** | 237,029 | 2,464.4 s · `VERIFIED` (69/69 met) |
 
-#### Delegated Fixes
+*\*Full-file Context Reduction (Estimated); vs. efficient-search Gemini Direct, actual cloud token savings were -31.0%.*
+*\*\*Excludes ~5,529 and ~9,708 est. cloud input tokens to inspect receipts and `job_evidence`.*
 
-| Workload | Cloud Saved (Est.) | Local Tokens | Time / Verified |
-| --- | --- | ---: | --- |
-| Micro bugfix (6 lines) | ~171 tok (58.7%) | 6,498 | 27.7 s · `VERIFIED` (0 repairs) |
-| Multi-file bugfix (`config_loader.py`) | ~1,561 tok (92.2%) | 8,278 | 37.1 s · `VERIFIED` (0 repairs) |
+### Visual Demos (Vertical Previews)
 
-#### Code Generation
+**Orbital Simulation — Direct (`Gemini 4 Hydrogen`) vs. Tandem (`v3.6.1` + `qwen3.8-27b@iq3_s`)**
 
-| Orbital simulation, direct (`Gemini 4 Hydrogen`) | Orbital simulation, with Tandem (`Gemini 4 Hydrogen` + `qwen3.8-27b@iq3_s`) |
-| :---: | :---: |
-| <img src="benchmarks/gemini_3_6_1/animation_direct.gif" alt="Orbital simulation written directly by Gemini 4 Hydrogen" width="360" height="230" /> | <img src="benchmarks/gemini_3_6_1/animation_tandem.gif" alt="Orbital simulation written by qwen3.8-27b@iq3_s under a Tandem v3.6.1 contract" width="360" height="230" /> |
-| **3D neon portal, direct (`Gemini 4 Hydrogen`)** | **3D neon portal, with Tandem (`Gemini 4 Hydrogen` + `qwen3.8-27b@iq3_s`)** |
-| <img src="benchmarks/gemini_3_6_1/portal_direct.gif" alt="3D neon portal written directly by Gemini 4 Hydrogen" width="360" height="230" /> | <img src="benchmarks/gemini_3_6_1/portal_tandem.gif" alt="3D neon portal written by qwen3.8-27b@iq3_s under 4 Tandem v3.6.1 contracts" width="360" height="230" /> |
+<p align="center">
+  <img src="benchmarks/gemini_3_6_1/animation_direct.gif" alt="Orbital simulation written directly by Gemini 4 Hydrogen" width="420" />
+</p>
+<p align="center">
+  <img src="benchmarks/gemini_3_6_1/animation_tandem.gif" alt="Orbital simulation written by qwen3.8-27b@iq3_s under a Tandem v3.6.1 contract" width="420" />
+</p>
 
-| Workload | Cloud Output Saved (Est.) | Local Tokens | Time / Verified |
-| --- | --- | ---: | --- |
-| Orbital animation (1 file) | ~1,748 tok (42.7%)* | 63,324 | 984.2 s · `VERIFIED` (46/46 met) |
-| 3D neon portal (4 modules) | ~2,491 tok (51.0%)* | 237,029 | 2,464.4 s · `VERIFIED` (69/69 met) |
+**3D Neon Portal — Direct (`Gemini 4 Hydrogen`) vs. Tandem (`v3.6.1` + `qwen3.8-27b@iq3_s`)**
 
-*\*Excludes ~5,529 and ~9,708 est. cloud input tokens to inspect receipts and `job_evidence`.*
+<p align="center">
+  <img src="benchmarks/gemini_3_6_1/portal_direct.gif" alt="3D neon portal written directly by Gemini 4 Hydrogen" width="420" />
+</p>
+<p align="center">
+  <img src="benchmarks/gemini_3_6_1/portal_tandem.gif" alt="3D neon portal written by qwen3.8-27b@iq3_s under 4 Tandem v3.6.1 contracts" width="420" />
+</p>
 
-- **[View Orbital Animation Comparison](https://alenoc.github.io/tandem-mcp/benchmarks/gemini_3_6_1/animation_comparison.html)** · **[View 3D Portal Comparison](https://alenoc.github.io/tandem-mcp/benchmarks/gemini_3_6_1/scene3d_comparison.html)**
-- **Reports & raw data:** [Gemini v3.6.1 Report](benchmarks/gemini_3_6_1/RESULTS.md) · [Raw JSON](benchmarks/gemini_3_6_1/results.json) · [Generation JSON](benchmarks/gemini_3_6_1/generation.json) · [Reproducible Script](benchmarks/gemini_3_6_1/run_benchmark.py)
-- **Historical Benchmark (Tandem 3.1.0 / Fable 5.2):** [Fable Report](benchmarks/RESULTS.md) · [Orbital Demo](https://alenoc.github.io/tandem-mcp/benchmarks/animation_comparison.html) · [3D Portal Demo](https://alenoc.github.io/tandem-mcp/benchmarks/scene3d_comparison.html)
+- **Comparative Suite (v3.6.1):** [Comparative Report](benchmarks/comparative_3_6_1/RESULTS.md) · [Suite README](benchmarks/comparative_3_6_1/README.md) · [Raw JSON](benchmarks/comparative_3_6_1/runs/20261117-075357/results.json)
+- **Historical Gemini (v3.6.1):** [Gemini Report](benchmarks/gemini_3_6_1/RESULTS.md) · [Orbital Comparison](https://alenoc.github.io/tandem-mcp/benchmarks/gemini_3_6_1/animation_comparison.html) · [3D Portal Comparison](https://alenoc.github.io/tandem-mcp/benchmarks/gemini_3_6_1/scene3d_comparison.html)
+- **Historical Fable (v3.1.0):** [Fable Report](benchmarks/RESULTS.md) · [Orbital Comparison](https://alenoc.github.io/tandem-mcp/benchmarks/animation_comparison.html) · [3D Portal Comparison](https://alenoc.github.io/tandem-mcp/benchmarks/scene3d_comparison.html)
 
 ---
 

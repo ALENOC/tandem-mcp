@@ -32,3 +32,5 @@ jobs:
         run: python tests/test_offline.py
       - name: Whole loop against a scripted server (no model)
         run: python tests/test_protocol.py
+      - name: Comparative benchmark methodology & fixture integrity (no model)
+        run: python tests/test_benchmarks.py
