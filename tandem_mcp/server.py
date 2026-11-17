@@ -51,7 +51,22 @@ GUIDE = '''Hybrid orchestration (cloud model = architect & reviewer, local model
 - Skip delegation for trivial 1-line edits or purely open-ended design with no check.
 The executor is slow. If a call runs past the client timeout and moves to the background, do not cancel it
 or redo its work with the cloud model on your own: ask the user whether to keep waiting or to stop it with job_stop.'''
-mcp = MCPServer('tandem', version=__version__, instructions=GUIDE)
+LEAN_GUIDE = '''Tandem (lean): the local model reads and edits for you so your context stays small.
+- Never read a file yourself before calling Tandem: pass paths. Use digest_file (always with grep when you know a
+  keyword), digest_many, digest_command, extract_from_file.
+- Coding: one delegate call with write_globs, verify_commands that fail until done, atomic constraints. Do not read
+  the sources first: name the files and the behaviour, the executor reads them.
+- A receipt that says ACCEPTED is final: do not re-read files, re-run checks, inspect diffs or call anything else.
+- If it says running, call job_status once more (it waits). Use job_continue(hint) only after FAIL, job_rollback to undo.
+- Never debug Tandem itself (processes, job folders, ledgers). Report errors to the user instead.'''
+
+
+def lean():
+    """TANDEM_PROFILE=lean: fewer tools, short schemas, compact receipts and automatic acceptance of proven jobs."""
+    return os.environ.get('TANDEM_PROFILE', '').strip().lower() == 'lean'
+
+
+mcp = MCPServer('tandem', version=__version__, instructions=LEAN_GUIDE if lean() else GUIDE)
 logging.getLogger('httpx').setLevel(logging.WARNING)
 logging.getLogger('openai').setLevel(logging.WARNING)
 
@@ -915,6 +930,133 @@ def ledger_report(days: float = 30.0) -> str:
         if parts:
             lines.append(f'{name}: ' + '; '.join(parts))
     return sandbox.redact_secrets('\n'.join(lines))
+
+
+# lean profile ----------------------------------------------------------------------------------
+def _lean_wait():
+    """Default wait of a lean call: below the per-call deadline of common MCP clients (180 s in agy)."""
+    try:
+        return max(0, min(int(os.environ.get('TANDEM_WAIT_SECONDS', 150)), 1500))
+    except ValueError:
+        return 150
+
+
+def _proven(data):
+    """Why a finished job cannot be accepted without a look, or '' when its checks prove it: they failed
+    before the work, pass now, every constraint has looked-up evidence and every change can be undone."""
+    if data.get('state') != 'verified':
+        return f'state {data.get("state")}'
+    if not data.get('checks') or data.get('weak'):
+        return 'no check failed before the work'
+    if data.get('unproven'):
+        return 'some constraints have no evidence'
+    if (data.get('syntax') or {}).get('bad'):
+        return 'syntax errors'
+    if data.get('unbacked_files') or data.get('backup_status') in ('partially_backed', 'unbacked'):
+        return 'changes that rollback cannot undo'
+    if not data.get('changes'):
+        return 'no file changed'
+    return ''
+
+
+def _lean_receipt(job):
+    """A receipt sized for the orchestrator's context: a few lines when the job is proven (and then accepted
+    on its behalf), the full receipt only when something needs its judgment."""
+    data = store.read_job(job)
+    if not data or data.get('kind') == 'batch' or data.get('state') == 'running':
+        return _receipt(job) if data and data.get('state') != 'running' else (
+            f'job {job}: running, step {data.get("steps", 0)}. Call job_status({job!r}) once more.' if data else f'unknown job {job}')
+    why = _proven(data)
+    if why:
+        return _receipt(job) + f'\nNOT ACCEPTED automatically ({why}).'
+    if not data.get('accepted'):
+        data['accepted'], data['auto_accepted'] = True, True
+        store.write_job(job, data)
+        store.log('feedback', kind='feedback', job=job, accepted=True, auto=True, state='verified',
+                  model=data.get('used') or data.get('model') or 'default')
+    files = ', '.join(f'{rel} +{add} -{rem}' for rel, _, add, rem in data.get('changes', []))
+    checks = ', '.join(c['command'] for c in data.get('checks', []))
+    note = ' Render it to judge the look.' if any(_VISUAL.search(r[0]) for r in data.get('changes') or []) else ''
+    return sandbox.redact_secrets(
+        f'job {job}: ACCEPTED (verified: checks failed before and pass now: {checks}; '
+        f'{len(data.get("constraints") or [])} constraints cited). Changed: {files}.{note} '
+        f'Nothing else to call; job_diff/job_rollback({job!r}) stay available.')
+
+
+def _lean_batch_receipt(job):
+    data = store.read_job(job)
+    if not data or data.get('kind') != 'batch':
+        return _lean_receipt(job)
+    if data.get('state') == 'running':
+        return _receipt(job)
+    rows = [r for r in data.get('tasks', []) if r.get('job')]
+    receipts = [_lean_receipt(r['job']) for r in rows]
+    if receipts and all('ACCEPTED (' in r for r in receipts) and len(rows) == len(data.get('tasks', [])):
+        return f'batch {job}: ACCEPTED, {len(rows)} tasks verified by their checks. Nothing else to call.'
+    return _receipt(job)
+
+
+def lean_delegate(goal: str, workspace: str, write_globs: list[str], verify_commands: list[str],
+                  constraints: list[str] = [], allow_run: list[str] = [], context: str = '') -> str:
+    try:
+        ws = sandbox.Workspace(workspace, write_globs, allow_run, [])
+        clean = _validate_contract(goal, constraints, verify_commands, write_globs)
+        job = agent.start(goal, ws, list(verify_commands), 30, 2, '', context, True, 0,
+                          constraints=clean, require_proof=strict())
+        _wait(job, _lean_wait())
+        return _saved('delegate', 0, _lean_receipt(job))
+    except Exception as exc:
+        return _fail(exc)
+
+
+def lean_delegate_many(tasks: list[BatchTaskSpec], workspace: str, allow_run: list[str] = [], context: str = '') -> str:
+    out = delegate_many(tasks, workspace, allow_run=allow_run, context=context, wait_seconds=_lean_wait())
+    m = re.match(r'batch (\S+):', out)
+    return _lean_batch_receipt(m.group(1)) if m else out
+
+
+def lean_job_status(job_id: str) -> str:
+    _wait(job_id, _lean_wait())
+    data = store.read_job(job_id) or {}
+    return _lean_batch_receipt(job_id) if data.get('kind') == 'batch' else _lean_receipt(job_id)
+
+
+def lean_job_continue(job_id: str, hint: str) -> str:
+    out = job_continue(job_id, hint, wait_seconds=_lean_wait())
+    return _lean_receipt(job_id) if not out.startswith('ERROR') else out
+
+
+_LEAN_TOOLS = {
+    'digest_file': (None, 'Answer a question about one file with checked quotes. Give grep (a keyword or regex) '
+                          'whenever you can: it is much faster.'),
+    'digest_many': (None, 'Answer a question across files matching glob under root, one short note per file.'),
+    'digest_command': (None, 'Run a read-only command (git log, test output) and answer a question about its output.'),
+    'extract_from_file': (None, 'Extract JSON matching json_schema (a JSON string) from a file.'),
+    'delegate': (lean_delegate, 'Local executor does a bounded coding task. write_globs: files it may write. '
+                                'verify_commands: checks that fail until done. constraints: one requirement each. '
+                                'allow_run: regexes of commands it may run (e.g. ^python3\\b). Returns ACCEPTED, '
+                                'running, or a failure receipt.'),
+    'delegate_many': (lean_delegate_many, 'Several delegate tasks: list of {name, goal, write_globs, verify_commands, '
+                                          'constraints, after}. Returns ACCEPTED or per-task receipts.'),
+    'job_status': (lean_job_status, 'Wait for a running job and return its receipt.'),
+    'job_continue': (lean_job_continue, 'Send a failed job on with a hint.'),
+    'job_diff': (None, 'Full diff of a job (only when a receipt asks you to look).'),
+    'job_rollback': (None, 'Undo every change of a job.'),
+}
+
+
+def _apply_lean_profile():
+    """Expose only the lean tools with short descriptions. Called at import when TANDEM_PROFILE=lean."""
+    originals = {t.name: t for t in mcp._tool_manager.list_tools()} if hasattr(mcp, '_tool_manager') else {}
+    for name in list(originals):
+        mcp.remove_tool(name)
+    for name, (fn, desc) in _LEAN_TOOLS.items():
+        target = fn or globals()[name]
+        mcp.add_tool(target, name=name, description=desc)
+
+
+if lean():
+    _apply_lean_profile()
 
 
 def _graceful_shutdown(_signum=None, _frame=None):

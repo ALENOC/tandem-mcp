@@ -1,0 +1,17 @@
+{
+ "GEMINI.md": 436,
+ "settings.py": 436,
+ "svc_billing.py": 436,
+ "svc_catalog.py": 436,
+ "svc_checkout.py": 436,
+ "svc_inventory.py": 436,
+ "svc_ledger.py": 436,
+ "svc_mailer.py": 436,
+ "svc_orders.py": 436,
+ "svc_pricing.py": 436,
+ "svc_reports.py": 436,
+ "svc_search.py": 436,
+ "svc_shipping.py": 436,
+ "svc_users.py": 436,
+ "test_rename.py": 436
+}

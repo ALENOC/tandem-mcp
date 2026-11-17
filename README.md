@@ -51,39 +51,40 @@ Learn more -> [Architecture](docs/ARCHITECTURE.md) ([English PDF](docs/tandem-mc
 
 ## Benchmarks — Tandem MCP v3.6.1
 
-### Hydrogen 3.6.1 Suite (Gemini 4 Hydrogen + Qwen3.8 27B)
+### Hydrogen 3.6.1 Suite — Lean Profile (`Gemini 4 Hydrogen` + `Qwen3.8 27B`)
 
-Fresh two-way comparison (**Gemini Direct** vs **Gemini + Tandem MCP**) built from scratch in [`benchmarks/hydrogen_3_6_1/`](benchmarks/hydrogen_3_6_1/README.md) (`gemini-4-hydrogen-medium` via `agy` 1.5.10 + `qwen3.8-27b@iq3_s` on LM Studio, run `20261117-190714`):
+Two-way comparison (**Gemini Direct** vs **Gemini + Tandem MCP `TANDEM_PROFILE=lean`** + [Orchestrator Rules](docs/ORCHESTRATOR_RULES.md)) in [`benchmarks/hydrogen_3_6_1/`](benchmarks/hydrogen_3_6_1/README.md) (`gemini-4-hydrogen-medium` via `agy` 1.5.10 + `qwen3.8-27b@iq3_s` on LM Studio, run `20261117-205412` merged with `20261117-204009`):
 
-| Workload | Direct (Time / Cloud Tok) | Tandem (Time / Cloud Tok / Local Tok) | Cloud Savings | E2E (Direct / Tandem) |
+| Workload | Direct (Time / Cloud Tok) | Tandem Lean (Time / Cloud Tok / Local Tok) | Cloud Savings | E2E (Direct / Tandem) |
 | --- | ---: | ---: | ---: | :---: |
-| Targeted QA (`agent.py` rollback) | 26.76 s · 20,073 | 278.96 s · 21,977 · 8,062 | -9.5% | Pass / Pass |
-| Package survey (`tandem_mcp/*.py`) | 20.56 s · 27,327 | 620.79 s · 54,416 · 35,508 | -99.1% | Pass / Pass |
-| Git history (`25 commits`) | 34.66 s · 24,439 | 401.16 s · 26,478 · 9,688 | -8.3% | Pass / Fail* |
-| Extraction (`pyproject.toml`) | 12.20 s · 15,490 | 176.07 s · 17,893 · 1,324 | -15.5% | Pass / Pass |
-| Multi-file bugfix (4 modules) | 28.68 s · 24,702 | 237.86 s · 44,096 · 7,444 | -78.5% | Pass / Pass |
-| Bounded feature (`rate_limiter.py`) | 28.62 s · 23,593 | 576.54 s · 48,147 · 33,767 | -104.1% | Pass / Pass |
+| Multi-file bugfix (4 modules) | 25.80 s · 24,760 | 144.65 s · 23,048 · 20,644 | **+6.9%** | Pass / Pass |
+| Cross-file rename (13 modules) | 26.18 s · 25,558 | 220.02 s · 24,884 · 30,885 | **+2.6%** | Pass / Pass |
+| Incident log QA (`85 KB`) | 21.36 s · 72,298 | 397.79 s · 25,151 · 40,083 | **+65.2%** | Pass / Pass |
+| Orbital animation (`46` constraints) | 58.28 s · 40,808 | 1,038.31 s · 41,548 · 107,236 | -1.8% | Pass / Pass |
+| 3D neon portal (`69` constraints) | 121.97 s · 59,783 | 2,429.72 s · 61,286 · 279,991 | -2.5% | Pass / Pass |
 
-*\*`reading_git_log` timed out on `agy`'s 180 s per-MCP-tool-call deadline during un-grepped `digest_file`. Full report: [Hydrogen Suite Report](benchmarks/hydrogen_3_6_1/RESULTS.md) · [Run JSON](benchmarks/hydrogen_3_6_1/runs/20261117-190714/results.json).*
+> **Why fixed session overhead matters:** Every `agy` session carries a **~12,000-token fixed baseline** (system prompt + native tool schemas, measured at `11,787` input tokens on a 1-word prompt). On small ~25K-token tasks, only ~13K tokens are variable, so net savings are modest (`+2.6%` to `+6.9%`) once `TANDEM_PROFILE=lean` removes schema bloat (22 KB -> 7.4 KB) and auto-accepts check-proven jobs. When a task forces the direct model to pull large raw files into context (`reading_incident_log`, `85 KB`), Tandem cuts cloud tokens from `72,298` down to `25,151` (**+65.2% saved**).
+
+Full report: [Hydrogen Lean Report](benchmarks/hydrogen_3_6_1/RESULTS.md) · [Lean Run JSON](benchmarks/hydrogen_3_6_1/runs/20261117-205412/results.json) · [Pre-Lean Baseline JSON](benchmarks/hydrogen_3_6_1/runs/20261117-190714/results.json).
 
 ### Visual Demos (Vertical Previews)
 
-**Orbital Simulation — Direct (`Gemini 4 Hydrogen`) vs. Tandem (`v3.6.1` + `qwen3.8-27b@iq3_s`)**
+**Orbital Simulation — Direct (`Gemini 4 Hydrogen`) vs. Tandem Lean (`v3.6.1` + `qwen3.8-27b@iq3_s`)**
 
 <p align="center">
-  <img src="benchmarks/gemini_3_6_1/animation_direct.gif" alt="Orbital simulation written directly by Gemini 4 Hydrogen" width="420" />
+  <img src="benchmarks/hydrogen_3_6_1/gifs/animation_direct.gif" alt="Orbital simulation written directly by Gemini 4 Hydrogen" width="420" />
 </p>
 <p align="center">
-  <img src="benchmarks/gemini_3_6_1/animation_tandem.gif" alt="Orbital simulation written by qwen3.8-27b@iq3_s under a Tandem v3.6.1 contract" width="420" />
+  <img src="benchmarks/hydrogen_3_6_1/gifs/animation_tandem.gif" alt="Orbital simulation written by qwen3.8-27b@iq3_s under a Tandem v3.6.1 lean contract" width="420" />
 </p>
 
-**3D Neon Portal — Direct (`Gemini 4 Hydrogen`) vs. Tandem (`v3.6.1` + `qwen3.8-27b@iq3_s`)**
+**3D Neon Portal — Direct (`Gemini 4 Hydrogen`) vs. Tandem Lean (`v3.6.1` + `qwen3.8-27b@iq3_s`)**
 
 <p align="center">
-  <img src="benchmarks/gemini_3_6_1/portal_direct.gif" alt="3D neon portal written directly by Gemini 4 Hydrogen" width="420" />
+  <img src="benchmarks/hydrogen_3_6_1/gifs/portal_direct.gif" alt="3D neon portal written directly by Gemini 4 Hydrogen" width="420" />
 </p>
 <p align="center">
-  <img src="benchmarks/gemini_3_6_1/portal_tandem.gif" alt="3D neon portal written by qwen3.8-27b@iq3_s under 4 Tandem v3.6.1 contracts" width="420" />
+  <img src="benchmarks/hydrogen_3_6_1/gifs/portal_tandem.gif" alt="3D neon portal written by qwen3.8-27b@iq3_s under Tandem v3.6.1 lean contracts" width="420" />
 </p>
 
 - **Comparative Suite (v3.6.1):** [Comparative Report](benchmarks/comparative_3_6_1/RESULTS.md) · [Methodology Corrections](benchmarks/comparative_3_6_1/METHODOLOGY_CORRECTION.md) · [Corrected JSON](benchmarks/comparative_3_6_1/runs/20261117-075357_corrected/results.json)

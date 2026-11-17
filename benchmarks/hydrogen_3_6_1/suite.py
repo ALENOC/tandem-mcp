@@ -135,6 +135,80 @@ TASKS: list[dict[str, Any]] = [
             "`test_rate_limiter.py`. Inspect `job_evidence` and call `job_feedback` before finishing."
         ),
     },
+    {
+        "id": "gen_orbital",
+        "name": "Orbital animation (46 constraints)",
+        "category": "generation",
+        "timeout_s": 2400,
+        "fixture_type": "dir_flat",
+        "fixture": "generation",
+        "direct_prompt": (
+            (FIXTURES / "generation" / "orbital_prompt.txt").read_text(encoding="utf-8").strip()
+            + "\n\nNote: `animation.json` in the workspace specifies the required element IDs (`btnPlay`, `btnTrails`, `btnReset`, `speed`, `speedVal`, `fps`, `simTime`, `bursts`) and `check_page.js` validates `index.html`. Run `node check_page.js` to verify your implementation passes."
+        ),
+        "tandem_prompt": (
+            (FIXTURES / "generation" / "orbital_prompt.txt").read_text(encoding="utf-8").strip()
+            + "\n\nUse Tandem MCP (`delegate` with `contract_file=\"animation.json\"`, `writable=[\"index.html\"]`, "
+            "and `acceptance_checks=[\"node check_page.js\"]`). Poll `job_status` in ~30s intervals until finished "
+            "without resubmitting, then inspect `job_evidence` and call `job_feedback` before finishing."
+        ),
+    },
+    {
+        "id": "gen_portal",
+        "name": "3D neon portal (69 constraints)",
+        "category": "generation",
+        "timeout_s": 4200,
+        "fixture_type": "dir_flat",
+        "fixture": "generation",
+        "direct_prompt": (
+            (FIXTURES / "generation" / "portal_prompt.txt").read_text(encoding="utf-8").strip()
+            + "\n\nNote: Create `index.html`, `scene.js`, `engine3d.js`, and `app.js` matching `scene3d.json` in the workspace, and run `node check_engine.js` to verify your implementation passes."
+        ),
+        "tandem_prompt": (
+            (FIXTURES / "generation" / "portal_prompt.txt").read_text(encoding="utf-8").strip()
+            + "\n\nUse Tandem MCP (`delegate` or `delegate_many` with `contract_file=\"scene3d.json\"`, "
+            "`writable=[\"index.html\", \"scene.js\", \"engine3d.js\", \"app.js\"]`, and "
+            "`acceptance_checks=[\"node check_engine.js\"]`). Poll `job_status` in ~30s intervals until finished "
+            "without resubmitting, then inspect `job_evidence` and call `job_feedback` before finishing."
+        ),
+    },
+    {
+        "id": "refactor_rename",
+        "name": "Cross-file rename (13 modules + tests)",
+        "category": "refactor",
+        "timeout_s": 900,
+        "fixture_type": "dir_flat",
+        "fixture": "refactor_rename",
+        "direct_prompt": (
+            "In this workspace, rename `get_conf` to `load_settings` in `settings.py` and update "
+            "every import and call site across all `svc_*.py` modules. Run `python3 -m unittest test_rename.py` "
+            "to verify all tests pass."
+        ),
+        "tandem_prompt": (
+            "Use Tandem MCP (`delegate` or `delegate_many` with `write_globs=['settings.py', 'svc_*.py']`, "
+            "`verify_commands=['python3 -m unittest test_rename.py']`, and atomic constraints) to rename "
+            "`get_conf` to `load_settings` in `settings.py` and update every `svc_*.py` module. "
+            "Do not read the source files yourself first."
+        ),
+    },
+    {
+        "id": "reading_incident_log",
+        "name": "Large incident log QA (85 KB)",
+        "category": "reading",
+        "timeout_s": 600,
+        "fixture_type": "file",
+        "fixture": "incident_log.txt",
+        "direct_prompt": (
+            "From `incident_log.txt`, reconstruct the real incident: which service failed first, "
+            "at what exact timestamp (HH:MM:SS), what was the root cause, and at what timestamp was it resolved?"
+        ),
+        "tandem_prompt": (
+            "Use Tandem MCP (`digest_file` with `grep='payments-db|INC-4471|ERROR'` or focused queries) on "
+            "`incident_log.txt` to reconstruct the real incident: which service failed first, at what exact "
+            "timestamp (HH:MM:SS), what was the root cause, and at what timestamp was it resolved? "
+            "Do not read `incident_log.txt` directly."
+        ),
+    },
 ]
 
 
@@ -215,10 +289,20 @@ def run_attempt(
     scenario: str,
     repeat: int,
     run_dir: Path,
+    lean_mode: bool = False,
 ) -> dict[str, Any]:
     attempt_id = f"{task['id']}__{scenario}__r{repeat}"
     workspace = run_dir / "workspaces" / attempt_id
     prepare_workspace(task, workspace)
+
+    if lean_mode and scenario == "tandem":
+        rules_doc = ROOT.parents[1] / "docs" / "ORCHESTRATOR_RULES.md"
+        if rules_doc.exists():
+            text = rules_doc.read_text(encoding="utf-8")
+            import re as _re
+            m = _re.search(r"```markdown\n(.*?)```", text, _re.DOTALL)
+            if m:
+                (workspace / "GEMINI.md").write_text(m.group(1), encoding="utf-8")
 
     tandem_home = run_dir / "tandem_homes" / attempt_id
     tandem_home.mkdir(parents=True, exist_ok=True)
@@ -229,6 +313,9 @@ def run_attempt(
     env = os.environ.copy()
     env["TANDEM_HOME"] = str(tandem_home)
     env["TANDEM_MODEL"] = EXECUTOR_MODEL
+    if lean_mode:
+        env["TANDEM_PROFILE"] = "lean"
+        env["TANDEM_WAIT_SECONDS"] = "150"
 
     prompt = task["direct_prompt"] if scenario == "direct" else task["tandem_prompt"]
     cmd = [
@@ -422,6 +509,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Run Tandem MCP Hydrogen + Qwen3.8 27B benchmark suite.")
     parser.add_argument("--tasks", default="", help="Comma-separated task IDs (default: all)")
     parser.add_argument("--repeats", type=int, default=1, help="Repeats per task/scenario (default: 1)")
+    parser.add_argument("--merge-from", default="", help="Existing run_id whose attempts to merge into this run's summary")
+    parser.add_argument("--lean", action="store_true", help="Enable TANDEM_PROFILE=lean and GEMINI.md orchestrator rules")
     args = parser.parse_args()
 
     selected_ids = {t.strip() for t in args.tasks.split(",") if t.strip()}
@@ -430,13 +519,18 @@ def main() -> int:
         print(f"No matching tasks for {args.tasks!r}", file=sys.stderr)
         return 2
 
+    prior_attempts: list[dict[str, Any]] = []
+    if args.merge_from:
+        prior_path = RUNS_DIR / args.merge_from / "results.json"
+        prior_attempts = json.loads(prior_path.read_text(encoding="utf-8")).get("attempts", [])
+
     pre = preflight()
     run_id = datetime.now().strftime("%Y%m%d-%H%M%S")
     run_dir = RUNS_DIR / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "preflight.json").write_text(json.dumps(pre, indent=2), encoding="utf-8")
 
-    attempts: list[dict[str, Any]] = []
+    attempts: list[dict[str, Any]] = list(prior_attempts)
     initial_enabled = pre["initial_tandem_mcp_enabled"]
     try:
         for scenario in ("direct", "tandem"):
@@ -444,7 +538,7 @@ def main() -> int:
             for task in selected_tasks:
                 for rep in range(1, args.repeats + 1):
                     print(f"[{run_id}] Running {task['id']} ({scenario}, r{rep})...", flush=True)
-                    res = run_attempt(task, scenario, rep, run_dir)
+                    res = run_attempt(task, scenario, rep, run_dir, lean_mode=args.lean)
                     attempts.append(res)
                     print(
                         f"  -> e2e={res['e2e_success']} time={res['wall_seconds']}s "
@@ -452,6 +546,7 @@ def main() -> int:
                         f"({res['eval_reason']})",
                         flush=True,
                     )
+                    (run_dir / "results.partial.json").write_text(json.dumps({"attempts": attempts}, indent=2), encoding="utf-8")
     finally:
         set_tandem_mcp(initial_enabled)
 

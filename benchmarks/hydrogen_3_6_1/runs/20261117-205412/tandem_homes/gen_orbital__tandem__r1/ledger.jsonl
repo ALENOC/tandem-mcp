@@ -1,0 +1,16 @@
+{"ts": 1794945460.2317457, "tool": "probe", "kind": "llm", "model": "qwen3.8-27b@iq3_s", "prompt_tokens": 43, "completion_tokens": 48, "seconds": 3.64}
+{"ts": 1794945462.3506813, "tool": "probe", "kind": "llm", "model": "qwen3.8-27b@iq3_s", "prompt_tokens": 299, "completion_tokens": 42, "seconds": 2.12}
+{"ts": 1794945473.754332, "tool": "delegate", "kind": "llm", "model": "qwen3.8-27b@iq3_s", "prompt_tokens": 2068, "completion_tokens": 128, "seconds": 11.02}
+{"ts": 1794945486.8527992, "tool": "delegate", "kind": "llm", "model": "qwen3.8-27b@iq3_s", "prompt_tokens": 3631, "completion_tokens": 94, "seconds": 13.1}
+{"ts": 1794945606.54679, "tool": "delegate", "kind": "result", "bytes_in": 0, "bytes_out": 97}
+{"ts": 1794945669.1545439, "tool": "delegate", "kind": "llm", "model": "qwen3.8-27b@iq3_s", "prompt_tokens": 5544, "completion_tokens": 4000, "seconds": 182.3}
+{"ts": 1794945925.345869, "tool": "delegate", "kind": "llm", "model": "qwen3.8-27b@iq3_s", "prompt_tokens": 5544, "completion_tokens": 6063, "seconds": 256.19}
+{"ts": 1794945982.8398807, "tool": "delegate", "kind": "llm", "model": "qwen3.8-27b@iq3_s", "prompt_tokens": 10651, "completion_tokens": 99, "seconds": 57.49}
+{"ts": 1794946039.9863255, "tool": "delegate", "kind": "llm", "model": "qwen3.8-27b@iq3_s", "prompt_tokens": 10804, "completion_tokens": 63, "seconds": 57.14}
+{"ts": 1794946099.3404825, "tool": "delegate", "kind": "llm", "model": "qwen3.8-27b@iq3_s", "prompt_tokens": 10862, "completion_tokens": 91, "seconds": 59.35}
+{"ts": 1794946186.1301606, "tool": "delegate", "kind": "llm", "model": "qwen3.8-27b@iq3_s", "prompt_tokens": 10932, "completion_tokens": 624, "seconds": 86.79}
+{"ts": 1794946251.3731773, "tool": "delegate", "kind": "llm", "model": "qwen3.8-27b@iq3_s", "prompt_tokens": 10988, "completion_tokens": 206, "seconds": 65.24}
+{"ts": 1794946332.9942036, "tool": "delegate", "kind": "llm", "model": "qwen3.8-27b@iq3_s", "prompt_tokens": 11137, "completion_tokens": 481, "seconds": 81.62}
+{"ts": 1794946466.3473928, "tool": "delegate", "kind": "llm", "model": "qwen3.8-27b@iq3_s", "prompt_tokens": 11196, "completion_tokens": 1598, "seconds": 133.35}
+{"ts": 1794946466.6443863, "tool": "delegate", "kind": "job", "job": "20261117-205736-278d91", "state": "verified", "steps": 10, "executor_tokens": 106804, "bytes_in": 22841, "model": "qwen3.8-27b@iq3_s"}
+{"ts": 1794946466.6448872, "tool": "feedback", "kind": "feedback", "job": "20261117-205736-278d91", "accepted": true, "auto": true, "state": "verified", "model": "qwen3.8-27b@iq3_s"}

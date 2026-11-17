@@ -1,0 +1,12 @@
+{"ts": 1794944499.374121, "tool": "probe", "kind": "llm", "model": "qwen3.8-27b@iq3_s", "prompt_tokens": 43, "completion_tokens": 48, "seconds": 4.35}
+{"ts": 1794944503.647178, "tool": "probe", "kind": "llm", "model": "qwen3.8-27b@iq3_s", "prompt_tokens": 299, "completion_tokens": 42, "seconds": 4.27}
+{"ts": 1794944520.5364683, "tool": "delegate", "kind": "llm", "model": "qwen3.8-27b@iq3_s", "prompt_tokens": 1802, "completion_tokens": 152, "seconds": 16.75}
+{"ts": 1794944540.452131, "tool": "delegate", "kind": "llm", "model": "qwen3.8-27b@iq3_s", "prompt_tokens": 2952, "completion_tokens": 310, "seconds": 19.91}
+{"ts": 1794944553.8708172, "tool": "delegate", "kind": "llm", "model": "qwen3.8-27b@iq3_s", "prompt_tokens": 3205, "completion_tokens": 68, "seconds": 13.42}
+{"ts": 1794944571.4694433, "tool": "delegate", "kind": "llm", "model": "qwen3.8-27b@iq3_s", "prompt_tokens": 3623, "completion_tokens": 109, "seconds": 17.6}
+{"ts": 1794944587.812127, "tool": "delegate", "kind": "llm", "model": "qwen3.8-27b@iq3_s", "prompt_tokens": 3784, "completion_tokens": 55, "seconds": 16.34}
+{"ts": 1794944612.4038215, "tool": "delegate", "kind": "llm", "model": "qwen3.8-27b@iq3_s", "prompt_tokens": 3933, "completion_tokens": 219, "seconds": 24.52}
+{"ts": 1794944612.4752476, "tool": "delegate", "kind": "job", "job": "20261117-204134-37101b", "state": "verified", "steps": 6, "executor_tokens": 20212, "bytes_in": 3844, "model": "qwen3.8-27b@iq3_s"}
+{"ts": 1794944612.4756994, "tool": "feedback", "kind": "feedback", "job": "20261117-204134-37101b", "accepted": true, "auto": true, "state": "verified", "model": "qwen3.8-27b@iq3_s"}
+{"ts": 1794944612.4757981, "tool": "delegate", "kind": "result", "bytes_in": 0, "bytes_out": 271}
+{"ts": 1794944617.9830706, "tool": "job_diff", "kind": "result", "bytes_in": 0, "bytes_out": 707}

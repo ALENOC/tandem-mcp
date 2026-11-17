@@ -1,0 +1,1 @@
+{"ts": 1794944076.5250974, "scope": "/home/ale/Projects/tandem-mcp", "text": "The executor wrote a complete index.html that satisfies all 46 constraints and passes node check_page.js, but the job errored during repair due to an LM Studio 400 response when citing constraints.", "source": "review of 20261117-202406-1f5aca"}

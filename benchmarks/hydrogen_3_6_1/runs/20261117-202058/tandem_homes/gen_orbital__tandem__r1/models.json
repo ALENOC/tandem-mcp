@@ -1,0 +1,9 @@
+{
+ "http://127.0.0.1:1234/v1|qwen3.8-27b@iq3_s": {
+  "tools": true,
+  "schema": true,
+  "thinking": true,
+  "tps": 20.4,
+  "probed": 1794943446.8618844
+ }
+}

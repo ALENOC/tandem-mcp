@@ -142,4 +142,72 @@ def evaluate_attempt(task_id: str, response_text: str, workspace: Path) -> dict[
             },
         }
 
+    if task_id == "gen_orbital":
+        idx = workspace / "index.html"
+        if not idx.exists():
+            return {"valid": False, "reason": "index.html missing", "details": {}}
+        shutil.copy2(FIXTURES_DIR / "generation" / "check_page.js", workspace / "check_page.js")
+        proc = subprocess.run(
+            ["node", "check_page.js"],
+            cwd=str(workspace),
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        valid = proc.returncode == 0 and "page ok" in (proc.stdout or "")
+        return {
+            "valid": valid,
+            "reason": "check_page.js passed (page ok)" if valid else f"check_page.js failed (rc={proc.returncode}): {(proc.stderr or proc.stdout)[-300:]}",
+            "details": {"returncode": proc.returncode, "stdout": proc.stdout[-300:], "stderr": proc.stderr[-300:]},
+        }
+
+    if task_id == "gen_portal":
+        required = ["index.html", "scene.js", "engine3d.js", "app.js"]
+        missing = [f for f in required if not (workspace / f).exists()]
+        if missing:
+            return {"valid": False, "reason": f"Missing files: {missing}", "details": {"missing": missing}}
+        shutil.copy2(FIXTURES_DIR / "generation" / "check_engine.js", workspace / "check_engine.js")
+        proc = subprocess.run(
+            ["node", "check_engine.js"],
+            cwd=str(workspace),
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        valid = proc.returncode == 0 and "engine ok" in (proc.stdout or "")
+        return {
+            "valid": valid,
+            "reason": "check_engine.js passed (engine ok)" if valid else f"check_engine.js failed (rc={proc.returncode}): {(proc.stderr or proc.stdout)[-300:]}",
+            "details": {"returncode": proc.returncode, "stdout": proc.stdout[-300:], "stderr": proc.stderr[-300:]},
+        }
+
+    if task_id == "refactor_rename":
+        ref_test = FIXTURES_DIR / "refactor_rename" / "test_rename.py"
+        shutil.copy2(ref_test, workspace / "test_rename.py")
+        proc = subprocess.run(
+            [sys.executable, "-m", "unittest", "test_rename.py"],
+            cwd=str(workspace), capture_output=True, text=True, timeout=60,
+        )
+        valid = proc.returncode == 0
+        return {
+            "valid": valid,
+            "reason": "test_rename.py passed (13 files renamed)" if valid else f"test_rename.py failed (rc={proc.returncode}): {proc.stderr[-200:]}",
+            "details": {"returncode": proc.returncode, "stderr": proc.stderr[-500:]},
+        }
+
+    if task_id == "reading_incident_log":
+        low = text.lower()
+        checks = {
+            "first_service": "payments-db" in low,
+            "start_time": "02:14" in text,
+            "root_cause": any(k in low for k in ("no space", "disk full", "disk space", "disk was full", "100%")),
+            "resolved_time": "03:41" in text,
+        }
+        valid = all(checks.values())
+        return {
+            "valid": valid,
+            "reason": "Incident reconstructed (service, start, cause, resolution)" if valid else f"Missing: {[k for k, v in checks.items() if not v]}",
+            "details": checks,
+        }
+
     return {"valid": False, "reason": f"Unknown task_id: {task_id}", "details": {}}
