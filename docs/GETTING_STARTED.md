@@ -48,6 +48,25 @@ Useful installer flags:
 - `--dry-run`: preview changes without modifying files.
 - `--uninstall`: remove `tandem-mcp` from the selected clients.
 
+### Check the registration
+
+Run the command for your client after installation:
+
+- Claude Code: `claude mcp get tandem-mcp`
+- Codex: `codex mcp get tandem-mcp`
+- Antigravity: `agy mcp list`
+
+Gemini CLI has its own configuration. To register the server from the repository root:
+
+```sh
+gemini mcp add --scope user --transport stdio tandem-mcp "$PWD/.venv/bin/python" "$PWD/main.py"
+gemini mcp list
+```
+
+If a confined client lists the server as disconnected, check that it can launch the configured Python interpreter, including the target of any virtual environment symlink.
+
+A registration entry confirms the configured command. To check the connection to the model as well, restart your client and ask it to run `executor_status`.
+
 ### Manual stdio configuration
 
 Add the following entry to your MCP client configuration:

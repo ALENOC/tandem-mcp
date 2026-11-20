@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 612" width="720" height="612" role="img" aria-labelledby="arch-title arch-desc">
   <title id="arch-title">Tandem MCP Architecture</title>
-  <desc id="arch-desc">Three-tier architecture showing the Cloud AI Orchestrator sending a bounded plan and contract through the Tandem MCP Server (Contracts, Sandbox, Verification, Rollback) to the Local AI Executor (LM Studio, Ollama, Qwen, DeepSeek) and returning verified evidence.</desc>
+  <desc id="arch-desc">An MCP client sends a bounded task to Tandem. A local model proposes tool calls. Tandem applies allowed actions, runs checks and returns the job status and evidence to the client.</desc>
 
   <!-- Outer light background -->
   <rect x="0" y="0" width="720" height="612" rx="20" fill="#f8fafc"/>
@@ -18,7 +18,7 @@
     <rect x="34.5" y="43" width="14" height="7" fill="#4f46e5"/>
 
     <!-- Header & subtitle -->
-    <text x="78" y="41" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="20" font-weight="700" fill="#0f172a">Cloud AI Orchestrator</text>
+    <text x="78" y="41" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="20" font-weight="700" fill="#0f172a">Chat agent (MCP client)</text>
     <rect x="508" y="22" width="136" height="24" rx="12" fill="#eef2ff" stroke="#c7d2fe" stroke-width="1"/>
     <text x="576" y="38" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" font-weight="700" letter-spacing="0.5" fill="#4338ca">PLANS &amp; REVIEWS</text>
     <text x="78" y="62" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="400" fill="#475569">Breaks down the task, defines contract limits, and inspects final evidence</text>
@@ -32,10 +32,10 @@
       <text x="154" y="18.5" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#1e293b">Codex</text>
 
       <rect x="202" y="0" width="80" height="28" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1"/>
-      <text x="242" y="18.5" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#1e293b">Gemini</text>
+      <text x="242" y="18.5" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#1e293b">Antigravity</text>
 
       <rect x="292" y="0" width="108" height="28" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1"/>
-      <text x="346" y="18.5" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#1e293b">MCP Clients</text>
+      <text x="346" y="18.5" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#1e293b">Other clients</text>
     </g>
   </g>
 
@@ -51,7 +51,7 @@
     <rect x="502.75" y="163" width="2.5" height="40" fill="#d97706"/>
     <polygon points="504,154 497.5,165 510.5,165" fill="#d97706"/>
     <rect x="516" y="166" width="150" height="24" rx="6" fill="#ffffff" stroke="#fcd34d" stroke-width="1"/>
-    <text x="591" y="182" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#b45309">4. Verified receipt</text>
+    <text x="591" y="182" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#b45309">4. Status &amp; evidence</text>
   </g>
 
   <!-- ==================== TIER 2: TANDEM MCP SERVER ==================== -->
@@ -66,7 +66,7 @@
     <text x="78" y="39" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="20" font-weight="700" fill="#0f172a">Tandem MCP Server</text>
     <rect x="498" y="20" width="146" height="24" rx="12" fill="#fef3c7" stroke="#fcd34d" stroke-width="1"/>
     <text x="571" y="36" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" font-weight="700" letter-spacing="0.5" fill="#b45309">VERIFIES &amp; GUARDS</text>
-    <text x="78" y="60" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="400" fill="#475569">Enforces boundaries, isolates execution, and produces deterministic proof</text>
+    <text x="78" y="60" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="400" fill="#475569">Applies allowed actions, records changes and runs the requested checks</text>
 
     <!-- 2x2 Capability Grid -->
     <!-- Card 1: Contracts -->
@@ -74,7 +74,7 @@
       <rect width="304" height="48" rx="10" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1"/>
       <circle cx="18" cy="24" r="5" fill="#6366f1"/>
       <text x="32" y="21" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#0f172a">Contracts &amp; Globs</text>
-      <text x="32" y="38" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="11.5" font-weight="400" fill="#475569">read_globs · write_globs · allow_run</text>
+      <text x="32" y="38" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="11.5" font-weight="400" fill="#475569">write_globs · allow_run</text>
     </g>
 
     <!-- Card 2: Sandbox -->
@@ -82,14 +82,14 @@
       <rect width="304" height="48" rx="10" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1"/>
       <circle cx="18" cy="24" r="5" fill="#14b8a6"/>
       <text x="32" y="21" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#0f172a">Sandbox &amp; Snapshots</text>
-      <text x="32" y="38" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="11.5" font-weight="400" fill="#475569">Bubblewrap jail · SHA-256 backups</text>
+      <text x="32" y="38" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="11.5" font-weight="400" fill="#475569">Linux command jail · file backups</text>
     </g>
 
     <!-- Card 3: Verification -->
     <g transform="translate(20, 136)">
       <rect width="304" height="48" rx="10" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1"/>
       <circle cx="18" cy="24" r="5" fill="#f59e0b"/>
-      <text x="32" y="21" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#0f172a">Deterministic Verification</text>
+      <text x="32" y="21" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#0f172a">Verification</text>
       <text x="32" y="38" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="11.5" font-weight="400" fill="#475569">Syntax · tests · lexical quote checks</text>
     </g>
 
@@ -114,7 +114,7 @@
     <rect x="502.75" y="415" width="2.5" height="40" fill="#0d9488"/>
     <polygon points="504,406 497.5,417 510.5,417" fill="#0d9488"/>
     <rect x="516" y="418" width="150" height="24" rx="6" fill="#ffffff" stroke="#5eead4" stroke-width="1"/>
-    <text x="591" y="434" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#0f766e">3. Edits &amp; answers</text>
+    <text x="591" y="434" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#0f766e">3. Tool calls &amp; answers</text>
   </g>
 
   <!-- ==================== TIER 3: LOCAL AI EXECUTOR ==================== -->
@@ -135,10 +135,10 @@
     <rect x="50" y="46" width="5" height="2" fill="#0d9488"/>
 
     <!-- Header & subtitle -->
-    <text x="78" y="41" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="20" font-weight="700" fill="#0f172a">Local AI Executor</text>
+    <text x="78" y="41" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="20" font-weight="700" fill="#0f172a">Local model</text>
     <rect x="514" y="22" width="130" height="24" rx="12" fill="#f0fdfa" stroke="#99f6e4" stroke-width="1"/>
     <text x="579" y="38" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" font-weight="700" letter-spacing="0.5" fill="#0f766e">RUNS LOCALLY</text>
-    <text x="78" y="62" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="400" fill="#475569">Reads large files and executes scoped subtasks inside the sandbox</text>
+    <text x="78" y="62" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="400" fill="#475569">Reads context supplied by Tandem and proposes the next action</text>
 
     <!-- Runtime & Model Pills -->
     <g transform="translate(78, 78)">

@@ -15,11 +15,20 @@
 
 Tandem MCP lets the model in your chat hand part of a coding task to a model running on your own machine. A typical request is “fix this function, leave the tests alone, and show me the diff.” The cloud model decides what to hand off. The local model does the edit, and Tandem returns the changes and test results for review.
 
-## How it works
+## Connect your agent
 
-[![The cloud model sends a task through Tandem to the local model. Test results and evidence travel back to the chat.](assets/architecture.svg)](docs/ARCHITECTURE.md)
+Tandem runs as a local MCP server over standard input and output (stdio). The installer registers it with **Claude Code**, **Codex** and **Antigravity**. You can also register the same server manually in **Gemini CLI** or another client that can launch a local stdio server. Each client handles its own tool permissions. [Setup and manual configuration](docs/GETTING_STARTED.md#3-register-with-your-mcp-client)
 
-The handoff includes the files the worker may change and the checks it must run. If a test fails, you can inspect the failure alongside the patch. For a read-only task, the worker can send back a short answer with file and line references. [Architecture guide](docs/ARCHITECTURE.md) · [Workspace and sandbox permissions](docs/SECURITY_MODEL.md)
+## How a delegated edit works
+
+[![Delegation from the chat agent to Tandem and the local model. The four steps are described below.](assets/architecture.svg)](assets/architecture.svg)
+
+1. **Your agent sets the task.** Say you ask it to fix a discount calculation. The agent can call `delegate` with the goal, the file the worker may edit and the test to run.
+2. **Tandem asks the local model.** The server sends the task and relevant context to your model endpoint. The model can ask to read a file, propose an edit or request a command.
+3. **Tandem applies the edit and checks it.** The server handles those tool calls inside the workspace limits. It runs the requested test and records the result and the diff. Command isolation depends on the configured sandbox.
+4. **Your agent reviews the result.** It can inspect the diff and test output, report a failure or request a rollback. For a read-only question, it can use a digest tool and ask for the relevant lines directly.
+
+[Architecture in detail](docs/ARCHITECTURE.md) · [Workspace and sandbox permissions](docs/SECURITY_MODEL.md)
 
 ## Does it save cloud tokens?
 
