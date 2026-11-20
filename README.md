@@ -4,8 +4,6 @@
 
 <img src="assets/logo.svg" alt="Tandem MCP logo: a tandem bicycle, two riders on one frame" width="360">
 
-<p><strong>Your cloud AI plans. Your local AI executes. Tandem verifies.</strong></p>
-
 <p>
   <a href="https://github.com/ALENOC/tandem-mcp/releases"><img src="https://img.shields.io/github/v/release/ALENOC/tandem-mcp" alt="GitHub Release"></a>
   <a href="https://github.com/ALENOC/tandem-mcp/actions/workflows/tests.yml"><img src="https://github.com/ALENOC/tandem-mcp/actions/workflows/tests.yml/badge.svg" alt="CI"></a>
@@ -13,91 +11,13 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
 </p>
 
-<p><strong>Delegate locally. Verify deterministically. Keep control.</strong></p>
-
 </div>
 
-Tandem MCP is an MCP server that pairs a cloud AI orchestrator (Claude Code, Codex, Gemini) with a local OpenAI-compatible LLM (LM Studio, Ollama, llama.cpp, vLLM). The cloud model keeps architectural decisions and final review; the local model reads large files and executes bounded edits while Tandem enforces contracts, runs checks, verifies quotes, and enables rollback.
+Tandem MCP gives a cloud orchestrator access to a local OpenAI-compatible model. It can read files locally, delegate edits within a workspace, run acceptance checks and return a receipt showing what was verified.
 
----
+## Quick start
 
-## Architecture: How Tandem Works
-
-<p align="center">
-  <img src="assets/architecture.svg" width="720" alt="Tandem MCP Architecture: Cloud AI Orchestrator -> Tandem MCP Server -> Local AI Executor">
-</p>
-
-1. **Plan:** The cloud orchestrator decides what to read or delegate and sets explicit contract limits.
-2. **Execute:** Tandem sends a bounded task to the local model inside a confined workspace.
-3. **Verify:** Tandem runs syntax checks, acceptance tests, and lexical quote/number verification.
-4. **Review:** The orchestrator inspects `job_evidence` or `job_diff` and accepts (`job_feedback`) or restores (`job_rollback`).
-
-The local model does not receive unrestricted control over the machine. Actual isolation strength depends on configuration and platform (Bubblewrap on Linux vs command-text checks in compatibility mode).
-
-Learn more -> [Architecture](docs/ARCHITECTURE.md) ([English PDF](docs/tandem-mcp-architecture.pdf) · [Italian PDF](docs/tandem-mcp-architettura.pdf))
-
----
-
-## Why Tandem MCP?
-
-- **Save cloud context:** The local model reads large files, logs, and docs, returning only verified answers and quotes.
-- **Controlled delegation:** Tasks are bounded by contracts, writable globs, command allow lists, and read-only test guards.
-- **Deterministic verification:** Baseline checks, syntax validation, lexical quote checks, and acceptance tests verify results without trusting the local model's word.
-- **Local model flexibility:** Works with **LM Studio**, **Ollama**, **llama.cpp**, **vLLM**, and other OpenAI-compatible endpoints, with role-based model routing.
-- **Review and rollback:** Inspect diffs and cited lines before accepting, and restore recoverable changes without overwriting later user edits.
-- **Usage insights:** Track calls, local tokens, retry counts, and estimated cloud input savings in `ledger_report`.
-
----
-
-## Benchmarks — Tandem MCP v3.6.1
-
-### Hydrogen 3.6.1 Suite — Lean Profile (`Gemini 4 Hydrogen` + `Qwen3.8 27B`)
-
-Two-way comparison (**Gemini Direct** vs **Gemini + Tandem MCP `TANDEM_PROFILE=lean`** + [Orchestrator Rules](docs/ORCHESTRATOR_RULES.md)) in [`benchmarks/hydrogen_3_6_1/`](benchmarks/hydrogen_3_6_1/README.md) (`gemini-4-hydrogen-medium` via `agy` 1.5.10 + `qwen3.8-27b@iq3_s` on LM Studio, run `20261117-205412` merged with `20261117-204009`):
-
-| Workload | Direct (Time / Cloud Tok) | Tandem Lean (Time / Cloud Tok / Local Tok) | Cloud Savings | E2E (Direct / Tandem) |
-| --- | ---: | ---: | ---: | :---: |
-| Multi-file bugfix (4 modules) | 25.80 s · 24,760 | 144.65 s · 23,048 · 20,644 | **+6.9%** | Pass / Pass |
-| Cross-file rename (13 modules) | 26.18 s · 25,558 | 220.02 s · 24,884 · 30,885 | **+2.6%** | Pass / Pass |
-| Incident log QA (`85 KB`) | 21.36 s · 72,298 | 397.79 s · 25,151 · 40,083 | **+65.2%** | Pass / Pass |
-| Orbital animation (`46` constraints) | 58.28 s · 40,808 | 1,038.31 s · 41,548 · 107,236 | -1.8% | Pass / Pass |
-| 3D neon portal (`69` constraints) | 121.97 s · 59,783 | 2,429.72 s · 61,286 · 279,991 | -2.5% | Pass / Pass |
-
-> **Why fixed session overhead matters:** Every `agy` session carries a **~12,000-token fixed baseline** (system prompt + native tool schemas, measured at `11,787` input tokens on a 1-word prompt). On small ~25K-token tasks, only ~13K tokens are variable, so net savings are modest (`+2.6%` to `+6.9%`) once `TANDEM_PROFILE=lean` removes schema bloat (22 KB -> 7.4 KB) and auto-accepts check-proven jobs. When a task forces the direct model to pull large raw files into context (`reading_incident_log`, `85 KB`), Tandem cuts cloud tokens from `72,298` down to `25,151` (**+65.2% saved**).
-
-Full report: [Hydrogen Lean Report](benchmarks/hydrogen_3_6_1/RESULTS.md) · [Lean Run JSON](benchmarks/hydrogen_3_6_1/runs/20261117-205412/results.json) · [Pre-Lean Baseline JSON](benchmarks/hydrogen_3_6_1/runs/20261117-190714/results.json).
-
-### Visual Demos (Vertical Previews)
-
-**Orbital Simulation — Direct (`Gemini 4 Hydrogen`) vs. Tandem Lean (`v3.6.1` + `qwen3.8-27b@iq3_s`)**
-
-<p align="center">
-  <img src="benchmarks/hydrogen_3_6_1/gifs/animation_direct.gif" alt="Orbital simulation written directly by Gemini 4 Hydrogen" width="420" />
-</p>
-<p align="center">
-  <img src="benchmarks/hydrogen_3_6_1/gifs/animation_tandem.gif" alt="Orbital simulation written by qwen3.8-27b@iq3_s under a Tandem v3.6.1 lean contract" width="420" />
-</p>
-
-**3D Neon Portal — Direct (`Gemini 4 Hydrogen`) vs. Tandem Lean (`v3.6.1` + `qwen3.8-27b@iq3_s`)**
-
-<p align="center">
-  <img src="benchmarks/hydrogen_3_6_1/gifs/portal_direct.gif" alt="3D neon portal written directly by Gemini 4 Hydrogen" width="420" />
-</p>
-<p align="center">
-  <img src="benchmarks/hydrogen_3_6_1/gifs/portal_tandem.gif" alt="3D neon portal written by qwen3.8-27b@iq3_s under Tandem v3.6.1 lean contracts" width="420" />
-</p>
-
-- **Comparative Suite (v3.6.1):** [Comparative Report](benchmarks/comparative_3_6_1/RESULTS.md) · [Methodology Corrections](benchmarks/comparative_3_6_1/METHODOLOGY_CORRECTION.md) · [Corrected JSON](benchmarks/comparative_3_6_1/runs/20261117-075357_corrected/results.json)
-- **Historical Gemini (v3.6.1):** [Gemini Report](benchmarks/gemini_3_6_1/RESULTS.md) · [Orbital Comparison](https://alenoc.github.io/tandem-mcp/benchmarks/gemini_3_6_1/animation_comparison.html) · [3D Portal Comparison](https://alenoc.github.io/tandem-mcp/benchmarks/gemini_3_6_1/scene3d_comparison.html)
-- **Historical Fable (v3.1.0):** [Fable Report](benchmarks/RESULTS.md) · [Orbital Comparison](https://alenoc.github.io/tandem-mcp/benchmarks/animation_comparison.html) · [3D Portal Comparison](https://alenoc.github.io/tandem-mcp/benchmarks/scene3d_comparison.html)
-
----
-
-## Quick Start
-
-**Prerequisites:** Python 3.11+, a local OpenAI-compatible server (e.g. **LM Studio**), and `bubblewrap` on Linux for OS-level sandboxing.
-
-**1. Install**
+Use Python 3.11 or newer. For delegated commands under the default secure sandbox on Linux, install `bubblewrap`. Start your local model server and load a model. LM Studio commonly serves the API at `http://127.0.0.1:1234/v1`. Set `TANDEM_BASE_URL` if your endpoint differs.
 
 ```sh
 git clone https://github.com/ALENOC/tandem-mcp
@@ -106,100 +26,45 @@ python3 -m venv .venv
 .venv/bin/pip install .
 ```
 
-**2. Start a local LLM server (LM Studio example)**
-
-Open **LM Studio**, load a model, and start the local server on its default OpenAI-compatible endpoint:
-
-```text
-http://127.0.0.1:1234/v1
-```
-
-(The endpoint can differ depending on your LM Studio or Ollama/vLLM configuration; Tandem auto-detects common local ports or reads `TANDEM_BASE_URL`.)
-
-**3. Register with your MCP client**
+For Antigravity (`agy`), run this from the repository root:
 
 ```sh
-.venv/bin/python scripts/install.py
+agy mcp add \
+  --env TANDEM_PROFILE=lean \
+  tandem-mcp "$PWD/.venv/bin/python" "$PWD/main.py"
+agy mcp enable tandem-mcp
+agy mcp list
 ```
 
-Restart your MCP client (Claude Code, Codex, or Antigravity), then run your first check:
+For other supported clients, run `.venv/bin/python scripts/install.py` and restart the client. See [Getting Started](docs/GETTING_STARTED.md) for manual registration and [Configuration](docs/CONFIGURATION.md) for endpoint and sandbox settings.
 
-```text
-Run executor_status
-```
+## Using Tandem in chat
 
-See [Getting Started](docs/GETTING_STARTED.md) for manual stdio JSON configs, installer flags, and multi-client setup.
+The examples below describe the experimental first-turn policy used in the benchmark workspace. The installation above registers the published lean server.
 
----
+| Example request | Expected behavior in agy |
+| --- | --- |
+| `usa Tandem: correggi questa funzione e verifica i test esistenti` | The orchestrator can edit and test directly on the first turn. This is the recommended path for routine changes. |
+| `usa Tandem, privilegia il risparmio cloud: crea un modulo con test` | The orchestrator may delegate substantial new code with executable checks. A preference for savings still allows a direct edit. |
+| `usa Tandem, solo locale: analizza questo file` | Request local processing with cloud fallback disabled. The initial request still reaches the cloud orchestrator in agy. |
 
-## Typical Prompts
+For delegated jobs, the orchestrator specifies the goal, writable paths, allowed commands and verification steps. In the experimental host-managed mode the client starts the watcher returned by `delegate`. The watcher waits locally and returns the job receipt to the chat. Review the checks and any missing proof before accepting changes. A passing browser startup check alone establishes no coverage for individual interactions. See [Architecture](docs/ARCHITECTURE.md) and the [tool reference](docs/TOOLS.md) for evidence, diffs and rollback.
 
-**Analyze large logs** (`digest_file`)
-```text
-Use tandem-mcp to inspect server.log and list every error with line numbers.
-```
+## Benchmark results
 
-**Understand a codebase** (`digest_many`)
-```text
-Ask tandem-mcp what each Python module in src/ is responsible for.
-```
+In ordinary agy chat, direct execution is the best-supported default for the tasks measured. Cloud tokens per success include failed attempts. Time below is end-to-end unless indicated otherwise.
 
-**Fix a bug safely** (`delegate` -> `job_diff` -> `job_feedback` / `job_rollback`)
-```text
-Delegate fixing the failing test in tests/test_auth.py to tandem-mcp, then show me job_diff.
-```
+| Task and execution path | Result |
+| --- | --- |
+| Small edit with tests, MCP active | On the discount task both paths passed. Direct used 26,953 cloud tokens in 24 s. Delegation used 33,479 in 105 s. One attempt per path. |
+| Boids web app, ordinary chat | Both paths passed 3/3. Delegation saved 0.95% of cloud tokens per success and added 8.6 minutes to median delivery time. The direct reference had MCP disabled. |
+| 3D Portal, external host orchestration | Delegation passed 2/3 and used 37,975 cloud tokens per success, including the failed attempt. The direct reference passed 1/1 at 92,941 tokens. Successful delegated attempts took 37 and 58 minutes. |
 
-**Check token usage** (`ledger_report`)
-```text
-Show me ledger_report for the last 7 days.
-```
+The [decision report (Italian)](docs/DECISION_REPORT_20261120.md) includes per-task results, missing token counts and the limits of each comparison. See [benchmark methodology](docs/BENCHMARKS.md) and the [visual demos](benchmarks/hydrogen_3_6_1/gifs/).
 
-> **Want your AI agent to use Tandem automatically?** Add standing rules to `CLAUDE.md`, `AGENTS.md`, or `GEMINI.md` (see [Getting Started](docs/GETTING_STARTED.md#5-optional-agent-instructions-claudemd-agentsmd-geminimd)).
+## Workspace isolation
 
----
-
-## Features Overview
-
-- **Read & Analyze:** `ask`, `digest_file`, `digest_many`, `extract_from_file`
-- **Delegate & Execute:** `delegate`, `delegate_many`, `digest_command`
-- **Inspect & Control:** `job_status`, `job_diff`, `job_evidence`, `job_feedback`, `job_rollback`, `job_continue`, `job_stop`
-- **Models & Monitoring:** `executor_status`, `executor_probe`, `ledger_report`
-- **Project Knowledge:** `lesson_add`, `lessons`
-
-See the [Complete MCP Tool Reference](docs/TOOLS.md).
-
----
-
-## Security by Design
-
-- **OS sandbox (`bubblewrap`):** On Linux, `TANDEM_SANDBOX` defaults to `secure` (fail-closed if `bubblewrap` is unavailable). Commands run with allowlisted system dirs, an empty tmpfs over host `$HOME`, `/tmp`, and `/run`, read-only `SKIP_DIRS`, stripped secret env vars, and network/PID/IPC namespace isolation.
-- **Compatibility mode warning:** On systems without `bubblewrap` (macOS, Windows, or `TANDEM_SANDBOX=compatible`/`auto`), commands run **without OS filesystem isolation**, relying on command-text checks (`allow_run`/`DENY`), outbound symlink refusal, and workspace `stamp()` verification.
-- **Contracts & file protection:** Strict contracts require concrete goals, `write_globs`, and `verify_commands`. Protected test files are restored automatically if modified.
-- **Snapshots, rollback & redaction:** Edits are journaled and pre-run files are snapshotted up to configurable caps (`TANDEM_REQUIRE_FULL_BACKUP=1` enforces full backup coverage; incomplete rollbacks report `partial_rollback`). Tool outputs redact detected secrets by default.
-
-See [Security Model](docs/SECURITY_MODEL.md) for full details and [SECURITY.md](SECURITY.md) to report vulnerabilities.
-
----
-
-## Performance & Benchmarks
-
-Tandem trades local execution time for reduced cloud context on **reading** and **test-driven fixes**. Generating brand-new code from a contract preserves quality when design is written into constraints, but adds contract-authoring and review overhead so total cloud savings are smaller or negative compared to one cloud turn.
-
-- **Latest full suite (`3.6.1`, Nov 2026):** Measured with `Gemini 4 Hydrogen` + `qwen3.8-27b@iq3_s` on i9-9900K / RX 6800 XT (58.7%-99.5% estimated cloud input savings on reading/bugfixes; 46/46 and 69/69 constraints on full demo generation).
-- **Live validation (`3.5.1`, Nov 2026):** Measured on LM Studio (`qwen3.8-27b@iq3_s`, `10.7 tok/s` probed): `digest_file` `14.84 s`, `delegate` bugfix `23.78 s` (`5,124` local tokens, `VERIFIED`, `0` repairs) vs direct LM Studio completion `8.46 s` (`305` local tokens, unverified).
-- **Historical suite (`3.1.0`, Nov 2026):** Measured with `Fable 5.2` + `qwen3.8-27b@iq3_s` on i9-9900K / RX 6800 XT (58.7%-99.3% estimated cloud input savings on reading/bugfixes; 19-31 min on full demo generation).
-
-See [Benchmarks](docs/BENCHMARKS.md) for full tables, hardware specs, and methodology.
-
----
-
-## Comparison With Alternatives
-
-Rather than merely connecting a cloud agent to a local LLM, Tandem introduces bounded delegation, deterministic checks, lexical evidence tracking, and controlled review with journaled rollback.
-
-See the [full comparison](docs/COMPARISON.md) (compiled Nov 2026 from public READMEs).
-
----
+On Linux the default secure mode requires Bubblewrap for command isolation. Compatibility mode relies on application-level checks and has weaker isolation. Contracts limit writes, protect verification files and record changes for review and rollback. See the [security model](docs/SECURITY_MODEL.md) for platform differences and backup limits.
 
 ## Documentation
 
@@ -211,8 +76,6 @@ See the [full comparison](docs/COMPARISON.md) (compiled Nov 2026 from public REA
 - [Benchmarks](docs/BENCHMARKS.md)
 - [Comparison With Alternatives](docs/COMPARISON.md)
 - [Changelog](CHANGELOG.md)
-
----
 
 ## License & Attribution
 
