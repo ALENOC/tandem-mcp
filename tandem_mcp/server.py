@@ -28,7 +28,10 @@ try:
 except ImportError:
     from typing import TypedDict
 
-from mcp.server.mcpserver import MCPServer
+import time
+
+import anyio
+from mcp.server.mcpserver import Context, MCPServer
 
 from . import __version__, agent, digest, engine, router, sandbox, store, ui_test
 
@@ -65,7 +68,20 @@ LEAN_GUIDE = '''Tandem (lean): the local model reads and edits for you so your c
 
 def lean():
     """TANDEM_PROFILE=lean: fewer tools, short schemas, compact receipts and automatic acceptance of proven jobs."""
-    return os.environ.get('TANDEM_PROFILE', '').strip().lower() == 'lean'
+    return os.environ.get('TANDEM_PROFILE', '').strip().lower() in ('lean', 'autonomous')
+
+
+def autonomous():
+    """TANDEM_PROFILE=autonomous: the orchestrator writes the contract once; delegate blocks while the local model
+    works and repairs against the checks with no cloud call, and returns only the final verdict."""
+    return os.environ.get('TANDEM_PROFILE', '').strip().lower() == 'autonomous'
+
+
+def _env_int(name, default, lo, hi):
+    try:
+        return max(lo, min(int(os.environ.get(name, default)), hi))
+    except ValueError:
+        return default
 
 
 def host_managed():
@@ -99,7 +115,20 @@ _AUTO_RULE_FIRST_TURN = (
 )
 
 
+AUTONOMOUS_GUIDE = '''Tandem (autonomous): a free local model writes and checks code for you. Your output tokens are the cost to save.
+- New code, or a change of more than about 30 lines: call delegate ONCE, before reading or writing any source yourself.
+  Give goal, write_globs, atomic constraints with exact names, values and colors, and verify_commands that fail until
+  the work is done: a test or script you write inline, or for a web page a tandem:ui_test. For UI state, require a
+  window.app object with named fields and assert them with js steps, so the test checks effects, not only labels.
+- delegate blocks until every check passes (it can take an hour) and costs you nothing while it waits. Do not poll.
+- ACCEPTED is final: answer the user in one or two sentences. Do not read the files, rerun checks or open diffs.
+- FAILED lists only what still fails: send it on once with job_continue(hint), or fix those lines yourself.
+- Smaller edits: do them yourself.'''
+
+
 def _instructions():
+    if autonomous():
+        return AUTONOMOUS_GUIDE
     base = LEAN_GUIDE if lean() else GUIDE
     if host_managed():
         base = base + _HOST_MANAGED_RULE
@@ -520,7 +549,7 @@ def _strict_contract(text, constraints, verify_commands, write_globs):
     if len(text) < 40 or len(words) < 8 or not _ANCHOR_RE.search(text):
         raise ValueError('contract refused: the goal must name its targets (file paths, symbols, exact values) and say '
                          'the expected behaviour, in at least 8 words')
-    for c in constraints:
+    for c in ([] if autonomous() else constraints):
         if len(c) > 160 or re.search(r';\s+\S|[.!?]\s+[A-Z]', c):
             raise ValueError(f'contract refused: one requirement per constraint, in at most 160 characters ({c[:60]!r}...). '
                              'Split it: the executor cites one line of a file for each constraint, so a constraint that '
@@ -563,12 +592,29 @@ def _strict_contract(text, constraints, verify_commands, write_globs):
                          'constraints are required: list what must hold (values, names, behaviour) for your inspection')
 
 
+def _split_constraints(items):
+    """One requirement per item: split on '; ' and on sentence ends, keep short fragments with the item before."""
+    out = []
+    for c in items:
+        parts = [p.strip(' ;') for p in re.split(r';\s+|(?<=[.!?])\s+(?=[A-Z])', c) if p.strip(' ;')]
+        for part in parts:
+            if out and (len(part) < 10 or len(part.split()) < 2):
+                out[-1] = f'{out[-1]}; {part}'
+            else:
+                out.append(part)
+    return out
+
+
 def _validate_contract(goal: str, constraints: list[str] | None, verify_commands: list[str] | None,
                        write_globs: list[str] | None = None) -> list[str]:
     text = str(goal or '').strip()
     if not text:
         raise ValueError('vague goal refused: describe the exact target, files, and expected behaviour')
     clean_constraints = [str(c).strip() for c in (constraints or []) if str(c).strip()]
+    if autonomous():
+        # a refusal makes the orchestrator write the whole contract again, its most expensive output:
+        # split compound constraints here instead, one requirement per item
+        clean_constraints = _split_constraints(clean_constraints)
     for c in clean_constraints:
         if len(c) < 10 or len(c.split()) < 2:
             raise ValueError(f'vague constraint refused ({c!r}): each constraint must be a specific, checkable requirement')
@@ -1202,6 +1248,157 @@ def lean_job_continue(job_id: str, hint: str) -> str:
     return _host_managed_notice(job_id, _lean_receipt(job_id)) if not out.startswith('ERROR') else out
 
 
+# autonomous profile ---------------------------------------------------------------------------
+def _auto_limits():
+    return (_env_int('TANDEM_MAX_STEPS', 160, 30, 600), _env_int('TANDEM_MAX_REPAIRS', 20, 2, 100),
+            _env_int('TANDEM_JOB_SECONDS', 3600, 60, 6 * 3600))
+
+
+def _block(job, seconds):
+    """Wait for the job to end, bounded by its own time budget (no 1500 s cap: the client waits with no cost)."""
+    entry = agent.RUNNING.get(job)
+    if entry:
+        entry[0].join(max(1.0, float(seconds) + 120.0))
+
+
+def _auto_receipt(job):
+    """One line when the local model met the whole contract; otherwise only what still fails."""
+    data = store.read_job(job) or {}
+    if data.get('kind') == 'batch':
+        return _lean_batch_receipt(job)
+    state = data.get('state')
+    files = ', '.join(f'{rel} +{add} -{rem}' for rel, _, add, rem in data.get('changes', [])) or 'none'
+    checks = data.get('checks') or []
+    bad_syntax = (data.get('syntax') or {}).get('bad')
+    if state == 'verified' and not data.get('unproven') and not bad_syntax and data.get('accepted') is not False:
+        if data.get('accepted') is not True:
+            data['accepted'], data['auto_accepted'] = True, True
+            store.write_job(job, data)
+            store.log('feedback', kind='feedback', job=job, accepted=True, auto=True, state='verified',
+                      model=data.get('used') or data.get('model') or 'default')
+        return sandbox.redact_secrets(
+            f'job {job}: ACCEPTED. {len(checks)} checks and {len(data.get("constraints") or [])} constraints verified '
+            f'locally ({data.get("repairs", 0)} local repairs). Changed: {files}. Nothing else to do.')
+    if state == 'running':
+        return f'job {job}: still running after the wait. Call job_status({job!r}) once.'
+    lines = [f'job {job}: FAILED ({state}) after {data.get("repairs", 0)} local repairs, {int(data.get("seconds") or 0)} s.']
+    for c in checks:
+        if c.get('exit') == 0:
+            continue
+        tail = str(c.get('tail') or '')
+        if ui_test.is_ui_test(c.get('command', '')):
+            tail = '\n'.join(ln for ln in tail.splitlines() if 'BAD' in ln)
+        lines.append(f'- {ui_test.label(c.get("command", ""))}: {tail.strip()[-600:]}')
+    for item in (data.get('unproven') or [])[:6]:
+        lines.append(f'- no evidence: {str(item)[:160]}')
+    if bad_syntax:
+        lines.append(f'- syntax errors: {bad_syntax}')
+    lines.append(f'Changed: {files}. job_continue({job!r}, hint) sends it on locally; job_rollback({job!r}) undoes it.')
+    return sandbox.redact_secrets('\n'.join(lines))
+
+
+def auto_delegate(goal: str, workspace: str, write_globs: list[str], verify_commands: list[str],
+                  constraints: list[str] = [], allow_run: list[str] = [], context: str = '') -> str:
+    try:
+        ws = sandbox.Workspace(workspace, write_globs, allow_run, [])
+        clean = _validate_contract(goal, constraints, verify_commands, write_globs)
+        steps, repairs, seconds = _auto_limits()
+        job = agent.start(goal, ws, list(verify_commands), steps, repairs, '', context, True, seconds,
+                          constraints=clean, require_proof=strict())
+        _block(job, seconds)
+        out = _saved('delegate', 0, _auto_receipt(job))
+        return _log_mcp_boundary('delegate', {'goal': goal, 'workspace': workspace, 'write_globs': write_globs,
+                                              'verify_commands': verify_commands, 'constraints': constraints,
+                                              'allow_run': allow_run, 'context': context}, out)
+    except Exception as exc:
+        return _fail(exc)
+
+
+def auto_job_continue(job_id: str, hint: str) -> str:
+    try:
+        if not hint.strip():
+            return _fail('give a hint: what the local model missed or should do next')
+        steps, _, seconds = _auto_limits()
+        agent.resume(job_id, hint, max(10, steps // 2))
+        _block(job_id, seconds)
+        return _auto_receipt(job_id)
+    except Exception as exc:
+        return _fail(exc)
+
+
+def auto_job_status(job_id: str) -> str:
+    _block(job_id, _auto_limits()[2])
+    return _auto_receipt(job_id)
+
+
+async def _await_job(job, seconds, ctx):
+    """Wait for a local job without blocking the server, and send a progress notification every 30 s:
+    MCP clients abort a tool that stays silent too long (Claude Code: 30 minutes)."""
+    entry = agent.RUNNING.get(job)
+    deadline = time.time() + float(seconds) + 120.0
+    t0 = time.time()
+    while entry and entry[0].is_alive() and time.time() < deadline:
+        await anyio.to_thread.run_sync(entry[0].join, float(_env_int('TANDEM_PROGRESS_SECONDS', 30, 1, 600)))
+        if entry[0].is_alive() and ctx is not None:
+            task = entry[1]
+            steps = getattr(task, 'steps', 0) if task is not None else 0
+            repairs = getattr(task, 'repairs', 0) if task is not None else 0
+            try:
+                await ctx.report_progress(round(time.time() - t0), float(seconds),
+                                          f'local model working: step {steps}, {repairs} repairs')
+            except Exception:
+                pass
+
+
+async def auto_delegate_tool(goal: str, workspace: str, write_globs: list[str], verify_commands: list[str],
+                             constraints: list[str] = [], allow_run: list[str] = [], context: str = '',
+                             ctx: Context | None = None) -> str:
+    try:
+        ws = sandbox.Workspace(workspace, write_globs, allow_run, [])
+        clean = _validate_contract(goal, constraints, verify_commands, write_globs)
+        steps, repairs, seconds = _auto_limits()
+        job = await anyio.to_thread.run_sync(lambda: agent.start(
+            goal, ws, list(verify_commands), steps, repairs, '', context, True, seconds,
+            constraints=clean, require_proof=strict()))
+        await _await_job(job, seconds, ctx)
+        out = _saved('delegate', 0, _auto_receipt(job))
+        return _log_mcp_boundary('delegate', {'goal': goal, 'workspace': workspace, 'write_globs': write_globs,
+                                              'verify_commands': verify_commands, 'constraints': constraints,
+                                              'allow_run': allow_run, 'context': context}, out)
+    except Exception as exc:
+        return _fail(exc)
+
+
+async def auto_job_continue_tool(job_id: str, hint: str, ctx: Context | None = None) -> str:
+    try:
+        if not hint.strip():
+            return _fail('give a hint: what the local model missed or should do next')
+        steps, _, seconds = _auto_limits()
+        await anyio.to_thread.run_sync(lambda: agent.resume(job_id, hint, max(10, steps // 2)))
+        await _await_job(job_id, seconds, ctx)
+        return _auto_receipt(job_id)
+    except Exception as exc:
+        return _fail(exc)
+
+
+async def auto_job_status_tool(job_id: str, ctx: Context | None = None) -> str:
+    await _await_job(job_id, _auto_limits()[2], ctx)
+    return _auto_receipt(job_id)
+
+
+_AUTO_TOOLS = {
+    'delegate': (auto_delegate_tool, 'Local model writes the code and repairs it until every check passes; blocks until '
+                                'done. write_globs: files it may write. verify_commands: checks that fail until done; '
+                                'for a web page tandem:ui_test {"steps":[...]} run in Chromium: click (selector or '
+                                '"text:<regex>"), input+value, key, wait, expect moving|static (+region [x0,y0,x1,y1]), '
+                                'snapshot (name), differs (name, min share), exists, text+match, js, color+min|max. '
+                                'constraints: one requirement each. allow_run: regexes of commands it may run.'),
+    'job_continue': (auto_job_continue_tool, 'Send a FAILED job on locally with a one-line hint; blocks until done.'),
+    'job_status': (auto_job_status_tool, 'Wait for a job that was still running and return its verdict.'),
+    'job_rollback': (None, 'Undo every change of a job.'),
+}
+
+
 _LEAN_TOOLS = {
     'auto_route': (None, 'Choose execution route (deterministic, direct_or_targeted, or delegate_local) from request + workspace metadata with 0 LLM cost.'),
     'digest_file': (None, 'Answer a question about one file with checked quotes. Give grep (a keyword or regex) '
@@ -1236,7 +1433,18 @@ def _apply_lean_profile():
         mcp.add_tool(target, name=name, description=desc)
 
 
-if lean():
+def _apply_autonomous_profile():
+    """Expose only the tools of the autonomous flow."""
+    originals = {t.name: t for t in mcp._tool_manager.list_tools()} if hasattr(mcp, '_tool_manager') else {}
+    for name in list(originals):
+        mcp.remove_tool(name)
+    for name, (fn, desc) in _AUTO_TOOLS.items():
+        mcp.add_tool(fn or globals()[name], name=name, description=desc)
+
+
+if autonomous():
+    _apply_autonomous_profile()
+elif lean():
     _apply_lean_profile()
 
 

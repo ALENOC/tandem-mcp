@@ -4,3 +4,8 @@ __pycache__/
 *.egg-info/
 build/
 dist/
+
+# Opus benchmark runs: keep results, transcripts and artifacts, not the code snapshot or job stores
+benchmarks/opus/runs/*/_tandem_code/
+benchmarks/opus/runs/*/tandem_homes/
+benchmarks/opus/runs/*/mcp_*.json

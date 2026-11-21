@@ -1,3 +1,0 @@
-{"ts": 1794939970.7423978, "tool": "probe", "kind": "llm", "model": "qwen3.8-27b@iq3_s", "prompt_tokens": 43, "completion_tokens": 48, "seconds": 73.48}
-{"ts": 1794940088.8402667, "tool": "probe", "kind": "llm", "model": "qwen3.8-27b@iq3_s", "prompt_tokens": 299, "completion_tokens": 42, "seconds": 118.1}
-{"ts": 1794940281.891301, "tool": "digest_file", "kind": "llm", "model": "qwen3.8-27b@iq3_s", "prompt_tokens": 7756, "completion_tokens": 1500, "seconds": 193.05}

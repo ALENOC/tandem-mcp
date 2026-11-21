@@ -90,6 +90,22 @@ Run executor_status
 
 You should see your active local server URL, loaded model, context length, and sandbox status.
 
+## 4b. Recommended for Claude Code: the autonomous profile
+
+With `TANDEM_PROFILE=autonomous` the orchestrator writes the contract once and `delegate` blocks while the local model writes the code and repairs it against the checks. The cloud model is not called while the local model works, and it gets back a one-line `ACCEPTED` receipt, or only what still fails.
+
+```sh
+.venv/bin/python scripts/install.py --clients claude --env TANDEM_PROFILE=autonomous
+```
+
+A delegated job can take up to an hour, so raise Claude Code's MCP tool timeout. In `~/.claude/settings.json`:
+
+```json
+{ "env": { "MCP_TOOL_TIMEOUT": "4800000" } }
+```
+
+`TANDEM_JOB_SECONDS` (default `3600`) bounds the local work; keep `MCP_TOOL_TIMEOUT` above it. Then ask for the work as usual and add "Usa Tandem" (or "use Tandem") to the request.
+
 ## 5. Optional: agent instructions (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`)
 
 You can add standing guidance to your project or global agent instructions file so your cloud AI prefers Tandem for large reads and bounded edits (note: instruction-file behavior depends on each MCP client):

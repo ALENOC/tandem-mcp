@@ -1,4 +1,0 @@
-{"ts": 1794940423.7751975, "tool": "probe", "kind": "llm", "model": "qwen3.8-27b@iq3_s", "prompt_tokens": 43, "completion_tokens": 48, "seconds": 120.37}
-{"ts": 1794940437.5504324, "tool": "probe", "kind": "llm", "model": "qwen3.8-27b@iq3_s", "prompt_tokens": 299, "completion_tokens": 42, "seconds": 13.77}
-{"ts": 1794940459.8124447, "tool": "extract", "kind": "llm", "model": "qwen3.8-27b@iq3_s", "prompt_tokens": 459, "completion_tokens": 433, "seconds": 22.26}
-{"ts": 1794940459.8128138, "tool": "extract", "kind": "result", "bytes_in": 786, "bytes_out": 133, "executor_tokens": 892, "values_loose": 0, "conflicts": 0}

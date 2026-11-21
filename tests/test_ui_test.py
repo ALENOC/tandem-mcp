@@ -95,6 +95,20 @@ ws = Path(tempfile.mkdtemp(prefix='tandem_uitest_empty_'))
 rc, out = ui_test.run(SCENARIO, ws)
 ok(rc == 1 and 'missing entry point' in out, f'missing page fails (baseline must fail before the work): {rc} {out}')
 
+# effects, not labels: snapshot/differs and motion limited to a region
+FX = PAGE.replace('RESET', 'running = true;').replace("ctx.fillStyle = '#00ffff'; ctx.fillRect((t * 5) % 380, 100, 20, 20);",
+     "ctx.fillStyle = '#00ffff'; ctx.fillRect((t * 5) % 380, 100, 20, 20); if (window.big) { ctx.fillRect(0, 200, 400, 100); }")
+FX = FX.replace('</script>', "document.getElementById('reset').ondblclick = null; window.addEventListener('keydown', (e) => { if (e.key === 'b') window.big = !window.big; });</script>")
+rc, out = run_page(FX, 'tandem:ui_test {"viewport":[400,360],"steps":[{"click":"#pause"},{"snapshot":"a"},{"key":"b"},'
+                       '{"wait":200},{"differs":"a","min":0.1},{"expect":"static","region":[0,0,1,0.25]}]}')
+ok(rc == 0, f'differs sees the effect and a still region reads static: {rc} {out}')
+rc, out = run_page(FX, 'tandem:ui_test {"viewport":[400,360],"steps":[{"click":"#pause"},{"snapshot":"a"},{"wait":200},'
+                       '{"differs":"a","min":0.1}]}')
+ok(rc == 1 and 'differ from a' in out, f'no effect fails differs: {rc} {out}')
+rc, out = run_page(FX, 'tandem:ui_test {"viewport":[400,360],"steps":[{"expect":"moving","region":[0,0.26,1,0.36]},'
+                       '{"expect":"static","region":[0,0.56,1,0.82]}]}')
+ok(rc == 0, f'motion is judged per region: {rc} {out}')
+
 # repair loop: the executor sees the failing step, fixes it, and the job verifies
 from tests.test_host_runner import SlowFake  # noqa: E402
 from tandem_mcp import agent, engine, sandbox, store  # noqa: E402

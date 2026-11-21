@@ -2,6 +2,17 @@
 
 All 19 tools exposed by `tandem-mcp` over stdio MCP. Every tool output passes through `sandbox.redact_secrets()` (unless `TANDEM_REDACT=0`).
 
+## Autonomous profile (`TANDEM_PROFILE=autonomous`)
+
+Only four tools are exposed, for an orchestrator that should spend as few tokens as possible:
+
+- `delegate(goal, workspace, write_globs, verify_commands, constraints, allow_run, context)`: same strict contract as below. The call blocks while the local model writes, runs the checks and repairs (up to `TANDEM_MAX_REPAIRS` rounds within `TANDEM_JOB_SECONDS`), with no cloud call. It returns `job ...: ACCEPTED. N checks and M constraints verified locally (...). Changed: ... Nothing else to do.` or `FAILED (state)` followed only by the failing checks (for a `tandem:ui_test`, only its failing steps).
+- `job_continue(job_id, hint)`: sends a failed job on locally with a one-line hint, and blocks the same way.
+- `job_status(job_id)`: waits for a job that was still running.
+- `job_rollback(job_id)`: undoes every change of a job.
+
+A job is accepted on the orchestrator's behalf when it verified, every constraint has cited evidence, and no changed file has a syntax error. The orchestrator guide asks it to delegate new code and changes of more than about 30 lines, to answer the user after `ACCEPTED` without reading the files, and to do smaller edits itself.
+
 ## Read & Analyze
 
 ### `ask`
@@ -57,11 +68,13 @@ A verify command of the form `tandem:ui_test {json}` is not run in the shell: Ta
 | `input` + `value` | set a value and fire `input` and `change` |
 | `key` | press a key (`Space`, `ArrowLeft`, ...) |
 | `wait` | milliseconds |
-| `expect` | `moving` or `static`: the canvas (or the whole view) changes or not over 0.8 s |
+| `expect` | `moving` or `static`: the canvas (or the whole view) changes or not over 0.8 s; `region` limits it to part of the view |
 | `exists` | an element is present |
 | `text` + `match` | visible text matches a regex |
 | `js` | a JavaScript expression is truthy |
 | `color` + `min`/`max` | share of screenshot pixels near a color (`tol` 48, optional `region` `[x0, y0, x1, y1]` as fractions) |
+| `snapshot` | remember the view under a name (optional `region`) |
+| `differs` + `min`/`max` | share of pixels changed since the named snapshot (`tol` 30): checks that an action has a visible effect |
 
 Top-level keys: `entry` (default `index.html`), `wait_ms` (default `1000`), `viewport` `[w, h]`, `allow_errors`. JavaScript errors fail the test unless `allow_errors` is `true`. A scenario must assert something, not only act. A failed step is reported to the executor with its observed value, so it is repaired locally at no cloud cost.
 

@@ -34,15 +34,7 @@ jobs:
         run: python tests/test_protocol.py
       - name: Lean profile against scripted server (no model)
         run: python tests/test_lean.py
-      - name: Benchmark adapter and quota tests (no model)
-        run: python -m unittest discover -s tests -p test_orchestrators.py -v
-      - name: Comparative benchmark methodology & fixture integrity (no model)
-        run: python tests/test_benchmarks.py
-      - name: Evaluator regression tests (B01 and B03, no model)
-        run: python tests/test_evaluators.py
-      - name: Benchmark suite provenance & plan tests (B02 and B04, no model)
-        run: python tests/test_suite_b02_b04.py
-      - name: Digest deadline, deterministic git-stat, and selective routing tests (B05 and B06, no model)
+      - name: Digest deadline and deterministic git-stat tests (B05, no model)
         run: python tests/test_b05_b06.py
       - name: Store concurrency, workspace lease, and cancellation tests (P02, P03, P04, no model)
         run: python tests/test_p02_p03_p04.py
@@ -54,3 +46,5 @@ jobs:
         run: |
           python tests/test_fallback.py
           python tests/test_router_success.py
+      - name: Autonomous profile, blocking delegate and receipts (no model)
+        run: python tests/test_autonomous.py

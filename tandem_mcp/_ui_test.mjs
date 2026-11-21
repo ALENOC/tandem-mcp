@@ -127,7 +127,40 @@ async function run(wsDir, chromePath, spec) {
       for (let i = 0; i < shot.data.length; i += 7) h = (h * 33 + shot.data.charCodeAt(i)) >>> 0;
       return h;
     };
-    const motion = async () => {
+    // What the user sees, downsampled to 160 px wide RGB, optionally cut to a region given as fractions.
+    const grab = async (region) => {
+      const shot = await call('Page.captureScreenshot', { format: 'png' });
+      const [x0, y0, x1, y1] = Array.isArray(region) ? region : [0, 0, 1, 1];
+      return evaluate(`new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+          const w = 160, h = Math.max(1, Math.round(160 * img.height / img.width));
+          const c = document.createElement('canvas'); c.width = w; c.height = h;
+          const ctx = c.getContext('2d'); ctx.drawImage(img, 0, 0, w, h);
+          const sx = Math.floor(${x0} * w), sy = Math.floor(${y0} * h);
+          const sw = Math.max(1, Math.floor((${x1} - ${x0}) * w)), sh = Math.max(1, Math.floor((${y1} - ${y0}) * h));
+          const d = ctx.getImageData(sx, sy, sw, sh).data; const out = [];
+          for (let i = 0; i < d.length; i += 4) out.push(d[i], d[i + 1], d[i + 2]);
+          resolve(out);
+        };
+        img.src = 'data:image/png;base64,${shot.data}';
+      })`);
+    };
+    const diffShare = (a, b, tol) => {
+      if (!a || !b || a.length !== b.length) return 1;
+      let diff = 0;
+      for (let i = 0; i < a.length; i += 3) {
+        if (Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2]) > tol) diff++;
+      }
+      return diff / (a.length / 3);
+    };
+    const motion = async (region) => {
+      if (Array.isArray(region)) {
+        const a = await grab(region); await sleep(400);
+        const b = await grab(region); await sleep(400);
+        const c = await grab(region);
+        return diffShare(a, b, 12) > 0.002 || diffShare(b, c, 12) > 0.002;
+      }
       const useCanvas = (await frameHash()) !== null;
       const sample = useCanvas ? frameHash : screenshotHash;
       const a = await sample(); await sleep(400);
@@ -135,6 +168,7 @@ async function run(wsDir, chromePath, spec) {
       const c = await sample();
       return a !== b || b !== c;
     };
+    const snapshots = {};
     // Fraction of pixels close to a color, measured on what the user sees (a screenshot).
     const colorFraction = async (hex, tol, region) => {
       const shot = await call('Page.captureScreenshot', { format: 'png' });
@@ -180,8 +214,22 @@ async function run(wsDir, chromePath, spec) {
           await call('Input.dispatchKeyEvent', { type: 'keyDown', key: step.key, code: step.code || step.key });
           await call('Input.dispatchKeyEvent', { type: 'keyUp', key: step.key, code: step.code || step.key });
           rec.ok = true; await sleep(Number(step.after_ms ?? 300));
+        } else if ('snapshot' in step) {
+          snapshots[String(step.snapshot)] = await grab(step.region); rec.ok = true; rec.detail = `saved ${step.snapshot}`;
+        } else if ('differs' in step) {
+          const base = snapshots[String(step.differs)];
+          if (!base) {
+            rec.detail = `no snapshot named ${step.differs}`;
+          } else {
+            const share = diffShare(base, await grab(step.region), Number(step.tol ?? 30));
+            const min = Number(step.min ?? 0.01);
+            const max = step.max === undefined ? 1 : Number(step.max);
+            rec.ok = share >= min && share <= max;
+            rec.detail = `${(share * 100).toFixed(1)}% of pixels differ from ${step.differs}` +
+              ` (min ${(min * 100).toFixed(1)}%${step.max === undefined ? '' : `, max ${(max * 100).toFixed(1)}%`})`;
+          }
         } else if ('expect' in step) {
-          const moving = await motion();
+          const moving = await motion(step.region);
           const want = step.expect === 'moving';
           rec.ok = moving === want; rec.detail = `view is ${moving ? 'moving' : 'static'}, expected ${step.expect}`;
         } else if ('exists' in step) {

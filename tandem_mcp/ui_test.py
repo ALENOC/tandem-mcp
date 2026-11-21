@@ -8,7 +8,10 @@ read it as a file to edit nor weaken it. Steps (one action each):
     {"input": "#speed", "value": "3"} set a value and fire input/change
     {"key": "Space"}                  press a key
     {"wait": 500}                     milliseconds
-    {"expect": "moving"|"static"}     canvas (or the whole view) changes or not over 0.8 s
+    {"expect": "moving"|"static"}     canvas (or the whole view) changes or not over 0.8 s; "region": [x0,y0,x1,y1]
+                                      limits it to part of the view (fractions), e.g. to ignore twinkling stars
+    {"snapshot": "before"}            remember the view (optional region)
+    {"differs": "before", "min": 0.05} share of pixels changed since the snapshot (tol 30, optional max)
     {"exists": "#c"}                  element present
     {"text": "#fps", "match": "^\\d+"} visible text matches a regex
     {"js": "window.state.t > 0"}      expression is truthy
@@ -28,9 +31,9 @@ from . import web_check
 
 PREFIX = 'tandem:ui_test'
 _SCRIPT = Path(__file__).resolve().with_name('_ui_test.mjs')
-_STEP_KEYS = {'click', 'input', 'key', 'wait', 'expect', 'exists', 'text', 'js', 'color'}
+_STEP_KEYS = {'click', 'input', 'key', 'wait', 'expect', 'exists', 'text', 'js', 'color', 'snapshot', 'differs'}
 # steps that observe the result; a scenario made only of actions proves nothing
-_ASSERT_KEYS = {'expect', 'exists', 'text', 'js', 'color'}
+_ASSERT_KEYS = {'expect', 'exists', 'text', 'js', 'color', 'differs'}
 
 
 def is_ui_test(command: str) -> bool:

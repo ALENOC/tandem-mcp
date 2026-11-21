@@ -173,7 +173,7 @@ try:
     ok('COVERAGE: failed_or_incomplete' in r_reg and '2/2 contract requirements verified' not in r_reg, f'old 2/2 leaked: {r_reg}')
 
     # 5. Real saved web artifacts: p1 B_mod (pass) vs p2 B_mod (failed Step) via normal agent.Task -> watcher path
-    pend_checker = (ROOT / 'benchmarks/auto_suite/check_pendulum_v2.mjs').resolve()
+    pend_checker = (ROOT / 'tests/fixtures/pendulum_receipt/check_pendulum_v2.mjs').resolve()
     verify_pend_mjs = f"""import fs from 'node:fs';
 import {{ evaluatePendulumV2 }} from {str(pend_checker)!r};
 

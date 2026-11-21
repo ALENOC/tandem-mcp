@@ -30,9 +30,9 @@ def ok(cond, msg):
 
 
 try:
-    portal_run = ROOT / 'benchmarks/hydrogen_3_6_1/runs/20261119-061117_gen_portal_from_prompt/workspaces'
-    ws_direct = portal_run / 'gen_portal__direct_from_prompt'
-    ws_tandem = portal_run / 'gen_portal__tandem_from_prompt'
+    portal_run = ROOT / 'tests/fixtures/portal_web_check'
+    ws_direct = portal_run / 'direct'
+    ws_tandem = portal_run / 'tandem'
     spec = web_check.spec_for(
         '3D neon portal web demo with orbiting crystals and animation',
         ['index.html', 'scene.js', 'engine3d.js', 'app.js'],
@@ -160,54 +160,6 @@ try:
     (proj_norun / 'scene.js').write_text('const a = 1;\nconst b = 2;\nfor (const x of bad.lines) {}\nconst c = 3;\n', encoding='utf-8')
     snips = t_norun._error_context_snippets([{'tail': 'runtime exception: TypeError at scene.js:3:17'}])
     ok(len(snips) == 1 and '3| for (const x of bad.lines)' in snips[0], f'bad snippet: {snips}')
-
-    # 7. First runtime pass tracking: fails -> passes (intermediate) -> job ends later; plus no-pass fallback
-    import json, time
-    sys.path.insert(0, str(ROOT / 'benchmarks/hydrogen_3_6_1'))
-    from run_from_prompt_pair import _collect_job_metrics  # noqa: E402
-
-    proj_pass = tmp / 'proj_pass'
-    proj_pass.mkdir()
-    (proj_pass / 'index.html').write_text(
-        '<!doctype html><canvas id="c" width="200" height="200"></canvas>'
-        '<script>const ctx=c.getContext("2d");let x=0;'
-        'function f(){brokenCall();ctx.clearRect(0,0,200,200);x=(x+5)%200;ctx.fillStyle="#0ff";ctx.fillRect(x,20,20,20);requestAnimationFrame(f);}f();</script>',
-        encoding='utf-8',
-    )
-    fake_pass = SlowFake(delay_s=0.05)
-    engine.connect(url=fake_pass.url)
-    fake_pass.script = [
-        # Step 1: finish while broken -> web_check fails (exit=1)
-        ('finish', {'summary': 'first try'}),
-        # Step 2: fix JS error, call finish WITHOUT evidence so it passes web_check (exit=0) then fails evidence -> repair 2 -> finishes later!
-        ('replace_in_file', {'path': 'index.html', 'old': 'brokenCall();', 'new': ''}),
-        ('finish', {'summary': 'fixed code but missing evidence'}),
-        # Step 3: supply evidence and finish later
-        ('finish', {'summary': 'verified with evidence', 'evidence': [{'constraint': 1, 'path': 'index.html', 'quote': 'requestAnimationFrame'}]}),
-    ]
-    (store.JOBS / 'job-interm-pass').mkdir(parents=True, exist_ok=True)
-    t_pass = agent.Task(
-        'job-interm-pass', store.JOBS / 'job-interm-pass',
-        'Fix animated canvas in index.html',
-        sandbox.Workspace(str(proj_pass), ['index.html'], [], []),
-        verify=['test -f index.html'], max_steps=10, max_repairs=3, baseline=True,
-        constraints=['index.html uses requestAnimationFrame'], require_proof=True,
-    )
-    st_pass = t_pass.run()
-    ok(st_pass == 'verified', f'expected verified, got {st_pass}')
-    time.sleep(0.1)
-    total_job_s = round((store.read_job('job-interm-pass') or {}).get('seconds') or 0, 2)
-    logs_pass = store.read_json(store.JOBS / 'job-interm-pass' / 'log.json', []) or []
-    wc_events = [e for e in logs_pass if e.get('tool') == 'tandem:web_check']
-    ok(any(e['phase'] == 'baseline' and e['exit'] == 1 for e in wc_events), f'missing baseline fail event: {wc_events}')
-    verify_pass = [e for e in wc_events if e['phase'] == 'verify' and e['exit'] == 0]
-    verify_fail = [e for e in wc_events if e['phase'] == 'verify' and e['exit'] == 1]
-    ok(len(verify_fail) >= 1 and len(verify_pass) >= 2, f'expected fail then pass then later pass: {wc_events}')
-    jm_pass = _collect_job_metrics(store.DATA, 'job-interm-pass')
-    ok(isinstance(jm_pass['first_runtime_pass_s'], (int, float)) and jm_pass['first_runtime_pass_s'] < total_job_s,
-       f'first_runtime_pass_s={jm_pass["first_runtime_pass_s"]} must be < total_job_s={total_job_s}')
-    jm_nopass = _collect_job_metrics(store.DATA, 'job-missing-chrome')
-    ok(jm_nopass['first_runtime_pass_s'] == 'non disponibile', f'expected non disponibile, got {jm_nopass}')
 
     # 8. Start-paused canvas with Play button should pass; inert Play with static canvas must still fail
     proj_paused = tmp / 'proj_paused'

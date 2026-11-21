@@ -1,1 +1,0 @@
-warning: --mode auto is not available because the terminal sandbox is not available on this host; continuing in the default mode.

@@ -36,7 +36,10 @@ All settings are controlled via environment variables read by the `tandem-mcp` s
 | `TANDEM_JOBS_TTL_DAYS` | Days persisted job folders are kept before pruning | `30` |
 | `TANDEM_JOBS_PENDING_TTL_DAYS` | Days a job with changes and no verdict is kept | `120` |
 | `TANDEM_LEDGER_KEEP_DAYS` | Days of ledger lines kept (`0`: all) | `180` |
-| `TANDEM_PROFILE` | `lean`: fewer tools, short schemas, compact receipts | full profile |
+| `TANDEM_PROFILE` | `lean`: fewer tools, short schemas, compact receipts. `autonomous`: 4 tools, `delegate` blocks until the local model has met every check, one-line receipts | full profile |
+| `TANDEM_JOB_SECONDS` | Time budget of an autonomous job: the local model repairs until every check passes or this runs out | `3600` |
+| `TANDEM_MAX_REPAIRS` | Most repair rounds of an autonomous job | `20` |
+| `TANDEM_MAX_STEPS` | Most executor steps of an autonomous job | `160` |
 | `TANDEM_AUTO_POLICY` | `first_turn`: act directly in turn 1, `auto_route` optional. `mandatory_route`: call `auto_route` first | `first_turn` |
 | `TANDEM_HOST_MANAGED` | `1`: `delegate` returns the job ID at once and a local host process waits, with no cloud polling | off |
 | `TANDEM_WAIT_SECONDS` | Default wait of a lean `delegate` call (seconds, capped at `1500`) | `150` |
