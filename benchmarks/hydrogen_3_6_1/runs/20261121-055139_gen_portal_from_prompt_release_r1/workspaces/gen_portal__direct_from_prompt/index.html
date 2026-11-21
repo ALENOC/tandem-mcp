@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NEON PORTAL 3D</title>
+  <style>
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: radial-gradient(circle at 50% 42%, #13112b 0%, #090818 48%, #03030a 100%);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      color: #e6f4ff;
+      user-select: none;
+    }
+
+    #c {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      cursor: grab;
+    }
+
+    #c:active {
+      cursor: grabbing;
+    }
+
+    .hud {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      width: 280px;
+      padding: 16px 18px;
+      border-radius: 16px;
+      background: rgba(12, 14, 34, 0.52);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(110, 225, 255, 0.22);
+      box-shadow:
+        0 12px 36px rgba(0, 0, 0, 0.55),
+        inset 0 1px 0 rgba(255, 255, 255, 0.08);
+      z-index: 10;
+    }
+
+    .hud-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .hud-title {
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      background: linear-gradient(90deg, #5ef2ff, #c77dff);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      text-shadow: 0 0 18px rgba(94, 242, 255, 0.25);
+    }
+
+    .hud-badge {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #48ffbe;
+      box-shadow: 0 0 10px #48ffbe;
+    }
+
+    .hud-badge.paused {
+      background: #ff6b9d;
+      box-shadow: 0 0 10px #ff6b9d;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+
+    .stat-box {
+      padding: 8px 6px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.07);
+      text-align: center;
+    }
+
+    .stat-label {
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      color: rgba(186, 218, 255, 0.65);
+      margin-bottom: 3px;
+    }
+
+    .stat-value {
+      font-size: 14px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      color: #7df3ff;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+
+    button {
+      appearance: none;
+      border: 1px solid rgba(110, 225, 255, 0.28);
+      background: rgba(32, 46, 88, 0.45);
+      color: #dff6ff;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 8px 6px;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: background 0.18s ease, border-color 0.18s ease, transform 0.1s ease;
+    }
+
+    button:hover {
+      background: rgba(54, 82, 146, 0.62);
+      border-color: rgba(110, 240, 255, 0.6);
+    }
+
+    button:active {
+      transform: scale(0.97);
+    }
+
+    button.active {
+      background: rgba(0, 212, 255, 0.22);
+      border-color: rgba(94, 242, 255, 0.78);
+      color: #9bf7ff;
+    }
+
+    .slider-row {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .slider-head {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      color: rgba(202, 226, 255, 0.8);
+    }
+
+    #speedValue {
+      font-variant-numeric: tabular-nums;
+      color: #c77dff;
+      font-weight: 600;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: #5ef2ff;
+      cursor: pointer;
+    }
+
+    .hint {
+      margin-top: 10px;
+      font-size: 10px;
+      color: rgba(186, 218, 255, 0.48);
+      text-align: center;
+      letter-spacing: 0.04em;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+
+  <aside class="hud" aria-label="Neon Portal Controls">
+    <div class="hud-header">
+      <div class="hud-title">NEON PORTAL 3D</div>
+      <div class="hud-badge" id="statusDot"></div>
+    </div>
+
+    <div class="stats">
+      <div class="stat-box">
+        <div class="stat-label">FPS</div>
+        <div class="stat-value" id="fpsVal">60</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">POLYS</div>
+        <div class="stat-value" id="polysVal">0</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">PARTS</div>
+        <div class="stat-value" id="partsVal">0</div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button id="pauseBtn" type="button">Pause</button>
+      <button id="orbitBtn" class="active" type="button">Orbit ON</button>
+      <button id="resetBtn" type="button">Reset</button>
+    </div>
+
+    <div class="slider-row">
+      <div class="slider-head">
+        <span>SPEED</span>
+        <span id="speedValue">1.0x</span>
+      </div>
+      <input id="speedSlider" type="range" min="0.1" max="3.0" step="0.1" value="1.0" />
+    </div>
+
+    <div class="hint">Drag to orbit &bull; Scroll to zoom</div>
+  </aside>
+
+  <script defer src="engine3d.js"></script>
+  <script defer src="scene.js"></script>
+  <script defer src="app.js"></script>
+</body>
+</html>

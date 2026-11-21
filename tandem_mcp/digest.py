@@ -4,10 +4,12 @@ Three checks need no model and cannot be talked round: every quote is looked up 
 every number of the answer is looked up in the source, and the answer says how much of the
 material was read. What fails a check is reported, so a made-up answer is visible to the
 orchestrator without reading the source."""
+from collections import Counter
 import concurrent.futures
 import json
 import os
 import re
+import time
 
 from . import engine, store
 
@@ -221,13 +223,78 @@ def _int_env(name, default, minimum=0):
         return default
 
 
-def answer(text, question, max_words=120, grep='', tool='digest', model='', cache=True):
+_STAT_LINE = re.compile(r'^\s+([^|\s]+)\s+\|\s+\d+')
+_COMMIT_HDR = re.compile(r'^commit\s+[0-9a-f]{6,}', re.I)
+_FREQ_QUESTION = re.compile(r'\b(most|top|frequent\w*|count\w*|rank\w*|often)\b', re.I)
+
+
+def deterministic_git_stat_summary(text: str, top_n: int = 10) -> dict | None:
+    """Parse git --stat blocks deterministically, deduplicating repeated files within the same commit
+    and grouping ties explicitly. Returns None if text does not look like a git --stat log."""
+    lines = text.splitlines()
+    has_commits = any(_COMMIT_HDR.match(ln) for ln in lines)
+    counts: Counter[str] = Counter()
+    seen_in_commit: set[str] = set()
+    stat_lines = 0
+    for ln in lines:
+        if has_commits and _COMMIT_HDR.match(ln):
+            seen_in_commit.clear()
+            continue
+        m = _STAT_LINE.match(ln)
+        if m:
+            stat_lines += 1
+            fname = m.group(1)
+            if has_commits:
+                if fname not in seen_in_commit:
+                    seen_in_commit.add(fname)
+                    counts[fname] += 1
+            else:
+                counts[fname] += 1
+    if stat_lines < 3 or not counts:
+        return None
+    ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    groups = []
+    for fname, cnt in ranked:
+        if not groups or groups[-1]['count'] != cnt:
+            groups.append({'rank': len(groups) + 1, 'count': cnt, 'files': [fname]})
+        else:
+            groups[-1]['files'].append(fname)
+    return {
+        'total_files': len(counts),
+        'ranked': ranked[:top_n],
+        'groups': groups[:top_n],
+    }
+
+
+def _digest_timeout(timeout):
+    if timeout is not None:
+        return max(0.0, float(timeout))
+    try:
+        return max(0.0, float(os.environ.get('TANDEM_DIGEST_TIMEOUT', 150)))
+    except ValueError:
+        return 150.0
+
+
+def answer(text, question, max_words=120, grep='', tool='digest', model='', cache=True, timeout=None):
     """Answer a question about a text. Returns a dict with the answer, the verified evidence,
     the number of evidence items that failed the check, the numbers that are not in the source,
     how much was read and the executor token use."""
     model = model or engine.default_model('digest')
     workers = _int_env('TANDEM_DIGEST_WORKERS', 1, minimum=1)
     min_notes = _int_env('TANDEM_DIGEST_MIN_NOTES', 0, minimum=0)
+    budget = _digest_timeout(timeout)
+    deadline = (time.time() + budget) if budget > 0 else None
+
+    def _rem():
+        if deadline is None:
+            return None
+        r = deadline - time.time()
+        if r <= 0.2:
+            raise engine.ExecutorError(
+                f'digest timed out after {budget:g}s before completing; narrow with grep or raise TANDEM_DIGEST_TIMEOUT'
+            )
+        return r
+
     key = store.cache_key('answer', model, question, max_words, grep, min_notes, text)
     if cache:
         hit = store.cache_get(key)
@@ -240,6 +307,15 @@ def answer(text, question, max_words=120, grep='', tool='digest', model='', cach
         if not hits:
             return {'answer': f'No line matches /{grep}/.', 'evidence': [], 'rejected': 0, 'loose': [], 'chunks': 0,
                     'parts_read': 0, 'read_lines': 0, 'lines': len(lines), 'tokens': 0, 'model': model}
+    stat_note = ''
+    if _FREQ_QUESTION.search(question):
+        stats = deterministic_git_stat_summary(text)
+        if stats:
+            rows_txt = ', '.join(
+                f'{", ".join(g["files"])} ({g["count"]}{" [tie]" if len(g["files"]) > 1 else ""})'
+                for g in stats['groups'][:5]
+            )
+            stat_note = f'\n\nDeterministic git --stat frequency ranking (exact counts): {rows_txt}.'
     size = chunk_chars(model)
     parts, truncated_lines = chunk_with_stats(body, size)
     if len(parts) > MAX_PARTS:
@@ -248,16 +324,18 @@ def answer(text, question, max_words=120, grep='', tool='digest', model='', cach
     tokens = dropped = capped = omitted = 0
     if len(parts) > 1:                                   # map: notes per chunk, reduce: answer from the notes
         def _map_one(k, part):
+            rem = _rem()
             return engine.chat_json(
                 [{'role': 'system', 'content': SYSTEM},
                  {'role': 'user', 'content': f'Question: {question}\n\nPart {k + 1} of {len(parts)} of the material:\n{part}\n\n'
                                              'List the facts of this part that help to answer, each with its line and exact quote. '
                                              'Set relevant to false and notes to [] if this part has none.'}],
-                NOTES, tool=tool, model=model, max_tokens=1500)
+                NOTES, tool=tool, model=model, max_tokens=1500, timeout=rem)
 
         notes, parts_read = [], 0
         indexed = list(enumerate(parts))
         for start in range(0, len(indexed), workers):
+            _rem()
             wave = indexed[start:start + workers]
             if workers == 1:
                 results = [_map_one(k, p) for k, p in wave]
@@ -295,15 +373,15 @@ def answer(text, question, max_words=120, grep='', tool='digest', model='', cach
             used_chars += len(row) + 1
         material = '\n'.join(material_lines)
         omitted = len(rows) - len(material_lines)
-        prompt = f'Question: {question}\n\nVerified extracts of the material (line| quote :: fact):\n{material}'
+        prompt = f'Question: {question}{stat_note}\n\nVerified extracts of the material (line| quote :: fact):\n{material}'
     else:
         parts_read = len(parts)
         read_lines = sum(1 for part in parts for line in part.splitlines() if line != '...')
-        prompt = f'Question: {question}\n\nMaterial:\n{parts[0] if parts else ""}'
+        prompt = f'Question: {question}{stat_note}\n\nMaterial:\n{parts[0] if parts else ""}'
     data, used = engine.chat_json(
         [{'role': 'system', 'content': SYSTEM},
          {'role': 'user', 'content': prompt + f'\n\nAnswer in at most {max_words} words, then give the evidence.'}],
-        ANSWER, tool=tool, model=model, max_tokens=max(600, max_words * 6))
+        ANSWER, tool=tool, model=model, max_tokens=max(600, max_words * 6), timeout=_rem())
     tokens += used['prompt'] + used['completion']
     good, bad = check_evidence(data.get('evidence', []), lines)
     reply = str(data.get('answer', '')).strip()

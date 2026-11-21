@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Double Pendulum</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #090d16; }
+canvas { display: block; width: 100%; height: 100%; }
+#hud {
+  position: fixed; top: 16px; left: 16px;
+  background: rgba(255,255,255,0.07);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 12px;
+  padding: 14px 18px;
+  font-family: 'Courier New', monospace;
+  color: #c8d6e5;
+  font-size: 13px;
+  line-height: 1.7;
+  min-width: 180px;
+  user-select: none;
+}
+#hud .label { color: #576574; }
+#hud .val { color: #81ecec; font-weight: bold; }
+#controls {
+  position: fixed; bottom: 20px; left: 50%;
+  transform: translateX(-50%);
+  display: flex; align-items: center; gap: 10px;
+  background: rgba(255,255,255,0.07);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 12px;
+  padding: 10px 16px;
+  font-family: 'Courier New', monospace;
+  color: #c8d6e5;
+  font-size: 13px;
+  user-select: none;
+}
+button {
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 6px;
+  color: #81ecec;
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+  padding: 6px 14px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+button:hover { background: rgba(255,255,255,0.18); }
+input[type=range] {
+  width: 100px;
+  accent-color: #81ecec;
+}
+#speedLabel { min-width: 42px; text-align: right; }
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<div id="hud">
+  <div><span class="label">FPS</span> <span class="val" id="fpsVal">0</span></div>
+  <div><span class="label">Energy</span> <span class="val" id="energyVal">0.00</span></div>
+  <div><span class="label">Time</span> <span class="val" id="timeVal">0.00</span></div>
+  <div><span class="label">Speed</span> <span class="val" id="speedVal">1.0</span></div>
+</div>
+<div id="controls">
+  <button id="playBtn">Play</button>
+  <button id="stepBtn">Step</button>
+  <button id="resetBtn">Reset</button>
+  <input type="range" id="speedSlider" min="0.5" max="3.0" step="0.1" value="1.0">
+  <span id="speedLabel">1.0x</span>
+</div>
+<script>
+(function() {
+  var canvas = document.getElementById('canvas');
+  var ctx = canvas.getContext('2d');
+
+  // Physics constants
+  var G = 9.81;
+  var M1 = 1.0, M2 = 1.0;
+  var L1 = 1.0, L2 = 1.0;
+
+  // State: [theta1, omega1, theta2, omega2]
+  var initialState = [Math.PI / 2, 0, Math.PI / 2, 0];
+  var state = initialState.slice();
+  var simTime = 0;
+  var speed = 1.0;
+  var paused = true;
+  var trails = [];
+  var maxTrailLen = 600;
+
+  // FPS tracking
+  var frameCount = 0;
+  var lastFpsTime = performance.now();
+  var currentFps = 0;
+
+  function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  function deriv(s) {
+    var t1 = s[0], w1 = s[1], t2 = s[2], w2 = s[3];
+    var delta = t1 - t2;
+    var sinD = Math.sin(delta);
+    var cosD = Math.cos(delta);
+    var denom = 2 * M1 + M2 - M2 * cosD * cosD;
+
+    var a1 = (-G * (2 * M1 + M2) * Math.sin(t1)
+              - M2 * G * Math.sin(t1 - 2 * t2)
+              - 2 * sinD * M2 * (w2 * w2 * L2 + w1 * w1 * L1 * cosD))
+             / (L1 * denom);
+
+    var a2 = (2 * sinD * (w1 * w1 * L1 * (M1 + M2)
+              + G * (M1 + M2) * Math.cos(t1)
+              + w2 * w2 * L2 * M2 * cosD))
+             / (L2 * denom);
+
+    return [w1, a1, w2, a2];
+  }
+
+  function rk4Step(s, dt) {
+    var k1 = deriv(s);
+    var s2 = [s[0] + dt/2*k1[0], s[1] + dt/2*k1[1], s[2] + dt/2*k1[2], s[3] + dt/2*k1[3]];
+    var k2 = deriv(s2);
+    var s3 = [s[0] + dt/2*k2[0], s[1] + dt/2*k2[1], s[2] + dt/2*k2[2], s[3] + dt/2*k2[3]];
+    var k3 = deriv(s3);
+    var s4 = [s[0] + dt*k3[0], s[1] + dt*k3[1], s[2] + dt*k3[2], s[3] + dt*k3[3]];
+    var k4 = deriv(s4);
+
+    return [
+      s[0] + dt/6*(k1[0] + 2*k2[0] + 2*k3[0] + k4[0]),
+      s[1] + dt/6*(k1[1] + 2*k2[1] + 2*k3[1] + k4[1]),
+      s[2] + dt/6*(k1[2] + 2*k2[2] + 2*k3[2] + k4[2]),
+      s[3] + dt/6*(k1[3] + 2*k2[3] + 2*k3[3] + k4[3])
+    ];
+  }
+
+  function getPositions(s) {
+    var x1 = L1 * Math.sin(s[0]);
+    var y1 = L1 * Math.cos(s[0]);
+    var x2 = x1 + L2 * Math.sin(s[1 + 1]);
+    var y2 = y1 + L2 * Math.cos(s[1 + 1]);
+    return { x1: x1, y1: y1, x2: x2, y2: y2 };
+  }
+
+  function getEnergy(s) {
+    var t1 = s[0], w1 = s[1], t2 = s[2], w2 = s[3];
+    var v1x = L1 * w1 * Math.cos(t1);
+    var v1y = -L1 * w1 * Math.sin(t1);
+    var v2x = v1x + L2 * w2 * Math.cos(t2);
+    var v2y = v1y - L2 * w2 * Math.sin(t2);
+    var ke = 0.5 * M1 * (v1x*v1x + v1y*v1y) + 0.5 * M2 * (v2x*v2x + v2y*v2y);
+    var y1 = -L1 * Math.cos(t1);
+    var y2 = y1 - L2 * Math.cos(t2);
+    var pe = M1 * G * y1 + M2 * G * y2;
+    return ke + pe;
+  }
+
+  function toScreen(px, py) {
+    var cx = canvas.width / 2;
+    var cy = canvas.height / 2;
+    var scale = Math.min(canvas.width, canvas.height) / 4.5;
+    return { x: cx + px * scale, y: cy + py * scale };
+  }
+
+  function draw() {
+    ctx.fillStyle = '#090d16';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Draw trails
+    if (trails.length > 1) {
+      for (var i = 1; i < trails.length; i++) {
+        var alpha = (i / trails.length) * 0.6;
+        var p0 = toScreen(trails[i-1].x, trails[i-1].y);
+        var p1 = toScreen(trails[i].x, trails[i].y);
+        ctx.beginPath();
+        ctx.moveTo(p0.x, p0.y);
+        ctx.lineTo(p1.x, p1.y);
+        ctx.strokeStyle = 'rgba(129, 236, 236, ' + alpha.toFixed(3) + ')';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+    }
+
+    // Draw pendulum
+    var pos = getPositions(state);
+    var pivot = toScreen(0, 0);
+    var bob1 = toScreen(pos.x1, pos.y1);
+    var bob2 = toScreen(pos.x2, pos.y2);
+
+    // Rod 1
+    ctx.beginPath();
+    ctx.moveTo(pivot.x, pivot.y);
+    ctx.lineTo(bob1.x, bob1.y);
+    ctx.strokeStyle = 'rgba(200, 214, 229, 0.7)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Rod 2
+    ctx.beginPath();
+    ctx.moveTo(bob1.x, bob1.y);
+    ctx.lineTo(bob2.x, bob2.y);
+    ctx.strokeStyle = 'rgba(200, 214, 229, 0.7)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Pivot
+    ctx.beginPath();
+    ctx.arc(pivot.x, pivot.y, 4, 0, Math.PI * 2);
+    ctx.fillStyle = '#576574';
+    ctx.fill();
+
+    // Bob 1
+    ctx.beginPath();
+    ctx.arc(bob1.x, bob1.y, 8, 0, Math.PI * 2);
+    ctx.fillStyle = '#81ecec';
+    ctx.fill();
+
+    // Bob 2
+    ctx.beginPath();
+    ctx.arc(bob2.x, bob2.y, 8, 0, Math.PI * 2);
+    ctx.fillStyle = '#f9ca24';
+    ctx.fill();
+  }
+
+  function updateHUD() {
+    document.getElementById('fpsVal').textContent = currentFps;
+    document.getElementById('energyVal').textContent = getEnergy(state).toFixed(2);
+    document.getElementById('timeVal').textContent = simTime.toFixed(2);
+    document.getElementById('speedVal').textContent = speed.toFixed(1);
+  }
+
+  var lastTime = performance.now();
+
+  function loop(now) {
+    var dt = (now - lastTime) / 1000;
+    lastTime = now;
+    if (dt > 0.1) dt = 0.1;
+
+    // FPS
+    frameCount++;
+    if (now - lastFpsTime >= 500) {
+      currentFps = Math.round(frameCount / ((now - lastFpsTime) / 1000));
+      frameCount = 0;
+      lastFpsTime = now;
+    }
+
+    if (!paused) {
+      var steps = Math.max(1, Math.round(speed * 4));
+      var subDt = (dt * speed) / steps;
+      for (var i = 0; i < steps; i++) {
+        state = rk4Step(state, subDt);
+        simTime += subDt;
+      }
+      var pos = getPositions(state);
+      trails.push({ x: pos.x2, y: pos.y2 });
+      if (trails.length > maxTrailLen) trails.shift();
+    }
+
+    draw();
+    updateHUD();
+    requestAnimationFrame(loop);
+  }
+
+  // Controls
+  var playBtn = document.getElementById('playBtn');
+  var stepBtn = document.getElementById('stepBtn');
+  var resetBtn = document.getElementById('resetBtn');
+  var speedSlider = document.getElementById('speedSlider');
+  var speedLabel = document.getElementById('speedLabel');
+
+  playBtn.addEventListener('click', function() {
+    paused = !paused;
+    playBtn.textContent = paused ? 'Play' : 'Pause';
+  });
+
+  stepBtn.addEventListener('click', function() {
+    if (paused) {
+      state = rk4Step(state, 0.016);
+      simTime += 0.016;
+      var pos = getPositions(state);
+      trails.push({ x: pos.x2, y: pos.y2 });
+      if (trails.length > maxTrailLen) trails.shift();
+    }
+  });
+
+  resetBtn.addEventListener('click', function() {
+    state = initialState.slice();
+    simTime = 0;
+    trails = [];
+  });
+
+  speedSlider.addEventListener('input', function() {
+    speed = parseFloat(speedSlider.value);
+    speedLabel.textContent = speed.toFixed(1) + 'x';
+  });
+
+  canvas.addEventListener('click', function(e) {
+    var rect = canvas.getBoundingClientRect();
+    var cx = canvas.width / 2;
+    var cy = canvas.height / 2;
+    var scale = Math.min(canvas.width, canvas.height) / 4.5;
+    var px = (e.clientX - rect.left - cx) / scale;
+    var py = (e.clientY - rect.top - cy) / scale;
+    var angle = Math.atan2(px, py);
+    initialState = [angle, 0, angle, 0];
+    state = initialState.slice();
+    simTime = 0;
+    trails = [];
+  });
+
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

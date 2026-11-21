@@ -1,12 +1,14 @@
-# Comparative Benchmark Suite — Tandem MCP v3.6.1
+# Comparative Benchmark Suite - Tandem MCP v3.6.1
 
-Rigorous three-way comparative evaluation of **Gemini 4 Hydrogen** (`gemini-4-hydrogen-medium`) and **`qwen3.8-27b@iq3_s`** (LM Studio) on **Tandem MCP v3.6.1** (`010cbb6`).
+Three-way evaluation with configurable cloud orchestrator and local executor.
+Frozen fixtures target Tandem MCP v3.6.1 (`010cbb6`). Historical reports retain
+the model identities recorded when they were run.
 
 ## Scenarios
 
-1. **Scenario A (`gemini_direct`)**: Gemini 4 Hydrogen solves the task directly using its native file reading, search (`grep`/`rg`), editing, and shell execution tools.
-2. **Scenario B (`gemini_lmstudio`)**: Gemini 4 Hydrogen delegates to `qwen3.8-27b@iq3_s` through a minimal LM Studio tool harness (`lm_studio_harness.py`) without Tandem contracts, journals, rollback, or lexical quote verification.
-3. **Scenario C (`gemini_tandem`)**: Gemini 4 Hydrogen orchestrates `qwen3.8-27b@iq3_s` through **Tandem MCP v3.6.1** (`digest_file`, `digest_many`, `digest_command`, `extract_from_file`, `delegate`, `delegate_many`, `job_evidence`, `job_diff`).
+1. **`direct`**: the configured orchestrator solves the task with native tools.
+2. **`lmstudio`**: it delegates through the minimal local harness.
+3. **`tandem`**: it delegates through Tandem MCP contracts and tools.
 
 ## Methodology & Metrics
 
@@ -29,3 +31,42 @@ python3 benchmarks/comparative_3_6_1/run_comparison.py --category bugfix --repea
 # Resume an interrupted run
 python3 benchmarks/comparative_3_6_1/run_comparison.py --resume <run_id>
 ```
+
+Each attempt has a finite wall-time budget: reading 1200s, extraction 180s,
+bugfix 300s, generation 2400s. `--timeout N` overrides the budget for every
+scenario equally; `0` selects category defaults and negative values are rejected.
+The full default suite contains 69 attempts (three repeats except generation).
+Use `--repeats 1` for a first pass through all 27 task/scenario combinations.
+These limits bound individual attempts; a full suite can still take hours.
+
+The runner checks the local endpoint and required model before changing MCP
+settings or starting live attempts. An unavailable server fails immediately with
+`runs/<run_id>/preflight.json`. Dry runs verify fixtures and prepare prompts
+without contacting models, and are never reported as performance measurements.
+
+LM Studio requests and shell tools share the task's remaining budget. The
+harness saves usage after each response and records timeouts, step exhaustion,
+and failures explicitly. A cloud response saying it is still waiting cannot
+count as a completed local execution. Tandem prompts poll the same job in 30s
+intervals within the budget, without resubmitting a job after a tool timeout.
+
+Timeouts and Ctrl-C terminate the launched process group, including subprocesses.
+Interrupted attempts are saved before the suite stops. Each live attempt retains
+stdout/stderr under `runs/<run_id>/logs/`, including partial output on timeout;
+generated web artifacts are copied under `artifacts/`. The configuration is
+saved with the run, and the original MCP enablement is restored on exit.
+
+## Configurable orchestrators
+
+The runner accepts `--orchestrator-cli`, `--orchestrator-model`, and
+`--executor-model`. Supported CLI adapters are `agy` and `codex`; model IDs
+are passed through without a fixed model allowlist. Scenarios are `direct`,
+`lmstudio`, and `tandem`; historical prefixed scenario names remain accepted.
+The corresponding defaults live in `orchestrator.cli`, `orchestrator.model_id`,
+and `executor.model_id` in the selected JSON configuration.
+
+The event-stream adapter isolates MCP settings per process, enables only Tandem
+for the Tandem scenario, and pins its executor and ledger directory. It collects
+reported input, output, and cached tokens. Independent model identity and tool
+payload sizes are unavailable when the CLI does not attest them. Missing usage
+is never reported as zero. Resume rejects a different configuration.

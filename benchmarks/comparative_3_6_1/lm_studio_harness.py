@@ -13,14 +13,55 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import os
+import signal
 import subprocess
 import sys
 import time
+import tempfile
 import urllib.request
 from pathlib import Path
 
 DEFAULT_ENDPOINT = 'http://127.0.0.1:1234/v1'
 DEFAULT_MODEL = 'qwen3.8-27b@iq3_s'
+
+
+def run_bounded(command, *, timeout, cwd=None, env=None, shell=False):
+    """Bound the whole process tree, including children holding output pipes open."""
+    if timeout <= 0:
+        raise ValueError('timeout must be positive')
+    with tempfile.TemporaryFile() as stdout, tempfile.TemporaryFile() as stderr:
+        proc = subprocess.Popen(command, cwd=cwd, env=env, shell=shell,
+                                stdout=stdout, stderr=stderr, start_new_session=True)
+        error = None
+        try:
+            proc.wait(timeout=timeout)
+        except (subprocess.TimeoutExpired, KeyboardInterrupt) as exc:
+            error = exc
+        finally:
+            # Also clean up background children after an otherwise successful exit.
+            try:
+                os.killpg(proc.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            try:
+                proc.wait(timeout=1)
+            except subprocess.TimeoutExpired:
+                pass
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            proc.wait(timeout=1)
+        stdout.seek(0)
+        stderr.seek(0)
+        out = stdout.read().decode('utf-8', errors='replace')
+        err = stderr.read().decode('utf-8', errors='replace')
+        if isinstance(error, subprocess.TimeoutExpired):
+            raise subprocess.TimeoutExpired(command, timeout, output=out, stderr=err)
+        if error is not None:
+            raise error
+        return subprocess.CompletedProcess(command, proc.returncode, out, err)
 
 TOOLS = [
     {
@@ -101,7 +142,7 @@ def _safe_path(ws: Path, rel: str) -> Path:
     return p
 
 
-def _exec_tool(ws: Path, name: str, args: dict, stats: dict) -> str:
+def _exec_tool(ws: Path, name: str, args: dict, stats: dict, timeout: float = 60) -> str:
     try:
         if name == 'list_files':
             files = sorted(str(p.relative_to(ws)) for p in ws.rglob('*') if p.is_file() and p.name != 'lm_studio_harness.py')
@@ -128,8 +169,8 @@ def _exec_tool(ws: Path, name: str, args: dict, stats: dict) -> str:
             p.write_text(args['content'])
             return f'Wrote {len(args["content"])} chars to {args["path"]}'
         if name == 'run_command':
-            res = subprocess.run(
-                args['command'], shell=True, cwd=ws, capture_output=True, text=True, timeout=60
+            res = run_bounded(
+                args['command'], shell=True, cwd=ws, timeout=min(60, timeout)
             )
             out = f'exit={res.returncode}\n{res.stdout}\n{res.stderr}'.strip()
             return out[:12000]
@@ -138,7 +179,9 @@ def _exec_tool(ws: Path, name: str, args: dict, stats: dict) -> str:
         return f'ERROR: {exc}'
 
 
-def run_task(workspace: Path, prompt: str, endpoint: str = DEFAULT_ENDPOINT, model: str = DEFAULT_MODEL, max_steps: int = 12, timeout: int = 600) -> dict:
+def run_task(workspace: Path, prompt: str, endpoint: str = DEFAULT_ENDPOINT, model: str = DEFAULT_MODEL, max_steps: int = 12, timeout: int = 600, stats_out: Path | None = None) -> dict:
+    if timeout <= 0 or max_steps <= 0:
+        raise ValueError('timeout and max_steps must be positive')
     messages = [
         {'role': 'system', 'content': 'You are a helpful coding and analysis assistant. Use the provided tools in the workspace to complete the user request accurately and concisely.'},
         {'role': 'user', 'content': prompt},
@@ -154,9 +197,20 @@ def run_task(workspace: Path, prompt: str, endpoint: str = DEFAULT_ENDPOINT, mod
         'tool_interactions': [],
     }
     t_start = time.perf_counter()
+    deadline = t_start + timeout
+    status = 'RUNNING'
     final_answer = ''
+
+    def save_stats():
+        if stats_out is not None:
+            tmp = stats_out.with_suffix('.tmp')
+            tmp.write_text(json.dumps({**stats, 'status': status}, indent=2) + '\n')
+            tmp.replace(stats_out)
+
+    save_stats()
     for _step in range(max_steps):
-        if time.perf_counter() - t_start > timeout:
+        if time.perf_counter() >= deadline:
+            status = 'TIMEOUT'
             final_answer = 'ERROR: timeout reached'
             break
         payload = json.dumps({
@@ -173,29 +227,45 @@ def run_task(workspace: Path, prompt: str, endpoint: str = DEFAULT_ENDPOINT, mod
             method='POST',
         )
         t0 = time.perf_counter()
-        with urllib.request.urlopen(req, timeout=max(30, timeout)) as resp:
-            data = json.loads(resp.read().decode('utf-8'))
+        try:
+            with urllib.request.urlopen(req, timeout=max(0.001, deadline - t0)) as resp:
+                data = json.loads(resp.read().decode('utf-8'))
+        except Exception as exc:
+            stats['local_inference_seconds'] += time.perf_counter() - t0
+            status = 'TIMEOUT' if isinstance(exc, TimeoutError) or time.perf_counter() >= deadline else 'FAILED'
+            final_answer = f'ERROR: {exc}'
+            break
         stats['local_inference_seconds'] += time.perf_counter() - t0
         stats['local_requests'] += 1
         usage = data.get('usage') or {}
         stats['local_prompt_tokens'] += int(usage.get('prompt_tokens') or 0)
         stats['local_completion_tokens'] += int(usage.get('completion_tokens') or 0)
         stats['local_total_tokens'] = stats['local_prompt_tokens'] + stats['local_completion_tokens']
+        save_stats()
+
+        if time.perf_counter() >= deadline:
+            status, final_answer = 'TIMEOUT', 'ERROR: timeout reached'
+            break
 
         msg = data['choices'][0]['message']
         calls = msg.get('tool_calls') or []
         if not calls:
             final_answer = (msg.get('content') or '').strip()
+            status = 'COMPLETED' if final_answer else 'FAILED'
             break
         messages.append(msg)
         for c in calls:
+            remaining = deadline - time.perf_counter()
+            if remaining <= 0:
+                status, final_answer = 'TIMEOUT', 'ERROR: timeout reached'
+                break
             fn = c['function']['name']
             raw_args = c['function'].get('arguments') or '{}'
             try:
                 args = json.loads(raw_args)
             except json.JSONDecodeError:
                 args = {}
-            out = _exec_tool(workspace, fn, args, stats)
+            out = _exec_tool(workspace, fn, args, stats, timeout=remaining)
             stats['tool_interactions'].append({
                 'tool_name': fn,
                 'request_bytes': len(raw_args.encode('utf-8', errors='replace')),
@@ -203,9 +273,17 @@ def run_task(workspace: Path, prompt: str, endpoint: str = DEFAULT_ENDPOINT, mod
                 'truncated': (fn == 'read_file' and len(out) >= 24000) or (fn == 'run_command' and len(out) >= 12000),
             })
             messages.append({'role': 'tool', 'tool_call_id': c['id'], 'content': out})
+            save_stats()
 
     stats['local_inference_seconds'] = round(stats['local_inference_seconds'], 2)
-    return {'answer': final_answer, 'stats': stats}
+    if status == 'RUNNING' and time.perf_counter() >= deadline:
+        status, final_answer = 'TIMEOUT', 'ERROR: timeout reached'
+    elif status == 'RUNNING':
+        status = 'STEP_LIMIT'
+        final_answer = 'ERROR: maximum steps reached without a final answer'
+    stats['status'] = status
+    save_stats()
+    return {'answer': final_answer, 'status': status, 'stats': stats}
 
 
 def main():
@@ -219,11 +297,13 @@ def main():
     ap.add_argument('--stats-out', default='')
     args = ap.parse_args()
 
-    res = run_task(Path(args.workspace), args.prompt, args.endpoint, args.model, args.max_steps, args.timeout)
+    res = run_task(Path(args.workspace), args.prompt, args.endpoint, args.model, args.max_steps, args.timeout,
+                   Path(args.stats_out) if args.stats_out else None)
     if args.stats_out:
         Path(args.stats_out).write_text(json.dumps(res['stats'], indent=2) + '\n')
     print(json.dumps(res, indent=2))
+    return 0 if res['status'] == 'COMPLETED' else 1
 
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main())

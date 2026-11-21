@@ -1,0 +1,130 @@
+{
+  "run_id": "20261121-055139_gen_portal_from_prompt_release_r1",
+  "task": "gen_portal",
+  "timestamp": "2026-11-21T05:39:27.996317+00:00",
+  "results": [
+    {
+      "mode": "direct_from_prompt",
+      "task_id": "gen_portal",
+      "completed": true,
+      "timed_out": false,
+      "artifact_valid": false,
+      "visual_passed": true,
+      "e2e_success": false,
+      "eval_reason": "startup=passed, motion=passed, interactions=failed, visual=passed",
+      "wall_seconds": 77.41,
+      "cloud_calls": [
+        {
+          "phase": "direct",
+          "status": "SUCCESS",
+          "duration_seconds": 74.831201344,
+          "usage": {
+            "input_tokens": 31857,
+            "output_tokens": 13289,
+            "thinking_tokens": 1612,
+            "cache_read_tokens": 68531,
+            "total_tokens": 45146
+          },
+          "conversation_id": "1557afaf-c5ea-4054-bb7d-11c0f609ae7a"
+        }
+      ],
+      "cloud_calls_during_wait": 0,
+      "local_tokens": 0,
+      "behavioral": {
+        "functional_passed": false,
+        "visual_passed": true,
+        "startup": {
+          "status": "passed",
+          "evidence": "0 runtime/console errors"
+        },
+        "canvasMotion": {
+          "status": "passed",
+          "evidence": "size=1280x800, diff=5.443, hash=1038e2bb->435358ac"
+        },
+        "interactions": {
+          "status": "failed",
+          "resetControlsOk": true,
+          "evidence": "hudMetrics=true; pause=[runDiff=5.44, pauseDiff=0.00, resumeDiff=6.42]; orbit=[label=\"Orbit ON\"->\"Orbit OFF\", floorDiffOn=0.000, floorDiffOff=0.000]; speed=[diff@0.1x=1.819 vs diff@3x=8.765]; reset=[pauseRestored=true, animAfterReset=true, extraControlsReset=true (speed=true, orbit=true)]"
+        },
+        "visual": {
+          "status": "passed",
+          "passed": true,
+          "darkBlueFaces": 61053,
+          "saturatedCyan": 14054,
+          "saturatedMagenta": 3864,
+          "overexposedWhite": 1115
+        },
+        "runtimeErrors": [],
+        "consoleErrors": []
+      },
+      "workspace": "/home/ale/Projects/tandem-mcp/benchmarks/hydrogen_3_6_1/runs/20261121-055139_gen_portal_from_prompt_release_r1/workspaces/gen_portal__direct_from_prompt"
+    },
+    {
+      "mode": "tandem_from_prompt",
+      "task_id": "gen_portal",
+      "mcp_installation": "/home/ale/Projects/tandem-mcp/tandem_mcp/__init__.py",
+      "job_id": "20261121-055334-2da0e3",
+      "job_state": "verified",
+      "completed": true,
+      "timed_out": false,
+      "artifact_valid": true,
+      "visual_passed": false,
+      "e2e_success": true,
+      "eval_reason": "startup=passed, motion=passed, interactions=passed, visual=failed",
+      "wall_seconds": 2774.95,
+      "first_runtime_pass_s": 2744.13,
+      "repairs": 1,
+      "rejected_run_commands": 1,
+      "local_calls": 21,
+      "wait_polls": 1371,
+      "cloud_calls": [
+        {
+          "phase": "plan",
+          "status": "SUCCESS",
+          "duration_seconds": 29.430886119,
+          "num_turns": 1,
+          "conversation_id": "b9a3a9ad-f295-4444-a516-1312f1240cb1",
+          "usage": {
+            "input_tokens": 20923,
+            "output_tokens": 4054,
+            "thinking_tokens": 2234,
+            "cache_read_tokens": 40351,
+            "total_tokens": 24977
+          },
+          "response": "Delegated to Tandem MCP local executor.\n\n- **Job ID:** `20261121-055334-2da0e3`\n- **Status:** running (step 0)\n"
+        }
+      ],
+      "cloud_calls_during_wait": 0,
+      "local_tokens": 268032,
+      "behavioral": {
+        "functional_passed": true,
+        "visual_passed": false,
+        "startup": {
+          "status": "passed",
+          "evidence": "0 runtime/console errors"
+        },
+        "canvasMotion": {
+          "status": "passed",
+          "evidence": "size=1280x800, diff=18.634, hash=e3b1c408->a48c1e60"
+        },
+        "interactions": {
+          "status": "passed",
+          "resetControlsOk": false,
+          "evidence": "hudMetrics=true; pause=[runDiff=18.63, pauseDiff=0.00, resumeDiff=18.93]; orbit=[label=\"Orbit ON\"->\"Orbit OFF\", floorDiffOn=1.080, floorDiffOff=0.514, fullDiffOn=18.610, fullDiffOff=7.497]; speed=[diff@0.2x=6.566 vs diff@3x=17.972]; reset=[pauseRestored=true, animAfterReset=true, extraControlsReset=false (speed=true, orbit=false)]"
+        },
+        "visual": {
+          "status": "failed",
+          "passed": false,
+          "darkBlueFaces": 0,
+          "saturatedCyan": 5822,
+          "saturatedMagenta": 10313,
+          "overexposedWhite": 54097
+        },
+        "runtimeErrors": [],
+        "consoleErrors": []
+      },
+      "generated_contract_path": "/home/ale/Projects/tandem-mcp/benchmarks/hydrogen_3_6_1/runs/20261121-055139_gen_portal_from_prompt_release_r1/gen_portal__generated_contract.json",
+      "workspace": "/home/ale/Projects/tandem-mcp/benchmarks/hydrogen_3_6_1/runs/20261121-055139_gen_portal_from_prompt_release_r1/workspaces/gen_portal__tandem_from_prompt"
+    }
+  ]
+}

@@ -1,11 +1,7 @@
 """Comparative Benchmark Runner for Tandem MCP v3.6.1 (010cbb6).
 
-Compares three scenarios under identical frozen v3.6.1 fixtures and independent
-quality evaluation:
-  - Scenario A (gemini_direct):   Gemini 4 Hydrogen directly with native tools.
-  - Scenario B (gemini_lmstudio): Gemini 4 Hydrogen + qwen3.8-27b@iq3_s via minimal
-                                  LM Studio harness (no Tandem features).
-  - Scenario C (gemini_tandem):   Gemini 4 Hydrogen + Tandem MCP v3.6.1 + qwen3.8-27b@iq3_s.
+Compares direct execution, a minimal local harness, and Tandem on frozen
+fixtures with independently evaluated quality. CLI and models are configurable.
 
 Usage:
     python3 benchmarks/comparative_3_6_1/run_comparison.py --dry-run
@@ -23,6 +19,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -33,11 +30,41 @@ if str(HERE) not in sys.path:
 
 import evaluate  # noqa: E402
 import metrics  # noqa: E402
+import orchestrators
+from lm_studio_harness import run_bounded  # noqa: E402
+
+BENCHMARKS_DIR = REPO_ROOT / 'benchmarks'
+if str(BENCHMARKS_DIR) not in sys.path:
+    sys.path.insert(0, str(BENCHMARKS_DIR))
+from suite_common import (  # noqa: E402
+    read_ledger_entries,
+    summarize_local_ledger,
+    write_agy_session_settings,
+)
 
 
 def load_config(path: Path | None = None) -> dict[str, Any]:
     cfg_path = path or (HERE / 'configs/suite.json')
     return json.loads(cfg_path.read_text())
+
+
+def check_runtime(cfg: dict, scenarios: list[str]) -> dict:
+    """Fail before launching the suite if its required services are unavailable."""
+    cli = cfg['orchestrator'].get('cli', 'agy')
+    orchestrators.validate(cfg['orchestrator'])
+    if shutil.which(cli) is None:
+        raise RuntimeError(f'{cli} CLI is not installed')
+    if any(orchestrators.legacy_scenario(s) != 'gemini_direct' for s in scenarios):
+        endpoint = cfg['executor']['endpoint'].rstrip('/')
+        try:
+            with urllib.request.urlopen(f'{endpoint}/models', timeout=5) as response:
+                models = json.load(response)
+        except Exception as exc:
+            raise RuntimeError(f'Cannot reach local executor at {endpoint}: {exc}') from exc
+        ids = [item.get('id') for item in models.get('data', [])]
+        if cfg['executor']['model_id'] not in ids:
+            raise RuntimeError(f'Required executor model {cfg["executor"]["model_id"]} is unavailable; found {ids}')
+    return {'ok': True}
 
 
 def _agy_mcp_state() -> dict[str, bool]:
@@ -51,9 +78,9 @@ def _agy_mcp_state() -> dict[str, bool]:
 
 
 def _set_agy_mcp(enable_tandem: bool) -> None:
-    subprocess.run(['agy', 'mcp', 'disable', 'craft-anything'], capture_output=True, timeout=15)
+    subprocess.run(['agy', 'mcp', 'disable', 'craft-anything'], capture_output=True, timeout=15, check=True)
     action = 'enable' if enable_tandem else 'disable'
-    subprocess.run(['agy', 'mcp', action, 'tandem-mcp'], capture_output=True, timeout=15)
+    subprocess.run(['agy', 'mcp', action, 'tandem-mcp'], capture_output=True, timeout=15, check=True)
 
 
 def _restore_agy_mcp(orig: dict[str, bool]) -> None:
@@ -64,6 +91,7 @@ def _restore_agy_mcp(orig: dict[str, bool]) -> None:
 
 def _prepare_workspace(task: dict[str, Any], scenario: str, fixtures_dir: Path, ws_dir: Path) -> int:
     """Populate an isolated workspace with frozen fixtures for the task. Returns source bytes."""
+    scenario = orchestrators.legacy_scenario(scenario)
     tid = task['id']
     source_bytes = 0
     if tid == 'reading_readme':
@@ -108,13 +136,17 @@ def _prepare_workspace(task: dict[str, Any], scenario: str, fixtures_dir: Path, 
     return source_bytes
 
 
-def _build_prompt(task: dict[str, Any], scenario: str, ws_dir: Path, fixtures_dir: Path) -> str:
+def _build_prompt(task: dict[str, Any], scenario: str, ws_dir: Path, fixtures_dir: Path,
+                  timeout: int = 600, executor: dict | None = None) -> str:
+    scenario = orchestrators.legacy_scenario(scenario)
     tid = task['id']
-    if scenario == 'gemini_direct':
+    executor = executor or load_config()['executor']
+    local_timeout = max(1, timeout - min(30, timeout / 10))
+    if orchestrators.legacy_scenario(scenario) == 'gemini_direct':
         if tid == 'reading_readme':
             return f'Working directory: {ws_dir}. Read README.md and answer concisely with exact quotes: {task["question"]}'
         if tid == 'reading_grep_agent':
-            return f'Working directory: {ws_dir}. Search agent.py (use grep/rg or targeted line reads—no need to read the whole file) and answer concisely with exact quotes: {task["question"]}'
+            return f'Working directory: {ws_dir}. Search agent.py (use grep/rg or targeted line reads-no need to read the whole file) and answer concisely with exact quotes: {task["question"]}'
         if tid == 'reading_package_survey':
             return f'Working directory: {ws_dir}. Inspect all 8 Python files in tandem_mcp_pkg/ and state the main responsibility of each module concisely.'
         if tid == 'reading_git_history':
@@ -134,11 +166,14 @@ def _build_prompt(task: dict[str, Any], scenario: str, ws_dir: Path, fixtures_di
             return f'Working directory: {ws_dir}. {goal}\nCreate index.html (or index.html + scene.js + engine3d.js + app.js) in {ws_dir}.'
 
     if scenario == 'gemini_lmstudio':
-        inner = _build_prompt(task, 'gemini_direct', ws_dir, fixtures_dir)
+        inner = _build_prompt(task, 'gemini_direct', ws_dir, fixtures_dir, timeout, executor)
         return (
-            f'Working directory: {ws_dir}. Delegate the following task to the local Qwen model using '
-            f'`python3 lm_studio_harness.py --workspace "{ws_dir}" --stats-out "{ws_dir}/lm_studio_stats.json" --prompt ...` '
-            f'(do NOT solve it yourself without calling lm_studio_harness.py). Return the final answer or verification result.\n\nTask:\n{inner}'
+            f'Working directory: {ws_dir}. Delegate the following task to the configured local model using '
+            f'`python3 lm_studio_harness.py --workspace "{ws_dir}" --stats-out "{ws_dir}/lm_studio_stats.json" '
+            f'--endpoint "{executor["endpoint"]}" --model "{executor["model_id"]}" '
+            f'--timeout {int(local_timeout)} --prompt ...` '
+            f'(do NOT solve it yourself without calling lm_studio_harness.py). Call it exactly once, wait for its exit, '
+            f'and return its final answer or failure. Never return while it is still running or start another copy.\n\nTask:\n{inner}'
         )
 
     if scenario == 'gemini_tandem':
@@ -159,31 +194,41 @@ def _build_prompt(task: dict[str, Any], scenario: str, ws_dir: Path, fixtures_di
             globs = ['math_utils.py'] if tid == 'bugfix_micro' else ['config_loader.py']
             return (
                 f'Working directory: {ws_dir}. Use tandem-mcp `delegate` on workspace `{ws_dir}` with goal="{task["goal"]}", '
-                f'write_globs={json.dumps(globs)}, verify_commands={json.dumps([task["verify_command"]])}, wait_seconds=300. '
-                f'Inspect `job_diff` or `job_evidence` if needed and report the result.'
+                f'write_globs={json.dumps(globs)}, verify_commands={json.dumps([task["verify_command"]])}, '
+                f'max_seconds={int(local_timeout)}, wait_seconds=30. '
+                f'Poll the same job with job_status(wait_seconds=30) until terminal or the {int(local_timeout)}s budget expires; '
+                f'then job_stop it if still running. Never start a duplicate job after an MCP timeout. '
+                f'Inspect `job_diff` or `job_evidence` and report the result.'
             )
         if tid == 'gen_orbital':
             return (
                 f'Working directory: {ws_dir}. Use tandem-mcp `delegate` on workspace `{ws_dir}` using the contract in '
-                f'`{ws_dir}/contract_animation.json` (set workspace to `{ws_dir}`). Inspect `job_evidence` and report.'
+                f'`{ws_dir}/contract_animation.json` (set workspace to `{ws_dir}`, max_seconds={int(local_timeout)}, wait_seconds=30). '
+                f'If the job is still running, poll the same job with `job_status(job_id, wait_seconds=30)` '
+                f'within a total budget of {int(local_timeout)} seconds; stop it if still running at the deadline. '
+                f'Never submit a duplicate delegation after a tool timeout; '
+                f'then inspect `job_evidence` and report the result.'
             )
         if tid == 'gen_portal':
             return (
                 f'Working directory: {ws_dir}. Use tandem-mcp `delegate_many` on workspace `{ws_dir}` using the tasks in '
-                f'`{ws_dir}/contract_scene3d.json` (set workspace to `{ws_dir}`). Inspect `job_evidence` and report.'
+                f'`{ws_dir}/contract_scene3d.json` (set workspace to `{ws_dir}`, max_steps=26, max_repairs=3, workers=1, wait_seconds=30). '
+                f'Poll the same batch with `job_status(job_id, wait_seconds=30)` within a total budget of '
+                f'{int(local_timeout)} seconds; stop it if still running at the deadline. '
+                f'Never submit a duplicate batch after a tool timeout; '
+                f'then inspect `job_evidence` and report the result.'
             )
 
     raise ValueError(f'Unknown task/scenario: {tid}/{scenario}')
 
 
 def _read_tandem_ledger(tandem_home: Path) -> dict[str, Any]:
-    ledger = tandem_home / 'ledger.jsonl'
-    if not ledger.exists():
+    entries = read_ledger_entries(tandem_home / 'ledger.jsonl')
+    if not entries:
         return {'prompt_tokens': 0, 'completion_tokens': 0, 'seconds': 0.0, 'requests': 0, 'retries': 0, 'repairs': 0, 'bytes_in': 0}
-    rows = [json.loads(line) for line in ledger.read_text().splitlines() if line.strip()]
-    llm = [r for r in rows if r.get('kind') == 'llm']
-    retries = sum(1 for r in rows if r.get('kind') == 'retry')
-    results = [r for r in rows if r.get('kind') == 'result']
+    summary = summarize_local_ledger(entries)
+    llm = [r for r in entries if r.get('kind') == 'llm']
+    results = [r for r in entries if r.get('kind') == 'result']
     repairs = 0
     jobs_dir = tandem_home / 'jobs'
     if jobs_dir.exists():
@@ -194,11 +239,11 @@ def _read_tandem_ledger(tandem_home: Path) -> dict[str, Any]:
             except Exception:
                 pass
     return {
-        'prompt_tokens': sum(int(r.get('prompt_tokens') or 0) for r in llm),
-        'completion_tokens': sum(int(r.get('completion_tokens') or 0) for r in llm),
+        'prompt_tokens': summary['local_prompt_tokens'] or 0,
+        'completion_tokens': summary['local_completion_tokens'] or 0,
         'seconds': sum(float(r.get('seconds') or 0.0) for r in llm),
-        'requests': len(llm),
-        'retries': retries,
+        'requests': summary['local_calls'] or 0,
+        'retries': summary['retries'],
         'repairs': repairs,
         'bytes_in': sum(int(r.get('bytes_in') or 0) for r in results),
     }
@@ -212,11 +257,14 @@ def run_single(
     fixtures_dir: Path,
     timeout: int,
     dry_run: bool = False,
+    run_dir: Path | None = None,
 ) -> dict[str, Any]:
+    if timeout <= 0:
+        raise ValueError('per-run timeout must be positive')
     ws_dir = Path(tempfile.mkdtemp(prefix=f'cmp-{task["id"]}-{scenario}-r{repeat_idx}-'))
     tandem_home = Path(tempfile.mkdtemp(prefix='cmp-thome-'))
     source_bytes = _prepare_workspace(task, scenario, fixtures_dir, ws_dir)
-    prompt = _build_prompt(task, scenario, ws_dir, fixtures_dir)
+    prompt = _build_prompt(task, scenario, ws_dir, fixtures_dir, timeout, cfg['executor'])
 
     if dry_run:
         return {
@@ -233,38 +281,41 @@ def run_single(
     env = os.environ.copy()
     env['TANDEM_HOME'] = str(tandem_home)
     env['TANDEM_BASE_URL'] = cfg['executor']['endpoint']
+    env['TANDEM_MODEL'] = cfg['executor']['model_id']
+    env['TANDEM_TIMEOUT'] = str(min(timeout, 300))
 
-    cmd = [
-        'agy',
-        '--model', cfg['orchestrator']['model_id'],
-        '--output-format', 'json',
-        '--dangerously-skip-permissions',
-        '--new-project',
-        '-p', prompt,
-    ]
+    cmd = orchestrators.command(cfg['orchestrator'], prompt, timeout, scenario, env)
+    if cfg['orchestrator'].get('cli', 'agy') == 'agy':
+        settings_base = run_dir if run_dir is not None else ws_dir
+        session_settings = write_agy_session_settings(
+            settings_base / 'settings' / f'{task["id"]}__{scenario}__r{repeat_idx}.settings.json',
+            enable_tandem=(orchestrators.legacy_scenario(scenario) == 'gemini_tandem'),
+            tandem_env={k: env[k] for k in ('TANDEM_HOME', 'TANDEM_BASE_URL', 'TANDEM_MODEL', 'TANDEM_TIMEOUT') if k in env},
+            python_bin=sys.executable,
+            repo_root=REPO_ROOT,
+        )
+        cmd = cmd[:-2] + ['--settings', str(session_settings)] + cmd[-2:]
 
     t0 = time.perf_counter()
     raw_status = 'FAILED'
     agy_json = None
+    raw_out, raw_err = '', ''
     try:
-        proc = subprocess.run(cmd, cwd=ws_dir, env=env, capture_output=True, text=True, timeout=timeout)
+        proc = run_bounded(cmd, cwd=ws_dir, env=env, timeout=timeout)
         wall_s = round(time.perf_counter() - t0, 2)
         raw_out = proc.stdout.strip()
-        for line in reversed(raw_out.splitlines()):
-            line = line.strip()
-            if line.startswith('{') and line.endswith('}'):
-                try:
-                    agy_json = json.loads(line)
-                    break
-                except Exception:
-                    pass
+        raw_err = proc.stderr
+        agy_json = orchestrators.parse_output(cfg['orchestrator'], raw_out)
         if agy_json and agy_json.get('status'):
             raw_status = metrics.normalize_status(agy_json['status'])
         elif proc.returncode == 0 and agy_json is not None:
             raw_status = 'COMPLETED'
         else:
             raw_status = 'FAILED'
-    except subprocess.TimeoutExpired:
+        if proc.returncode != 0 and raw_status == 'COMPLETED':
+            raw_status = 'FAILED'
+    except subprocess.TimeoutExpired as exc:
+        raw_out, raw_err = exc.output or '', exc.stderr or ''
         wall_s = round(time.perf_counter() - t0, 2)
         raw_status = 'TIMEOUT'
         agy_json = {'status': 'TIMEOUT', 'response': '', 'num_turns': None, 'usage': None}
@@ -272,22 +323,36 @@ def run_single(
         wall_s = round(time.perf_counter() - t0, 2)
         raw_status = 'INTERRUPTED'
         agy_json = {'status': 'INTERRUPTED', 'response': '', 'num_turns': None, 'usage': None}
+    except OSError as exc:
+        wall_s = round(time.perf_counter() - t0, 2)
+        raw_err = str(exc)
+
+    if run_dir is not None:
+        log_dir = run_dir / 'logs' / task['id'] / scenario / f'r{repeat_idx}'
+        log_dir.mkdir(parents=True, exist_ok=True)
+        (log_dir / 'stdout.txt').write_text(raw_out)
+        (log_dir / 'stderr.txt').write_text(raw_err)
 
     conv_id = (agy_json or {}).get('conversation_id')
     answer_text = (agy_json or {}).get('response') or ''
     cloud_usage = metrics.build_cloud_usage_record(
         (agy_json or {}).get('usage'),
         num_turns=(agy_json or {}).get('num_turns'),
-        collection_method='agy_cli_json_usage',
+        collection_method=orchestrators.collection_method(cfg['orchestrator']),
     )
-    identity = metrics.verify_agy_model_identity(cfg['orchestrator']['model_id'], conv_id)
+    identity = (metrics.verify_agy_model_identity(cfg['orchestrator']['model_id'], conv_id)
+                if cfg['orchestrator'].get('cli', 'agy') == 'agy' else
+                {'requested_model': cfg['orchestrator']['model_id'], 'identity_verified': False,
+                 'provenance': 'unavailable', 'reason': 'CLI events do not attest model identity'})
 
-    if scenario == 'gemini_direct':
+    if orchestrators.legacy_scenario(scenario) == 'gemini_direct':
         local_compute = metrics.build_local_compute_record(0, 0, 0.0, 0, 0, 0, provenance='measured', collection_method='none_direct_cloud')
-    elif scenario == 'gemini_lmstudio':
+    elif orchestrators.legacy_scenario(scenario) == 'gemini_lmstudio':
         stats_file = ws_dir / 'lm_studio_stats.json'
         if stats_file.exists():
             st = json.loads(stats_file.read_text())
+            if raw_status == 'COMPLETED' and st.get('status') != 'COMPLETED':
+                raw_status = 'TIMEOUT' if st.get('status') == 'TIMEOUT' else 'PARTIAL'
             local_compute = metrics.build_local_compute_record(
                 st.get('local_prompt_tokens', 0),
                 st.get('local_completion_tokens', 0),
@@ -300,8 +365,12 @@ def run_single(
             )
         else:
             local_compute = metrics.build_local_compute_record(provenance='unavailable', collection_method='lm_studio_stats_missing')
+            if raw_status == 'COMPLETED':
+                raw_status = 'PARTIAL'
     else:
         led = _read_tandem_ledger(tandem_home)
+        if raw_status == 'COMPLETED' and led['requests'] == 0:
+            raw_status = 'PARTIAL'
         local_compute = metrics.build_local_compute_record(
             led['prompt_tokens'],
             led['completion_tokens'],
@@ -314,7 +383,8 @@ def run_single(
         )
 
     # Measure actual tool payloads from agy transcript (never from final assistant response)
-    interactions = metrics.extract_tool_interactions_from_transcript(conv_id)
+    interactions = (metrics.extract_tool_interactions_from_transcript(conv_id)
+                    if cfg['orchestrator'].get('cli', 'agy') == 'agy' else None)
     tool_context = metrics.build_tool_context_record(
         interactions,
         source_bytes=source_bytes,
@@ -323,6 +393,13 @@ def run_single(
 
     quality = evaluate.evaluate_task(task['id'], answer_text, ws_dir, fixtures_dir)
     outcome = metrics.classify_outcome(raw_status, quality)
+
+    if task['category'] == 'generation' and run_dir is not None:
+        art_dir = run_dir / 'artifacts' / task['id'] / scenario / f'r{repeat_idx}'
+        art_dir.mkdir(parents=True, exist_ok=True)
+        for fp in ws_dir.iterdir():
+            if fp.is_file() and fp.suffix in {'.html', '.js', '.css'} and fp.name not in {'lm_studio_harness.py', 'check_page.js', 'check_engine.js'}:
+                shutil.copy2(fp, art_dir / fp.name)
 
     return {
         'task_id': task['id'],
@@ -339,6 +416,10 @@ def run_single(
         'tool_context': tool_context,
         'quality': quality,
         'answer_preview': answer_text[:400],
+        'workspace': str(ws_dir),
+        'timeout_seconds': timeout,
+        'error_preview': raw_err[-2000:] if raw_status != 'COMPLETED' else '',
+        'quota_exhausted': raw_status != 'COMPLETED' and orchestrators.quota_exhausted(raw_out + '\n' + raw_err),
     }
 
 
@@ -346,7 +427,7 @@ def render_markdown_report(report: dict[str, Any]) -> str:
     env_chk = report.get('environment_check', {})
     orch = report.get('orchestrator', {})
     lines = [
-        '# Comparative Benchmark Results — Tandem MCP v3.6.1',
+        '# Comparative Benchmark Results - Tandem MCP v3.6.1',
         '',
         f'- **Run ID**: `{report["run_id"]}`',
         f'- **Date**: {report["date"]}',
@@ -363,7 +444,7 @@ def render_markdown_report(report: dict[str, Any]) -> str:
     ]
     agg = report.get('aggregates', {})
     for task_id, scen_map in agg.items():
-        direct_agg = scen_map.get('gemini_direct', {})
+        direct_agg = scen_map.get('direct', scen_map.get('gemini_direct', {}))
         direct_tok = direct_agg.get('mean_cloud_tokens_per_attempt')
         direct_cov = direct_agg.get('usage_coverage_pct', 0.0)
         for scen, st in scen_map.items():
@@ -377,7 +458,7 @@ def render_markdown_report(report: dict[str, Any]) -> str:
             else:
                 per_succ_str = 'N/A'
 
-            if scen == 'gemini_direct':
+            if orchestrators.legacy_scenario(scen) == 'gemini_direct':
                 sav_str = 'baseline'
             else:
                 sav = metrics.compute_cloud_token_savings(
@@ -441,7 +522,7 @@ def _save_report(run_id, run_dir, cfg, env_check, fixture_check, records):
             'total_runs': total_runs,
         },
         'executor': cfg['executor'],
-        'cloud_tokens_collection': 'agy_cli_json_usage',
+        'cloud_tokens_collection': orchestrators.collection_method(cfg['orchestrator']),
         'records': records,
         'aggregates': agg_summary,
     }
@@ -452,18 +533,32 @@ def _save_report(run_id, run_dir, cfg, env_check, fixture_check, records):
 def main():
     ap = argparse.ArgumentParser(description='Comparative benchmark runner for Tandem MCP v3.6.1')
     ap.add_argument('--config', default=str(HERE / 'configs/suite.json'))
+    ap.add_argument('--orchestrator-cli', choices=['agy', 'codex'])
+    ap.add_argument('--orchestrator-model')
+    ap.add_argument('--executor-model')
     ap.add_argument('--task', default='', help='Comma-separated task IDs')
     ap.add_argument('--category', default='all', help='reading, extraction, bugfix, generation, or all')
-    ap.add_argument('--scenario', default='all', help='gemini_direct, gemini_lmstudio, gemini_tandem, or all')
+    ap.add_argument('--scenario', default='all', help='direct, lmstudio, tandem, or all (legacy aliases accepted)')
     ap.add_argument('--repeats', type=int, default=0, help='Override repeat count')
     ap.add_argument('--seed', type=int, default=42)
-    ap.add_argument('--timeout', type=int, default=0, help='Override per-run timeout in seconds')
+    ap.add_argument('--timeout', type=int, default=0, help='Positive per-run timeout; 0 uses category defaults')
     ap.add_argument('--dry-run', action='store_true')
     ap.add_argument('--resume', default='', help='Existing run_id in runs/ to resume')
     ap.add_argument('--allow-dirty-commit', action='store_true')
     args = ap.parse_args()
 
     cfg = load_config(Path(args.config))
+    if args.orchestrator_cli:
+        cfg['orchestrator']['cli'] = args.orchestrator_cli
+    if args.orchestrator_model:
+        cfg['orchestrator']['model_id'] = args.orchestrator_model
+        cfg['orchestrator']['name'] = args.orchestrator_model
+    if args.executor_model:
+        cfg['executor']['model_id'] = args.executor_model
+    orchestrators.validate(cfg['orchestrator'])
+    cfg['scenarios'] = [orchestrators.neutral_scenario(s) for s in cfg['scenarios']]
+    if args.timeout < 0 or any(v <= 0 for v in cfg['timeouts_seconds'].values()):
+        ap.error('timeouts must be positive (use --timeout 0 for category defaults)')
     fixtures_dir = HERE / 'fixtures'
     tandem_under_test = Path('/home/ale/tools/tandem-mcp')
     target_repo = tandem_under_test if tandem_under_test.exists() else REPO_ROOT
@@ -482,12 +577,25 @@ def main():
     if args.category != 'all':
         tasks = [t for t in tasks if t['category'] == args.category]
 
-    scenarios = cfg['scenarios'] if args.scenario == 'all' else [s.strip() for s in args.scenario.split(',') if s.strip()]
+    scenarios = cfg['scenarios'] if args.scenario == 'all' else [orchestrators.neutral_scenario(s.strip()) for s in args.scenario.split(',') if s.strip()]
+    if not tasks or not scenarios or set(scenarios) - set(cfg['scenarios']):
+        ap.error('select at least one valid task and scenario')
 
     run_id = args.resume or time.strftime('%Y%m%d-%H%M%S')
     run_dir = HERE / 'runs' / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
     results_path = run_dir / 'results.json'
+    config_path = run_dir / 'config.json'
+    if args.resume and config_path.exists() and json.loads(config_path.read_text()) != cfg:
+        ap.error('Cannot resume with a different configuration')
+    config_path.write_text(json.dumps(cfg, indent=2) + '\n')
+    if not args.dry_run:
+        try:
+            runtime = check_runtime(cfg, scenarios)
+        except RuntimeError as exc:
+            (run_dir / 'preflight.json').write_text(json.dumps({'ok': False, 'error': str(exc)}, indent=2) + '\n')
+            ap.exit(1, f'Benchmark preflight failed: {exc}\nDiagnostics: {run_dir / "preflight.json"}\n')
+        (run_dir / 'preflight.json').write_text(json.dumps(runtime, indent=2) + '\n')
 
     records: list[dict[str, Any]] = []
     done_keys = set()
@@ -496,28 +604,37 @@ def main():
         records = prev.get('records', [])
         done_keys = {(r['task_id'], r['scenario'], r['repeat']) for r in records if not r.get('dry_run')}
 
-    orig_mcp = None if args.dry_run else _agy_mcp_state()
-    try:
-        for task in tasks:
-            n_rep = args.repeats if args.repeats > 0 else cfg['default_repeats'][task['category']]
-            t_timeout = args.timeout if args.timeout > 0 else cfg['timeouts_seconds'][task['category']]
-            for rep in range(1, n_rep + 1):
-                order = list(scenarios)
-                if len(order) > 1:
-                    shift = (rep - 1) % len(order)
-                    order = order[shift:] + order[:shift]
-                for scen in order:
-                    if (task['id'], scen, rep) in done_keys:
-                        continue
-                    if not args.dry_run:
-                        _set_agy_mcp(enable_tandem=(scen == 'gemini_tandem'))
-                    print(f'[run={run_id}] task={task["id"]} scenario={scen} repeat={rep}/{n_rep}', flush=True)
-                    rec = run_single(task, scen, rep, cfg, fixtures_dir, t_timeout, dry_run=args.dry_run)
-                    records.append(rec)
-                    _save_report(run_id, run_dir, cfg, env_check, fixture_check, records)
-    finally:
-        if orig_mcp is not None:
-            _restore_agy_mcp(orig_mcp)
+    for task in tasks:
+        n_rep = args.repeats if args.repeats > 0 else cfg['default_repeats'][task['category']]
+        t_timeout = args.timeout if args.timeout > 0 else cfg['timeouts_seconds'][task['category']]
+        for rep in range(1, n_rep + 1):
+            order = list(scenarios)
+            if len(order) > 1:
+                shift = (rep - 1) % len(order)
+                order = order[shift:] + order[:shift]
+            for scen in order:
+                if (task['id'], scen, rep) in done_keys:
+                    continue
+                print(f'[run={run_id}] task={task["id"]} scenario={scen} repeat={rep}/{n_rep}', flush=True)
+                rec = run_single(task, scen, rep, cfg, fixtures_dir, t_timeout, dry_run=args.dry_run, run_dir=run_dir)
+                quota_attempt = 0
+                while rec.get('quota_exhausted'):
+                    quota_attempt += 1
+                    retry_dir = run_dir / 'quota_retries' / task['id'] / scen / f'r{rep}' / str(time.time_ns())
+                    retry_dir.mkdir(parents=True, exist_ok=True)
+                    (retry_dir / 'record.json').write_text(json.dumps(rec, indent=2) + '\n')
+                    log_dir = run_dir / 'logs' / task['id'] / scen / f'r{rep}'
+                    if log_dir.exists():
+                        shutil.copytree(log_dir, retry_dir / 'logs')
+                    print('Usage quota exhausted; retrying the same attempt in 300 seconds. Ctrl-C stops.', flush=True)
+                    for _ in range(5):
+                        time.sleep(60)
+                    rec = run_single(task, scen, rep, cfg, fixtures_dir, t_timeout, run_dir=run_dir)
+                records.append(rec)
+                _save_report(run_id, run_dir, cfg, env_check, fixture_check, records)
+                print(f'  -> {rec.get("status", "DRY_RUN")} in {rec.get("wall_seconds", 0)}s', flush=True)
+                if rec.get('status') == 'INTERRUPTED':
+                    raise KeyboardInterrupt
 
     print(f'Completed run {run_id}. Results: {results_path}')
 

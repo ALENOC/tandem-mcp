@@ -26,6 +26,11 @@ Structured JSON extraction from a file against a JSON schema string.
 
 ## Delegate & Execute
 
+### `auto_route`
+Classify a request before acting, with no LLM call. Returns JSON with a `route`: `deterministic` (exact parsing or counting with scripts), `direct_or_targeted` (the cloud model acts directly, or reads and edits a few lines) or `delegate_local` (local executor). Honors explicit `solo locale` / `local only` and `read only` constraints.
+- **Parameters:** `request` (required), `workspace` (required), `budget_seconds` (`null`).
+- **When it is called:** only when `TANDEM_AUTO_POLICY=mandatory_route`. With the default `first_turn` policy the orchestrator acts directly in turn 1 and may skip it.
+
 ### `delegate`
 Delegate a bounded coding task in `workspace` under a strict contract (`TANDEM_STRICT=1` default).
 - **Parameters:** `goal` (required), `workspace` (required), `verify_commands` (`[]`), `write_globs` (`[]`), `allow_run` (`[]`), `immutable` (`[]`), `context` (`""`), `max_steps` (`30`), `max_repairs` (`2`), `wait_seconds` (`240`), `model` (`""`), `baseline` (`true`), `max_seconds` (`0`), `checks_network` (`false`), `unjailed_checks` (`false`), `constraints` (`[]`), `read_globs` (`[]`).
@@ -93,4 +98,6 @@ Add, list, or remove standing rules for a project scope (or `*` globally).
 
 ## Job States
 
-`running`, `verified`, `unverified`, `checks_failed`, `blocked`, `stuck`, `out_of_steps`, `out_of_time`, `stopped`, `error`, `rolled_back`, `partial_rollback`, `partial` (batch).
+`running`, `verified`, `unverified`, `checks_failed`, `blocked`, `stuck`, `out_of_steps`, `out_of_time`, `stopped`, `not_evaluated`, `error`, `rolled_back`, `partial_rollback`, `partial` (batch).
+
+`not_evaluated` means a check could not run because a prerequisite was missing (for example no Chromium for the web check, exit code `2`). The job ends without repair attempts and is never reported as `verified`.

@@ -36,6 +36,14 @@ All settings are controlled via environment variables read by the `tandem-mcp` s
 | `TANDEM_JOBS_TTL_DAYS` | Days persisted job folders are kept before pruning | `30` |
 | `TANDEM_JOBS_PENDING_TTL_DAYS` | Days a job with changes and no verdict is kept | `120` |
 | `TANDEM_LEDGER_KEEP_DAYS` | Days of ledger lines kept (`0`: all) | `180` |
+| `TANDEM_PROFILE` | `lean`: fewer tools, short schemas, compact receipts | full profile |
+| `TANDEM_AUTO_POLICY` | `first_turn`: act directly in turn 1, `auto_route` optional. `mandatory_route`: call `auto_route` first | `first_turn` |
+| `TANDEM_HOST_MANAGED` | `1`: `delegate` returns the job ID at once and a local host process waits, with no cloud polling | off |
+| `TANDEM_WAIT_SECONDS` | Default wait of a lean `delegate` call (seconds, capped at `1500`) | `150` |
+| `TANDEM_COMPACT_WRITES` | `1`: older `write_file` bodies are replaced by a short stub in the executor context (the full history stays in `messages.json`) | `1` |
+| `TANDEM_COMPACT_RECEIPT` | `1`: host-managed receipts lead with `VERDICT:` and keep only the evidence needed for review | `1` |
+| `TANDEM_WEB_CHECK` | `1`: run the built-in Chromium runtime and animation check on web deliverables | `1` |
+| `TANDEM_CHROME` | Path to the Chromium or Chrome binary used by the web check | auto-detected |
 
 ## Backend & Model Notes
 

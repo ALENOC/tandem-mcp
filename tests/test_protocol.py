@@ -157,7 +157,7 @@ ok(data['state'] == 'out_of_time', 'time limit')
 job, data = run('Fix it.', project(), TEST, [('run', {'command': 'cat calc.py'}), ('read_file', {'path': '/etc/passwd'}),
                                              ('finish', {'summary': 'x', 'blocked': True})], fake)
 log = store.read_json(store.JOBS / job / 'log.json')
-ok('may not run commands' in log[0]['result'] and 'outside the workspace' in log[1]['result'], 'limits are answers, not crashes')
+ok('no shell commands are allowed' in log[0]['result'] and 'outside the workspace' in log[1]['result'], 'limits are answers, not crashes')
 
 job, data = run('Fix it.', project(), TEST, [('read_file', {'path': 'calc.py'}), ('list_files', {'glob': '*'})] * 6, fake)
 ok(data['state'] == 'stuck' and data['steps'] == 9, 'a circle of two calls is noticed too')
@@ -672,7 +672,7 @@ try:
     tools = {t['name']: t for t in rpc('tools/list', ident=2)['result']['tools']}
     want = {'executor_status', 'executor_probe', 'ask', 'digest_file', 'digest_command', 'digest_many', 'extract_from_file', 'delegate',
             'delegate_many', 'job_status', 'job_stop', 'job_continue', 'job_diff', 'job_evidence', 'job_rollback', 'job_feedback', 'lesson_add', 'lessons',
-            'ledger_report'}
+            'ledger_report', 'auto_route'}
     ok(set(tools) == want, f'MCP tools: {sorted(set(tools) ^ want)}')
     dm_schema = tools['delegate_many']['inputSchema']
     dm_raw = json.dumps(dm_schema)

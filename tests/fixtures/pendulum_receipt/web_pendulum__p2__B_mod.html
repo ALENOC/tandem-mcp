@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chaotic Double Pendulum</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #090d16;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  }
+  #canvas {
+    display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
+    background: #090d16;
+    cursor: crosshair;
+  }
+  .hud {
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    padding: 14px 18px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.06);
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+    color: #e6ecff;
+    min-width: 210px;
+    user-select: none;
+  }
+  .hud h1 {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    opacity: 0.75;
+    margin-bottom: 10px;
+  }
+  .row {
+    display: flex;
+    justify-content: space-between;
+    gap: 18px;
+    font-size: 13px;
+    line-height: 1.7;
+    font-variant-numeric: tabular-nums;
+  }
+  .row .k { opacity: 0.6; }
+  .row .v { font-weight: 600; }
+  .controls {
+    position: absolute;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.06);
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+    color: #e6ecff;
+    user-select: none;
+  }
+  button {
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    color: #e6ecff;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 10px;
+    padding: 8px 14px;
+    cursor: pointer;
+    transition: background 0.15s ease, transform 0.05s ease;
+  }
+  button:hover { background: rgba(255, 255, 255, 0.16); }
+  button:active { transform: translateY(1px); }
+  button.primary { background: rgba(99, 132, 255, 0.28); border-color: rgba(99, 132, 255, 0.5); }
+  button.primary:hover { background: rgba(99, 132, 255, 0.4); }
+  .slider-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+  }
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 130px;
+    height: 4px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.2);
+    outline: none;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+    background: #8ea2ff;
+    cursor: pointer;
+    box-shadow: 0 0 8px rgba(142, 162, 255, 0.7);
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 15px;
+    height: 15px;
+    border: none;
+    border-radius: 50%;
+    background: #8ea2ff;
+    cursor: pointer;
+  }
+  .hint {
+    position: absolute;
+    bottom: 16px;
+    right: 16px;
+    font-size: 11px;
+    color: rgba(230, 236, 255, 0.4);
+    user-select: none;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+
+  <div class="hud">
+    <h1>Double Pendulum</h1>
+    <div class="row"><span class="k">FPS</span><span class="v" id="fps">0</span></div>
+    <div class="row"><span class="k">Energy</span><span class="v" id="energy">0.00</span></div>
+    <div class="row"><span class="k">Time</span><span class="v" id="time">0.00 s</span></div>
+    <div class="row"><span class="k">Speed</span><span class="v" id="speed">1.0x</span></div>
+  </div>
+
+  <div class="controls">
+    <button id="playBtn" class="primary">Play</button>
+    <button id="stepBtn">Step</button>
+    <button id="resetBtn">Reset</button>
+    <div class="slider-wrap">
+      <span>0.5</span>
+      <input type="range" id="speedSlider" min="0.5" max="3.0" step="0.1" value="1.0">
+      <span>3.0</span>
+    </div>
+  </div>
+
+  <div class="hint">Click canvas to set new initial angle</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var canvas = document.getElementById('canvas');
+  var ctx = canvas.getContext('2d');
+
+  var fpsEl = document.getElementById('fps');
+  var energyEl = document.getElementById('energy');
+  var timeEl = document.getElementById('time');
+  var speedEl = document.getElementById('speed');
+  var playBtn = document.getElementById('playBtn');
+  var stepBtn = document.getElementById('stepBtn');
+  var resetBtn = document.getElementById('resetBtn');
+  var speedSlider = document.getElementById('speedSlider');
+
+  // Physics constants
+  var G = 9.81;
+  var M1 = 1.0;
+  var M2 = 1.0;
+  var L1 = 1.0;
+  var L2 = 1.0;
+
+  // Simulation state: [theta1, theta2, omega1, omega2]
+  var state = [0, 0, 0, 0];
+  var initialState = [0, 0, 0, 0];
+  var simTime = 0;
+  var running = false;
+  var speed = 1.0;
+  var dt = 1 / 240; // fixed physics timestep
+
+  // Trail
+  var trail = [];
+  var MAX_TRAIL = 400;
+
+  // FPS tracking
+  var fps = 0;
+  var frameCount = 0;
+  var fpsTimer = 0;
+
+  function resize() {
+    var dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.floor(window.innerWidth * dpr);
+    canvas.height = Math.floor(window.innerHeight * dpr);
+    canvas.style.width = window.innerWidth + 'px';
+    canvas.style.height = window.innerHeight + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function pivot() {
+    return { x: window.innerWidth / 2, y: window.innerHeight * 0.38 };
+  }
+
+  function scale() {
+    return Math.min(window.innerWidth, window.innerHeight) * 0.16;
+  }
+
+  function positions(s) {
+    var p = pivot();
+    var sc = scale();
+    var x1 = p.x + sc * L1 * Math.sin(s[0]);
+    var y1 = p.y + sc * L1 * Math.cos(s[0]);
+    var x2 = x1 + sc * L2 * Math.sin(s[1]);
+    var y2 = y1 + sc * L2 * Math.cos(s[1]);
+    return { x1: x1, y1: y1, x2: x2, y2: y2 };
+  }
+
+  function deriv(s) {
+    var t1 = s[0], t2 = s[1], w1 = s[2], w2 = s[3];
+    var d = t1 - t2;
+    var den = 2 * M1 + M2 - M2 * Math.cos(2 * d);
+    var a1 = (-G * (2 * M1 + M2) * Math.sin(t1) - M2 * G * Math.sin(t1 - 2 * t2) -
+      2 * Math.sin(d) * M2 * (w2 * w2 * L2 + w1 * w1 * L1 * Math.cos(d))) / (L1 * den);
+    var a2 = (2 * Math.sin(d) * (w1 * w1 * L1 + G * Math.cos(t1) + w2 * w2 * L2 * Math.cos(d))) / (L2 * den);
+    return [w1, w2, a1, a2];
+  }
+
+  function addScaled(s, k, h) {
+    return [
+      s[0] + k[0] * h,
+      s[1] + k[1] * h,
+      s[2] + k[2] * h,
+      s[3] + k[3] * h
+    ];
+  }
+
+  function rk4Step(s, h) {
+    var k1 = deriv(s);
+    var k2 = deriv(addScaled(s, k1, h / 2));
+    var k3 = deriv(addScaled(s, k2, h / 2));
+    var k4 = deriv(addScaled(s, k3, h));
+    return [
+      s[0] + (h / 6) * (k1[0] + 2 * k2[0] + 2 * k3[0] + k4[0]),
+      s[1] + (h / 6) * (k1[1] + 2 * k2[1] + 2 * k3[1] + k4[1]),
+      s[2] + (h / 6) * (k1[2] + 2 * k2[2] + 2 * k3[2] + k4[2]),
+      s[3] + (h / 6) * (k1[3] + 2 * k2[3] + 2 * k3[3] + k4[3])
+    ];
+  }
+
+  function energy(s) {
+    var t1 = s[0], t2 = s[1], w1 = s[2], w2 = s[3];
+    var v1sq = L1 * L1 * w1 * w1;
+    var v2sq = v1sq + L2 * L2 * w2 * w2 + 2 * L1 * L2 * w1 * w2 * Math.cos(t1 - t2);
+    var ke = 0.5 * M1 * v1sq + 0.5 * M2 * v2sq;
+    var y1 = -L1 * Math.cos(t1);
+    var y2 = y1 - L2 * Math.cos(t2);
+    var pe = M1 * G * y1 + M2 * G * y2;
+    return ke + pe;
+  }
+
+  function stepOnce() {
+    state = rk4Step(state, dt);
+    simTime += dt;
+    var pos = positions(state);
+    trail.push({ x: pos.x2, y: pos.y2 });
+    if (trail.length > MAX_TRAIL) trail.shift();
+  }
+
+  function clearTrail() {
+    trail.length = 0;
+  }
+
+  function reset() {
+    state = initialState.slice();
+    simTime = 0;
+    clearTrail();
+    updateHud();
+  }
+
+  function setFromClick(e) {
+    var p = pivot();
+    var sc = scale();
+    var dx = e.clientX - p.x;
+    var dy = e.clientY - p.y;
+    var ang = Math.atan2(dx, dy);
+    initialState = [ang, ang * 0.6, 0, 0];
+    reset();
+  }
+
+  function updateHud() {
+    fpsEl.textContent = String(fps);
+    energyEl.textContent = energy(state).toFixed(2);
+    timeEl.textContent = simTime.toFixed(2) + ' s';
+    speedEl.textContent = speed.toFixed(1) + 'x';
+  }
+
+  function draw() {
+    var w = window.innerWidth;
+    var h = window.innerHeight;
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = '#090d16';
+    ctx.fillRect(0, 0, w, h);
+
+    // Faded trail
+    var n = trail.length;
+    for (var i = 0; i < n; i++) {
+      var a = (i + 1) / n;
+      var alpha = a * 0.55;
+      ctx.beginPath();
+      ctx.arc(trail[i].x, trail[i].y, 1.6 + a * 1.6, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(120, 160, 255, ' + alpha.toFixed(3) + ')';
+      ctx.fill();
+    }
+
+    var p = pivot();
+    var pos = positions(state);
+
+    // Rods
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = 'rgba(200, 215, 255, 0.85)';
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y);
+    ctx.lineTo(pos.x1, pos.y1);
+    ctx.lineTo(pos.x2, pos.y2);
+    ctx.stroke();
+
+    // Pivot
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(230, 236, 255, 0.9)';
+    ctx.fill();
+
+    // Bob 1
+    ctx.beginPath();
+    ctx.arc(pos.x1, pos.y1, 9, 0, Math.PI * 2);
+    ctx.fillStyle = '#7c9bff';
+    ctx.shadowColor = 'rgba(124, 155, 255, 0.9)';
+    ctx.shadowBlur = 18;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Bob 2
+    ctx.beginPath();
+    ctx.arc(pos.x2, pos.y2, 11, 0, Math.PI * 2);
+    ctx.fillStyle = '#ff7eb6';
+    ctx.shadowColor = 'rgba(255, 126, 182, 0.9)';
+    ctx.shadowBlur = 22;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+
+  var lastTime = performance.now();
+  var acc = 0;
+
+  function loop(now) {
+    var frameDt = (now - lastTime) / 1000;
+    lastTime = now;
+    if (frameDt > 0.25) frameDt = 0.25;
+
+    // FPS
+    frameCount++;
+    fpsTimer += frameDt;
+    if (fpsTimer >= 0.5) {
+      fps = Math.round(frameCount / fpsTimer);
+      frameCount = 0;
+      fpsTimer = 0;
+    }
+
+    if (running) {
+      acc += frameDt * speed;
+      var steps = 0;
+      while (acc >= dt && steps < 2000) {
+        stepOnce();
+        acc -= dt;
+        steps++;
+      }
+    }
+
+    draw();
+    updateHud();
+    requestAnimationFrame(loop);
+  }
+
+  // Controls
+  playBtn.addEventListener('click', function () {
+    running = !running;
+    playBtn.textContent = running ? 'Pause' : 'Play';
+    playBtn.classList.toggle('primary', !running);
+  });
+
+  stepBtn.addEventListener('click', function () {
+    if (!running) stepOnce();
+  });
+
+  resetBtn.addEventListener('click', function () {
+    reset();
+  });
+
+  speedSlider.addEventListener('input', function () {
+    speed = parseFloat(speedSlider.value);
+    updateHud();
+  });
+
+  canvas.addEventListener('click', function (e) {
+    setFromClick(e);
+  });
+
+  window.addEventListener('resize', function () {
+    resize();
+  });
+
+  // Init
+  resize();
+  initialState = [Math.PI / 2, Math.PI / 3, 0, 0];
+  state = initialState.slice();
+  updateHud();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

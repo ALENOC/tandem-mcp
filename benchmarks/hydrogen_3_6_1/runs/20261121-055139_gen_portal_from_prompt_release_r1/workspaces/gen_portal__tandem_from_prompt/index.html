@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>NEON PORTAL 3D</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: radial-gradient(ellipse at 50% 40%, #14102e 0%, #0a0718 45%, #04030a 100%);
+    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    color: #eafcff;
+  }
+  #c {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    display: block;
+  }
+  #hud {
+    position: fixed;
+    top: 18px;
+    left: 18px;
+    z-index: 10;
+    min-width: 250px;
+    padding: 16px 18px;
+    border-radius: 16px;
+    background: rgba(20, 26, 54, 0.35);
+    border: 1px solid rgba(120, 220, 255, 0.35);
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.45), inset 0 0 24px rgba(80, 200, 255, 0.08);
+    user-select: none;
+  }
+  #hud h1 {
+    margin: 0 0 10px 0;
+    font-size: 20px;
+    letter-spacing: 3px;
+    font-weight: 700;
+    background: linear-gradient(90deg, #7df9ff, #b06bff, #ff5fd0);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-shadow: 0 0 18px rgba(120, 200, 255, 0.35);
+  }
+  .stats {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  .stat {
+    flex: 1;
+    text-align: center;
+    padding: 8px 4px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(120, 220, 255, 0.18);
+  }
+  .stat .k {
+    font-size: 10px;
+    letter-spacing: 2px;
+    opacity: 0.7;
+  }
+  .stat .v {
+    font-size: 18px;
+    font-weight: 700;
+    color: #8ffcff;
+    text-shadow: 0 0 10px rgba(120, 255, 255, 0.5);
+  }
+  .row {
+    display: flex;
+    gap: 8px;
+    margin-top: 4px;
+  }
+  button {
+    flex: 1;
+    cursor: pointer;
+    padding: 9px 6px;
+    border-radius: 10px;
+    border: 1px solid rgba(120, 220, 255, 0.35);
+    background: rgba(90, 180, 255, 0.12);
+    color: #eafcff;
+    font-size: 12px;
+    letter-spacing: 1px;
+    font-weight: 600;
+    transition: all 0.15s ease;
+  }
+  button:hover {
+    background: rgba(120, 220, 255, 0.28);
+    box-shadow: 0 0 16px rgba(120, 220, 255, 0.4);
+  }
+  button.active {
+    background: rgba(120, 255, 220, 0.28);
+    border-color: rgba(120, 255, 220, 0.6);
+  }
+  .slider-wrap {
+    margin-top: 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .slider-wrap label {
+    font-size: 11px;
+    letter-spacing: 1px;
+    opacity: 0.8;
+    white-space: nowrap;
+  }
+  input[type="range"] {
+    flex: 1;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    border-radius: 4px;
+    background: linear-gradient(90deg, #7df9ff, #b06bff);
+    outline: none;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #eafcff;
+    box-shadow: 0 0 12px rgba(120, 255, 255, 0.8);
+    cursor: pointer;
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border: none;
+    border-radius: 50%;
+    background: #eafcff;
+    box-shadow: 0 0 12px rgba(120, 255, 255, 0.8);
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+  <div id="hud">
+    <h1>NEON PORTAL 3D</h1>
+    <div class="stats">
+      <div class="stat"><div class="k">FPS</div><div class="v" id="fps">0</div></div>
+      <div class="stat"><div class="k">POLYS</div><div class="v" id="polys">0</div></div>
+      <div class="stat"><div class="k">PARTS</div><div class="v" id="parts">0</div></div>
+    </div>
+    <div class="row">
+      <button id="btnPause">Pause</button>
+      <button id="btnOrbit" class="active">Orbit ON</button>
+      <button id="btnReset">Reset</button>
+    </div>
+    <div class="slider-wrap">
+      <label for="speed">SPEED</label>
+      <input type="range" id="speed" min="0" max="3" step="0.05" value="1" />
+    </div>
+  </div>
+  <script src="engine3d.js"></script>
+  <script src="scene.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

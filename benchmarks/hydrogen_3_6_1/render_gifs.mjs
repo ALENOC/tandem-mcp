@@ -88,9 +88,12 @@ async function captureGif(workspaceDir, outGif, frames = 45) {
   }
 }
 
-const runDir = path.resolve('benchmarks/hydrogen_3_6_1/runs/20261117-205412/workspaces');
-const outDir = path.resolve('benchmarks/hydrogen_3_6_1/gifs');
-await captureGif(path.join(runDir, 'gen_orbital__direct__r1'), path.join(outDir, 'animation_direct.gif'));
-await captureGif(path.join(runDir, 'gen_orbital__tandem__r1'), path.join(outDir, 'animation_tandem.gif'));
-await captureGif(path.join(runDir, 'gen_portal__direct__r1'), path.join(outDir, 'portal_direct.gif'));
-await captureGif(path.join(runDir, 'gen_portal__tandem__r1'), path.join(outDir, 'portal_tandem.gif'));
+// Usage: node render_gifs.mjs <workspace_dir> <out.gif> [<workspace_dir> <out.gif> ...]
+const args = process.argv.slice(2);
+if (args.length === 0 || args.length % 2 !== 0) {
+  console.error('usage: node render_gifs.mjs <workspace_dir> <out.gif> [...]');
+  process.exit(2);
+}
+for (let i = 0; i < args.length; i += 2) {
+  await captureGif(path.resolve(args[i]), path.resolve(args[i + 1]));
+}

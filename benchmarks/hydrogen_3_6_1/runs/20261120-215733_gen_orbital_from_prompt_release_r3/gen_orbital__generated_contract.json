@@ -1,0 +1,21 @@
+{
+  "job_id": "20261120-215848-8a57cc",
+  "kind": "delegate",
+  "goal": "Create a single self-contained file index.html implementing an interactive full-viewport HTML5 Canvas orbital particle simulation in dark space (#060913) with a responsive DPR-scaled canvas, central glowing star with corona pulse, >=5 planets with >=3 moons and fading trails, >=150 twinkling background stars, a glassmorphism HUD (Play/Pause, Trails ON/OFF, Reset, speed slider 0.2-3.0 step 0.1 default 1.0 with multiplier readout, live FPS, sim time in seconds, active burst particle count), and click-to-spawn radial glowing particle bursts with velocity damping and fade-out.",
+  "verify_commands": [
+    "python3 -c \"import re, subprocess, tempfile; h=open('index.html').read(); m=re.findall(r'<script[^>]*>(.*?)</script>', h, re.S); assert m, 'no script'; assert '<canvas' in h and 'requestAnimationFrame' in h and 'devicePixelRatio' in h and 'createRadialGradient' in h and '#060913' in h.lower(); f=tempfile.NamedTemporaryFile('w', suffix='.js'); f.write('\\n'.join(m)); f.flush(); subprocess.run(['node', '--check', f.name], check=True)\""
+  ],
+  "constraints": [
+    "Single self-contained index.html with zero external dependencies (no CDN links, external scripts, or external stylesheets).",
+    "Full-viewport <canvas> in dark space (#060913) using requestAnimationFrame and window.devicePixelRatio scaling on resize.",
+    "Central glowing star rendered with createRadialGradient and a subtle animated corona pulse.",
+    "At least 5 orbiting planets with distinct radii, speeds, and colors, at least 3 moons/satellites, and fading orbital trails.",
+    "Twinkling background starfield with at least 150 stars.",
+    "Glassmorphism HUD overlay with Play/Pause toggle button, Trails ON/OFF toggle button, and Reset button.",
+    "HUD includes speed range slider (min=0.2, max=3.0, step=0.1, value=1.0) with live multiplier readout.",
+    "HUD displays live FPS, simulation time in seconds, and active burst particle count.",
+    "Clicking anywhere on the canvas spawns a radial burst of glowing particles with velocity damping and fade-out.",
+    "All inline JavaScript must have valid syntax (passes node --check) and handle edge cases cleanly."
+  ],
+  "tasks": null
+}

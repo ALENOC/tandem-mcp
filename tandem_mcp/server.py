@@ -14,9 +14,11 @@ shape the tools:
 4. Any model. The server measures what the model can do and adapts the protocol to it.
 """
 import atexit
+import hashlib
 import json
 import logging
 import os
+import sys
 import re
 import shlex
 import signal
@@ -28,7 +30,7 @@ except ImportError:
 
 from mcp.server.mcpserver import MCPServer
 
-from . import __version__, agent, digest, engine, sandbox, store
+from . import __version__, agent, digest, engine, router, sandbox, store
 
 GUIDE = '''Hybrid orchestration (cloud model = architect & reviewer, local model = reader & bounded executor, free to use):
 - Reading & extraction: use digest_file (with grep when possible), digest_command, digest_many, and extract_from_file
@@ -66,7 +68,62 @@ def lean():
     return os.environ.get('TANDEM_PROFILE', '').strip().lower() == 'lean'
 
 
-mcp = MCPServer('tandem', version=__version__, instructions=LEAN_GUIDE if lean() else GUIDE)
+def host_managed():
+    """TANDEM_HOST_MANAGED=1: return job_id immediately and let local host_runner wait with 0 cloud polls."""
+    return os.environ.get('TANDEM_HOST_MANAGED', '').strip().lower() in ('1', 'true', 'yes', 'on')
+
+
+_HOST_MANAGED_RULE = (
+    '\n- HOST-MANAGED MODE IS DEFAULT: `delegate` / `delegate_many` starts the job once and returns immediately '
+    'with a `job_id` and a `HOST_WATCHER_CMD`. Run that exact `HOST_WATCHER_CMD` ONCE using `run_command` '
+    '(with WaitMsBeforeAsync=500) so it runs in the background, do NOT poll `job_status`, and end your turn with '
+    'no further tool calls. Antigravity will wake this chat automatically when the job finishes (or times out / fails); '
+    'then summarize the verified result and check outcomes directly to the user.'
+)
+
+
+def auto_policy():
+    """TANDEM_AUTO_POLICY: 'first_turn' (default: act directly or delegate in turn 1; auto_route optional) or 'mandatory_route'."""
+    val = os.environ.get('TANDEM_AUTO_POLICY', 'first_turn').strip().lower()
+    return 'mandatory_route' if val in ('mandatory', 'mandatory_route', 'always_route') else 'first_turn'
+
+
+_AUTO_RULE_MANDATORY = (
+    '\n- AUTO (`usa Tandem`): call `auto_route(request, workspace)` ONCE first (0 LLM cost), then follow its `route` '
+    '(`deterministic`, `direct_or_targeted`, or `delegate_local`) and honor `local_only` / `read_only`.'
+)
+
+_AUTO_RULE_FIRST_TURN = (
+    '\n- AUTO (`usa Tandem`): turn 1 direct (incl. targeted edits even with cloud-savings). '
+    'Delegate only large from-scratch code with `privilegia il risparmio di token cloud`, or `solo locale`.'
+)
+
+
+def _instructions():
+    base = LEAN_GUIDE if lean() else GUIDE
+    if host_managed():
+        base = base + _HOST_MANAGED_RULE
+    return base + (_AUTO_RULE_MANDATORY if auto_policy() == 'mandatory_route' else _AUTO_RULE_FIRST_TURN)
+
+
+def _host_managed_notice(job_id, receipt):
+    if not host_managed():
+        return receipt
+    data = store.read_job(job_id) or {}
+    if data.get('state') != 'running':
+        return receipt
+    cmd = f'{sys.executable} -m tandem_mcp.host_runner --attach {job_id} --data-dir {store.DATA}'
+    return (
+        f'{receipt}\n\n'
+        f'HOST_MANAGED_STARTED job_id={job_id}\n'
+        f'HOST_WATCHER_CMD: {cmd}\n'
+        f'Next step: call run_command ONCE with CommandLine="{cmd}" and WaitMsBeforeAsync=500, '
+        'then stop calling tools and end your turn so Antigravity delivers the result automatically when finished. '
+        'Do NOT call job_status in a loop.'
+    )
+
+
+mcp = MCPServer('tandem', version=__version__, instructions=_instructions())
 logging.getLogger('httpx').setLevel(logging.WARNING)
 logging.getLogger('openai').setLevel(logging.WARNING)
 
@@ -240,10 +297,16 @@ def digest_many(root: str, glob: str, question: str, max_files: int = 25, max_wo
         files = sandbox.walk(base, glob, max_files + 1)
         cut = len(files) > max_files
         lines, total, good, bad = [], 0, 0, 0
+        budget = digest._digest_timeout(None)
+        deadline = (time.monotonic() + budget) if budget > 0 else None
         for rel in files[:max_files]:
+            rem = (deadline - time.monotonic()) if deadline is not None else None
+            if rem is not None and rem <= 1.0:
+                lines.append(f'[stopped after {len(lines)}/{min(len(files), max_files)} files: {budget:g}s digest budget reached]')
+                break
             try:
                 text = sandbox.read_text(base / rel, 400_000)
-                result = digest.answer(text, question, max_words_each, tool='digest_many')
+                result = digest.answer(text, question, max_words_each, tool='digest_many', timeout=rem)
             except Exception as exc:
                 lines.append(f'{rel}: (not read: {str(exc)[:120]})')
                 continue
@@ -292,6 +355,7 @@ def extract_from_file(path: str, json_schema: str, instructions: str, grep: str 
 HINTS = {'verified': 'Checks passed. Read job_diff if the change is delicate, then job_feedback.',
          'unverified': 'No check was given: read job_diff before you rely on it, then job_feedback.',
          'checks_failed': 'Not accepted. job_diff shows the attempt; job_continue with a hint, or job_rollback.',
+         'not_evaluated': 'Mandatory check could not run (missing verifier prerequisite); artifact preserved. Run the check or inspect directly.',
          'blocked': 'The executor could not do it. job_continue with what it lacks, or do it yourself.',
          'stuck': 'The executor went in circles. job_continue with a different approach, or job_rollback.',
          'out_of_steps': 'Step limit reached. job_continue gives more steps; job_rollback undoes the partial work.',
@@ -505,6 +569,17 @@ def _validate_contract(goal: str, constraints: list[str] | None, verify_commands
 
 
 @mcp.tool()
+def auto_route(request: str, workspace: str, budget_seconds: int | None = None) -> str:
+    """Choose deterministic, direct_or_targeted, or delegate_local from pre-execution signals (0 LLM tokens)."""
+    try:
+        ws = sandbox.Workspace(workspace)
+        decision = router.classify_request(request, ws.root, budget_seconds=budget_seconds)
+        return json.dumps(decision, ensure_ascii=False)
+    except Exception as exc:
+        return _fail(exc)
+
+
+@mcp.tool()
 def delegate(goal: str, workspace: str, verify_commands: list[str] = [], write_globs: list[str] = [],
              allow_run: list[str] = [], immutable: list[str] = [], context: str = '', max_steps: int = 30,
              max_repairs: int = 2, wait_seconds: int = 240, model: str = '', baseline: bool = True,
@@ -563,8 +638,8 @@ def delegate(goal: str, workspace: str, verify_commands: list[str] = [], write_g
                           context, baseline or strict(), max(0, int(max_seconds)),
                           checks_network=checks_network, unjailed_checks=unjailed_checks,
                           constraints=clean_constraints, require_proof=strict())
-        _wait(job, wait_seconds)
-        return _saved('delegate', 0, _receipt(job))
+        _wait(job, 0 if host_managed() else wait_seconds)
+        return _host_managed_notice(job, _saved('delegate', 0, _receipt(job)))
     except Exception as exc:
         return _fail(exc)
 
@@ -626,8 +701,8 @@ def delegate_many(tasks: list[BatchTaskSpec], workspace: str, allow_run: list[st
                                 max(0, min(max_repairs, 5)), model, context,
                                 checks_network=checks_network, unjailed_checks=unjailed_checks, immutable=immutable,
                                 require_proof=strict(), read_globs=read_globs)
-        _wait(job, wait_seconds)
-        return _saved('delegate', 0, _receipt(job))
+        _wait(job, 0 if host_managed() else wait_seconds)
+        return _host_managed_notice(job, _saved('delegate', 0, _receipt(job)))
     except Exception as exc:
         return _fail(exc)
 
@@ -839,6 +914,7 @@ def job_feedback(job_id: str, accepted: bool, lesson: str = '', constraints_veri
         if data.get('constraints') and not constraints_verified:
             return _fail('constraints verification required: confirm all contract constraints were inspected by passing constraints_verified=True')
     data['accepted'] = bool(accepted)
+    data['auto_accepted'] = False
     store.write_job(job_id, data)
     store.log('feedback', kind='feedback', job=job_id, accepted=bool(accepted), state=data.get('state'),
               model=data.get('used') or data.get('model') or 'default')
@@ -880,7 +956,7 @@ def ledger_report(days: float = 30.0) -> str:
         kind = r.get('kind')
         t = tools.setdefault(r['tool'], {'pt': 0, 'ct': 0, 'calls': 0, 'in': 0, 'out': 0})
         m = per_model.setdefault(r.get('model') or 'default', {'ct': 0, 's': 0.0, 'ok': 0, 'bad': 0, 'jobs': {}, 'yes': 0, 'no': 0,
-                                                              'answers': 0, 'contested': 0, 'retries': 0})
+                                                              'auto_yes': 0, 'answers': 0, 'contested': 0, 'retries': 0})
         if kind == 'llm':
             t['pt'] += r.get('prompt_tokens', 0)
             t['ct'] += r.get('completion_tokens', 0)
@@ -902,7 +978,10 @@ def ledger_report(days: float = 30.0) -> str:
             t['in'] += r.get('bytes_in', 0)
             m['jobs'][r.get('state')] = m['jobs'].get(r.get('state'), 0) + 1
         elif kind == 'feedback':
-            m['yes' if r.get('accepted') else 'no'] += 1
+            if r.get('auto'):
+                m['auto_yes'] += 1
+            else:
+                m['yes' if r.get('accepted') else 'no'] += 1
     lines = [f'Last {days:g} days', 'tool              calls  executor tokens (in/out)   read chars -> returned chars   est. orchestrator tokens saved']
     total = 0
     for name, t in sorted(tools.items()):
@@ -925,6 +1004,8 @@ def ledger_report(days: float = 30.0) -> str:
             parts.append('jobs: ' + ', '.join(f'{k} {v}' for k, v in sorted(m['jobs'].items(), key=str)))
         if m['yes'] + m['no']:
             parts.append(f'accepted by you {m["yes"]} of {m["yes"] + m["no"]}')
+        if m['auto_yes']:
+            parts.append(f'auto-accepted {m["auto_yes"]}')
         if m['retries']:
             parts.append(f'transient retries {m["retries"]}')
         if parts:
@@ -934,7 +1015,9 @@ def ledger_report(days: float = 30.0) -> str:
 
 # lean profile ----------------------------------------------------------------------------------
 def _lean_wait():
-    """Default wait of a lean call: below the per-call deadline of common MCP clients (180 s in agy)."""
+    """Default wait of a lean call: 0 in host-managed mode, else below common MCP client deadlines (180 s in agy)."""
+    if host_managed():
+        return 0
     try:
         return max(0, min(int(os.environ.get('TANDEM_WAIT_SECONDS', 150)), 1500))
     except ValueError:
@@ -943,13 +1026,17 @@ def _lean_wait():
 
 def _proven(data):
     """Why a finished job cannot be accepted without a look, or '' when its checks prove it: they failed
-    before the work, pass now, every constraint has looked-up evidence and every change can be undone."""
+    before the work, pass now, no unverified semantic or visual constraints remain, and every change can be undone."""
     if data.get('state') != 'verified':
         return f'state {data.get("state")}'
     if not data.get('checks') or data.get('weak'):
         return 'no check failed before the work'
     if data.get('unproven'):
         return 'some constraints have no evidence'
+    if data.get('constraints'):
+        return 'constraints require judgment'
+    if any(_VISUAL.search(r[0]) for r in data.get('changes') or []):
+        return 'visual changes require inspection'
     if (data.get('syntax') or {}).get('bad'):
         return 'syntax errors'
     if data.get('unbacked_files') or data.get('backup_status') in ('partially_backed', 'unbacked'):
@@ -966,10 +1053,12 @@ def _lean_receipt(job):
     if not data or data.get('kind') == 'batch' or data.get('state') == 'running':
         return _receipt(job) if data and data.get('state') != 'running' else (
             f'job {job}: running, step {data.get("steps", 0)}. Call job_status({job!r}) once more.' if data else f'unknown job {job}')
-    why = _proven(data)
-    if why:
-        return _receipt(job) + f'\nNOT ACCEPTED automatically ({why}).'
-    if not data.get('accepted'):
+    if data.get('accepted') is False:
+        return _receipt(job) + '\nNOT ACCEPTED (explicitly rejected).'
+    if data.get('accepted') is not True:
+        why = _proven(data)
+        if why:
+            return _receipt(job) + f'\nNOT ACCEPTED automatically ({why}).'
         data['accepted'], data['auto_accepted'] = True, True
         store.write_job(job, data)
         store.log('feedback', kind='feedback', job=job, accepted=True, auto=True, state='verified',
@@ -988,12 +1077,30 @@ def _lean_batch_receipt(job):
     if not data or data.get('kind') != 'batch':
         return _lean_receipt(job)
     if data.get('state') == 'running':
-        return _receipt(job)
+        tasks = data.get('tasks', [])
+        active_parts = []
+        for row in tasks:
+            if row.get('state') == 'running':
+                sub = store.read_job(row['job']) if row.get('job') else None
+                st = f' step {sub.get("steps", 0)}' if sub else ''
+                active_parts.append(f'{row["name"]}{st}')
+        active = ', '.join(active_parts)
+        finished = sum(row.get('state') == 'verified' for row in tasks)
+        return f'batch {job}: running ({finished}/{len(tasks)} verified, active: {active or "pending"}). Call job_status.'
     rows = [r for r in data.get('tasks', []) if r.get('job')]
     receipts = [_lean_receipt(r['job']) for r in rows]
-    if receipts and all('ACCEPTED (' in r for r in receipts) and len(rows) == len(data.get('tasks', [])):
+    if data.get('state') == 'verified' and receipts and all(
+            r.startswith(f"job {row['job']}: ACCEPTED (") for r, row in zip(receipts, rows)
+    ) and len(rows) == len(data.get('tasks', [])):
         return f'batch {job}: ACCEPTED, {len(rows)} tasks verified by their checks. Nothing else to call.'
     return _receipt(job)
+
+
+def _log_mcp_boundary(tool, req_obj, resp_text):
+    req_bytes = len(json.dumps(req_obj, ensure_ascii=False, default=str))
+    resp_bytes = len(resp_text.encode('utf-8', errors='replace'))
+    store.log(tool, kind='mcp_boundary', mcp_req_bytes=req_bytes, mcp_resp_bytes=resp_bytes)
+    return resp_text
 
 
 def lean_delegate(goal: str, workspace: str, write_globs: list[str], verify_commands: list[str],
@@ -1004,7 +1111,10 @@ def lean_delegate(goal: str, workspace: str, write_globs: list[str], verify_comm
         job = agent.start(goal, ws, list(verify_commands), 30, 2, '', context, True, 0,
                           constraints=clean, require_proof=strict())
         _wait(job, _lean_wait())
-        return _saved('delegate', 0, _lean_receipt(job))
+        out = _host_managed_notice(job, _saved('delegate', 0, _lean_receipt(job)))
+        return _log_mcp_boundary('delegate', {'goal': goal, 'workspace': workspace, 'write_globs': write_globs,
+                                              'verify_commands': verify_commands, 'constraints': constraints,
+                                              'allow_run': allow_run, 'context': context}, out)
     except Exception as exc:
         return _fail(exc)
 
@@ -1012,26 +1122,66 @@ def lean_delegate(goal: str, workspace: str, write_globs: list[str], verify_comm
 def lean_delegate_many(tasks: list[BatchTaskSpec], workspace: str, allow_run: list[str] = [], context: str = '') -> str:
     out = delegate_many(tasks, workspace, allow_run=allow_run, context=context, wait_seconds=_lean_wait())
     m = re.match(r'batch (\S+):', out)
-    return _lean_batch_receipt(m.group(1)) if m else out
+    res = _host_managed_notice(m.group(1), _lean_batch_receipt(m.group(1))) if m else out
+    return _log_mcp_boundary('delegate_many', {'tasks': tasks, 'workspace': workspace, 'allow_run': allow_run, 'context': context}, res)
+
+
+def lean_delegate_contract(workspace: str, contract_file: str, sha256: str) -> str:
+    """Run a caller-approved JSON contract by digest, through the usual jailed delegation."""
+    try:
+        ws = sandbox.Workspace(workspace)
+        path = ws.path(contract_file)
+        if not path.is_file() or path.suffix != '.json' or path.stat().st_size > 256 * 1024:
+            raise ValueError('expected a workspace JSON contract of at most 256 KiB')
+        raw = path.read_bytes()
+        if hashlib.sha256(raw).hexdigest() != sha256:
+            raise ValueError('contract digest differs from the approved SHA-256')
+        spec = json.loads(raw)
+        common = {'workspace', 'max_steps', 'max_repairs', 'wait_seconds', 'immutable', 'read_globs'}
+        fields = {'name', 'goal', 'write_globs', 'verify_commands', 'constraints', 'after', 'immutable', 'read_globs'}
+        batch = 'tasks' in spec
+        allowed = common | ({'tasks', 'workers'} if batch else fields - {'after', 'name'})
+        if not isinstance(spec, dict) or set(spec) - allowed:
+            raise ValueError('unsupported contract fields')
+        if batch:
+            for row in spec['tasks']:
+                if not isinstance(row, dict) or set(row) - fields:
+                    raise ValueError('unsupported batch task fields')
+        # The caller selects the workspace. Files cannot enable network, shell tools or unjailed checks.
+        spec['workspace'] = str(ws.root)
+        spec['immutable'] = [*spec.get('immutable', []), ws.rel(path)]
+        spec['wait_seconds'] = _lean_wait()
+        receipt = delegate_many(**spec) if batch else delegate(**spec)
+        match = re.match(r'(?:batch|job) (\S+):', receipt)
+        if not match:
+            return _log_mcp_boundary('delegate_contract', {'workspace': workspace, 'contract_file': contract_file, 'sha256': sha256}, receipt)
+        res = _host_managed_notice(match[1], _lean_batch_receipt(match[1]) if batch else _lean_receipt(match[1]))
+        return _log_mcp_boundary('delegate_contract', {'workspace': workspace, 'contract_file': contract_file, 'sha256': sha256}, res)
+    except Exception as exc:
+        return _fail(exc)
 
 
 def lean_job_status(job_id: str) -> str:
     _wait(job_id, _lean_wait())
     data = store.read_job(job_id) or {}
-    return _lean_batch_receipt(job_id) if data.get('kind') == 'batch' else _lean_receipt(job_id)
+    res = _lean_batch_receipt(job_id) if data.get('kind') == 'batch' else _lean_receipt(job_id)
+    return _log_mcp_boundary('job_status', {'job_id': job_id}, res)
 
 
 def lean_job_continue(job_id: str, hint: str) -> str:
     out = job_continue(job_id, hint, wait_seconds=_lean_wait())
-    return _lean_receipt(job_id) if not out.startswith('ERROR') else out
+    return _host_managed_notice(job_id, _lean_receipt(job_id)) if not out.startswith('ERROR') else out
 
 
 _LEAN_TOOLS = {
+    'auto_route': (None, 'Choose execution route (deterministic, direct_or_targeted, or delegate_local) from request + workspace metadata with 0 LLM cost.'),
     'digest_file': (None, 'Answer a question about one file with checked quotes. Give grep (a keyword or regex) '
                           'whenever you can: it is much faster.'),
     'digest_many': (None, 'Answer a question across files matching glob under root, one short note per file.'),
     'digest_command': (None, 'Run a read-only command (git log, test output) and answer a question about its output.'),
     'extract_from_file': (None, 'Extract JSON matching json_schema (a JSON string) from a file.'),
+    'delegate_contract': (lean_delegate_contract, 'Run a trusted workspace JSON contract using its caller-supplied SHA-256. '
+                                                  'Use when the caller provides a known digest. Poll the same job if running.'),
     'delegate': (lean_delegate, 'Local executor does a bounded coding task. write_globs: files it may write. '
                                 'verify_commands: checks that fail until done. constraints: one requirement each. '
                                 'allow_run: regexes of commands it may run (e.g. ^python3\\b). Returns ACCEPTED, '

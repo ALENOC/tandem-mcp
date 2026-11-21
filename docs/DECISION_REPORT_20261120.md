@@ -3,6 +3,8 @@
 > Il report descrive il checkout sperimentale usato nelle prove. I percorsi in testo semplice identificano file di quel checkout.
 
 **Data**: 2026-11-20
+
+> **Aggiornamento 2026-11-21 (release 3.7.0)**: Orbital e Portal sono stati ripetuti con 3 coppie ciascuno sul codice della release e rivalutati 3 volte con i valutatori corretti (`benchmarks/hydrogen_3_6_1/REEVAL_RELEASE_3_7_0.json`). Orbital: diretto `3/3`, `35,488` cloud/successo; Tandem `3/3`, `20,410` cloud/successo (`-42.5%`), mediana `14` min contro `50` s. Portal: diretto `2/3`, `74,372` cloud/successo; Tandem `1/3`, `75,769` cloud/successo (`+1.9%`), mediana `40` min contro `82` s. Il risultato Portal `-59.1%` riportato sotto viene da run precedenti alla compattazione di default e non si è ripetuto. I dati di chat (sezioni A e B) restano quelli del 20 novembre.
 **Modelli fissati nelle prove**: Orchestratore cloud (`agy`) · Esecutore locale da 27B con quantizzazione IQ3_S (LM Studio)
 
 ---

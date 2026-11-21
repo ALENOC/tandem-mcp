@@ -28,11 +28,10 @@ MANIFEST_SCHEMA = {
     },
 }
 
-PLAYWRIGHT_CORE_PATHS = [
-    '/home/ale/.npm/_npx/9b9809298fe40d2c/node_modules/playwright-core',
-    '/home/ale/.npm/_npx/e41f203b7505f1fb/node_modules/playwright-core',
-]
-CHROMIUM_BIN = '/home/ale/.cache/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/chrome-headless-shell'
+BENCHMARKS_DIR = Path(__file__).resolve().parents[1]
+if str(BENCHMARKS_DIR) not in sys.path:
+    sys.path.insert(0, str(BENCHMARKS_DIR))
+from web_browser_check import run_browser_check  # noqa: E402
 
 
 def _squash(s: str) -> str:
@@ -299,180 +298,62 @@ def eval_bugfix_multifile(ws_dir: Path, fixtures_dir: Path) -> dict[str, Any]:
     }
 
 
-def _find_playwright_core() -> str | None:
-    for p in PLAYWRIGHT_CORE_PATHS:
-        if Path(p).exists():
-            return p
-    return None
-
-
 def _run_browser_check(ws_dir: Path, kind: str) -> dict[str, Any]:
-    pw_path = _find_playwright_core()
-    if not pw_path or not Path(CHROMIUM_BIN).exists():
-        return {'browser_available': False, 'browser_passed': None}
-
-    index_path = ws_dir / 'index.html'
-    if not index_path.exists():
-        return {'browser_available': True, 'browser_passed': False, 'error': 'index.html missing'}
-
-    if kind == 'orbital':
-        script = f"""
-const pw = require({json.dumps(pw_path)});
-(async () => {{
-  const browser = await pw.chromium.launch({{ executablePath: {json.dumps(CHROMIUM_BIN)}, headless: true }});
-  const page = await browser.newPage({{ viewport: {{ width: 1280, height: 720 }} }});
-  const errors = [];
-  page.on('pageerror', e => errors.push(String(e)));
-  page.on('console', m => {{ if (m.type() === 'error') errors.push(m.text()); }});
-  await page.goto('file://' + {json.dumps(str(index_path.resolve()))});
-  await page.waitForTimeout(250);
-  const t1 = await page.evaluate(() => ({{
-    simTime: (document.getElementById('simTime') || {{}}).textContent || '',
-    frameA: (document.getElementById('sky') || document.querySelector('canvas'))?.toDataURL().slice(0, 200) || ''
-  }}));
-  await page.waitForTimeout(450);
-  const t2 = await page.evaluate(() => ({{
-    simTime: (document.getElementById('simTime') || {{}}).textContent || '',
-    frameB: (document.getElementById('sky') || document.querySelector('canvas'))?.toDataURL().slice(0, 200) || ''
-  }}));
-  await page.mouse.click(640, 360);
-  await page.waitForTimeout(120);
-  const afterClick = await page.evaluate(() => ({{
-    bursts: (document.getElementById('bursts') || {{}}).textContent || ''
-  }}));
-  if (await page.$('#btnPlay')) await page.click('#btnPlay');
-  if (await page.$('#btnTrails')) await page.click('#btnTrails');
-  if (await page.$('#btnReset')) await page.click('#btnReset');
-  await page.waitForTimeout(100);
-  const afterControls = await page.evaluate(() => {{
-    const c = document.getElementById('sky') || document.querySelector('canvas');
-    return {{
-      hasCanvas: !!c,
-      w: c ? c.width : 0,
-      h: c ? c.height : 0,
-      hasPlay: !!document.getElementById('btnPlay'),
-      hasTrails: !!document.getElementById('btnTrails'),
-      hasReset: !!document.getElementById('btnReset'),
-      hasSpeed: !!document.getElementById('speed'),
-      playText: (document.getElementById('btnPlay') || {{}}).textContent || '',
-      trailsText: (document.getElementById('btnTrails') || {{}}).textContent || ''
-    }};
-  }});
-  await browser.close();
-  console.log(JSON.stringify({{
-    errors,
-    timeAdvanced: t1.simTime !== t2.simTime,
-    pixelsChanged: t1.frameA !== t2.frameB,
-    afterClick,
-    info: afterControls
-  }}));
-}})().catch(e => {{ console.error(e); process.exit(1); }});
-"""
-    else:
-        script = f"""
-const pw = require({json.dumps(pw_path)});
-(async () => {{
-  const browser = await pw.chromium.launch({{ executablePath: {json.dumps(CHROMIUM_BIN)}, headless: true }});
-  const page = await browser.newPage({{ viewport: {{ width: 1280, height: 720 }} }});
-  const errors = [];
-  page.on('pageerror', e => errors.push(String(e)));
-  page.on('console', m => {{ if (m.type() === 'error') errors.push(m.text()); }});
-  await page.goto('file://' + {json.dumps(str(index_path.resolve()))});
-  await page.waitForTimeout(250);
-  const f1 = await page.evaluate(() => (document.getElementById('c') || document.querySelector('canvas'))?.toDataURL() || '');
-  await page.waitForTimeout(450);
-  const f2 = await page.evaluate(() => (document.getElementById('c') || document.querySelector('canvas'))?.toDataURL() || '');
-  const info = await page.evaluate(() => {{
-    const c = document.getElementById('c') || document.querySelector('canvas');
-    return {{
-      hasCanvas: !!c,
-      w: c ? c.width : 0,
-      h: c ? c.height : 0,
-      hasPause: !!document.getElementById('btnPause'),
-      hasOrbit: !!document.getElementById('btnOrbit'),
-      hasReset: !!document.getElementById('btnReset'),
-      hasSpeed: !!document.getElementById('speed'),
-      polys: (document.getElementById('polys') || {{}}).textContent || '',
-      parts: (document.getElementById('parts') || {{}}).textContent || ''
-    }};
-  }});
-  if (await page.$('#btnPause')) await page.click('#btnPause');
-  if (await page.$('#btnOrbit')) await page.click('#btnOrbit');
-  if (await page.$('#btnReset')) await page.click('#btnReset');
-  await browser.close();
-  console.log(JSON.stringify({{ errors, pixelsChanged: f1 !== f2, info }}));
-}})().catch(e => {{ console.error(e); process.exit(1); }});
-"""
-    proc = subprocess.run(['node', '-e', script], capture_output=True, text=True, timeout=45)
-    if proc.returncode != 0:
-        return {'browser_available': True, 'browser_passed': False, 'error': proc.stderr[:400]}
-    try:
-        parsed = json.loads(proc.stdout.strip().splitlines()[-1])
-        info = parsed['info']
-        errs = parsed['errors']
-        ok = bool(info.get('hasCanvas') and info.get('w', 0) > 0 and len(errs) == 0 and parsed.get('pixelsChanged', True))
-        return {
-            'browser_available': True,
-            'browser_passed': ok,
-            'console_errors': errs,
-            'pixels_changed': parsed.get('pixelsChanged'),
-            'time_advanced': parsed.get('timeAdvanced'),
-            'after_click': parsed.get('afterClick'),
-            'dom_info': info,
-        }
-    except Exception as exc:
-        return {'browser_available': True, 'browser_passed': False, 'error': str(exc)}
+    return run_browser_check(ws_dir, kind)
 
 
 def eval_gen_orbital(ws_dir: Path, fixtures_dir: Path) -> dict[str, Any]:
     index_path = ws_dir / 'index.html'
     if not index_path.exists():
-        return {'evaluated': True, 'passed': False, 'error': 'index.html not generated', 'constraint_compliance_pct': 0.0}
+        return {'evaluated': True, 'status': 'failed', 'passed': False, 'error': 'index.html not generated', 'constraint_compliance_pct': 0.0}
     harness = ws_dir / 'check_page.js'
-    if not harness.exists():
-        harness.write_text((fixtures_dir / 'contracts/check_page.js').read_text())
+    harness.write_text((fixtures_dir / 'contracts/check_page.js').read_text())
     node_proc = subprocess.run(['node', 'check_page.js'], cwd=ws_dir, capture_output=True, text=True, timeout=30)
     browser = _run_browser_check(ws_dir, 'orbital')
-    browser_ok = True if browser.get('browser_passed') is None else bool(browser.get('browser_passed'))
-    passed = node_proc.returncode == 0 and browser_ok
+    browser_status = browser.get('status', 'failed')
+    harness_ok = node_proc.returncode == 0
+    passed = harness_ok and browser_status == 'passed'
+    status = 'not_evaluated' if browser_status == 'not_evaluated' else ('passed' if passed else 'failed')
     return {
-        'evaluated': True,
+        'evaluated': browser_status != 'not_evaluated',
+        'status': status,
         'passed': passed,
-        'harness_ok': node_proc.returncode == 0,
+        'harness_ok': harness_ok,
         'harness_output': (node_proc.stdout + node_proc.stderr).strip()[:300],
         'browser': browser,
         'output_bytes': index_path.stat().st_size,
-        'constraint_compliance_pct': 100.0 if passed else (50.0 if browser_ok or node_proc.returncode == 0 else 0.0),
+        'constraint_compliance_pct': 100.0 if passed else (50.0 if (browser_status == 'passed') or harness_ok else 0.0),
     }
 
 
 def eval_gen_portal(ws_dir: Path, fixtures_dir: Path) -> dict[str, Any]:
     index_path = ws_dir / 'index.html'
     if not index_path.exists():
-        return {'evaluated': True, 'passed': False, 'error': 'index.html not generated', 'constraint_compliance_pct': 0.0}
+        return {'evaluated': True, 'status': 'failed', 'passed': False, 'error': 'index.html not generated', 'constraint_compliance_pct': 0.0}
     multi_file = all((ws_dir / f).exists() for f in ['scene.js', 'engine3d.js', 'app.js'])
-    harness_ok = None
-    harness_out = ''
+    harness_ok = False
+    harness_out = 'missing scene.js, engine3d.js, or app.js'
     if multi_file:
         harness = ws_dir / 'check_engine.js'
-        if not harness.exists():
-            harness.write_text((fixtures_dir / 'contracts/check_engine.js').read_text())
+        harness.write_text((fixtures_dir / 'contracts/check_engine.js').read_text())
         node_proc = subprocess.run(['node', 'check_engine.js'], cwd=ws_dir, capture_output=True, text=True, timeout=30)
         harness_ok = node_proc.returncode == 0
         harness_out = (node_proc.stdout + node_proc.stderr).strip()[:300]
     browser = _run_browser_check(ws_dir, 'portal')
-    browser_ok = True if browser.get('browser_passed') is None else bool(browser.get('browser_passed'))
-    passed = browser_ok and (True if harness_ok is None else harness_ok)
+    browser_status = browser.get('status', 'failed')
+    passed = multi_file and harness_ok and browser_status == 'passed'
+    status = 'not_evaluated' if browser_status == 'not_evaluated' else ('passed' if passed else 'failed')
     total_bytes = sum(p.stat().st_size for p in ws_dir.glob('*') if p.is_file() and p.suffix in {'.html', '.js', '.css'})
     return {
-        'evaluated': True,
+        'evaluated': browser_status != 'not_evaluated',
+        'status': status,
         'passed': passed,
         'multi_file': multi_file,
         'harness_ok': harness_ok,
         'harness_output': harness_out,
         'browser': browser,
         'output_bytes': total_bytes,
-        'constraint_compliance_pct': 100.0 if passed else (50.0 if browser_ok else 0.0),
+        'constraint_compliance_pct': 100.0 if passed else (50.0 if (browser_status == 'passed') or harness_ok else 0.0),
     }
 
 

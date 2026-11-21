@@ -1,4 +1,5 @@
 """Persistent state: token ledger, lessons learnt from the orchestrator, job folders, caches."""
+import contextlib
 import hashlib
 import json
 import os
@@ -62,11 +63,31 @@ def new_job(kind):
     return job, folder
 
 
-def write_json(path, data):
-    """Write through a process/thread-unique temporary file, so concurrent writes never collide."""
+@contextlib.contextmanager
+def _file_lock(name):
+    """Thread + inter-process exclusive flock on DATA/.<name>.lock (kernel releases on crash)."""
+    DATA.mkdir(parents=True, exist_ok=True)
+    with _lock:
+        if not fcntl:
+            yield
+            return
+        lock_path = DATA / f'.{name}.lock'
+        fh = open(lock_path, 'a+')
+        try:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+            yield
+        finally:
+            try:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+            except OSError:
+                pass
+            fh.close()
+
+
+def _write_text_atomic(path, text):
     tmp = path.with_name(f'.{path.name}.{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex[:6]}.tmp')
     try:
-        tmp.write_text(json.dumps(data, indent=1))
+        tmp.write_text(text)
         tmp.replace(path)
     except Exception:
         try:
@@ -74,6 +95,11 @@ def write_json(path, data):
         except OSError:
             pass
         raise
+
+
+def write_json(path, data):
+    """Write through a process/thread-unique temporary file, so concurrent writes never collide."""
+    _write_text_atomic(path, json.dumps(data, indent=1))
 
 
 def acquire_job_lock(job):
@@ -104,6 +130,58 @@ def release_job_lock(handle):
         handle.close()
     except OSError:
         pass
+
+
+class WorkspaceBusyError(RuntimeError):
+    """Raised when another process or active job holds the canonical workspace lease."""
+
+
+def acquire_workspace_lease(workspace_root, owner_id='', wait_seconds=None):
+    """Acquire an inter-process exclusive flock lease on the canonical workspace root.
+
+    Returns the open file handle (or None if fcntl is unavailable). Raises WorkspaceBusyError
+    when another process holds the lease beyond wait_seconds. Kernel releases flock on crash.
+    """
+    if not fcntl:
+        return None
+    if wait_seconds is None:
+        try:
+            wait_seconds = max(0.0, float(os.environ.get('TANDEM_LEASE_WAIT_SECONDS', 0.2)))
+        except ValueError:
+            wait_seconds = 0.2
+    canonical = str(Path(workspace_root).resolve())
+    lease_dir = DATA / 'leases'
+    lease_dir.mkdir(parents=True, exist_ok=True)
+    lock_path = lease_dir / (hashlib.sha256(canonical.encode('utf-8')).hexdigest()[:24] + '.lock')
+    fh = open(lock_path, 'a+')
+    deadline = time.monotonic() + wait_seconds
+    while True:
+        try:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fh.seek(0)
+            fh.truncate()
+            fh.write(json.dumps({'pid': os.getpid(), 'owner': owner_id, 'workspace': canonical, 'ts': time.time()}))
+            fh.flush()
+            return fh
+        except BlockingIOError:
+            if time.monotonic() >= deadline:
+                holder = {}
+                try:
+                    fh.seek(0)
+                    holder = json.loads(fh.read() or '{}')
+                except (OSError, ValueError):
+                    pass
+                fh.close()
+                who = holder.get('owner') or 'another process'
+                pid = holder.get('pid', '?')
+                raise WorkspaceBusyError(
+                    f'workspace {canonical} is busy (held by {who}, pid {pid}); wait or use a separate workspace'
+                )
+            time.sleep(0.05)
+
+
+def release_workspace_lease(handle):
+    release_job_lock(handle)
 
 
 def is_job_locked(job):
@@ -170,7 +248,7 @@ def read_job(job):
 def log(tool, **fields):
     """One ledger line per executor call or tool result."""
     init()
-    with _lock, LEDGER.open('a') as f:
+    with _file_lock('ledger'), LEDGER.open('a') as f:
         f.write(json.dumps({'ts': time.time(), 'tool': tool, **fields}) + '\n')
 
 
@@ -193,10 +271,11 @@ def ledger(days=30.0):
 def add_lesson(scope, text, source='orchestrator'):
     init()
     text = ' '.join(text.split())
-    if any(r['text'].lower() == text.lower() for r in lessons(scope, 1000)):
-        return False                                     # the same rule is not stored twice
-    with _lock, LESSONS.open('a') as f:
-        f.write(json.dumps({'ts': time.time(), 'scope': scope, 'text': text, 'source': source}) + '\n')
+    with _file_lock('lessons'):
+        if any(r['text'].lower() == text.lower() for r in lessons(scope, 1000)):
+            return False                                     # the same rule is not stored twice
+        with LESSONS.open('a') as f:
+            f.write(json.dumps({'ts': time.time(), 'scope': scope, 'text': text, 'source': source}) + '\n')
     return True
 
 
@@ -216,20 +295,21 @@ def lessons(scope, limit=12):
 
 
 def drop_lesson(scope, fragment):
-    if not LESSONS.exists():
-        return 0
-    kept, dropped = [], 0
-    for line in LESSONS.read_text().splitlines():
-        try:
-            row = json.loads(line)
-        except ValueError:
-            continue
-        if row['scope'] == scope and fragment.lower() in row['text'].lower():
-            dropped += 1
-        else:
-            kept.append(json.dumps(row))
-    LESSONS.write_text('\n'.join(kept) + ('\n' if kept else ''))
-    return dropped
+    with _file_lock('lessons'):
+        if not LESSONS.exists():
+            return 0
+        kept, dropped = [], 0
+        for line in LESSONS.read_text().splitlines():
+            try:
+                row = json.loads(line)
+            except ValueError:
+                continue
+            if row['scope'] == scope and fragment.lower() in row['text'].lower():
+                dropped += 1
+            else:
+                kept.append(json.dumps(row))
+        _write_text_atomic(LESSONS, '\n'.join(kept) + ('\n' if kept else ''))
+        return dropped
 
 
 # what is known about each model ----------------------------------------------------------------
@@ -239,7 +319,7 @@ def model_caps(key):
 
 def save_model_caps(key, caps):
     init()
-    with _lock:
+    with _file_lock('models'):
         data = read_json(MODELS, {}) or {}
         data[key] = caps
         write_json(MODELS, data)
@@ -337,7 +417,9 @@ def _trim_ledger(keep_days):
     if keep_days <= 0 or not LEDGER.exists():
         return 0
     since = time.time() - keep_days * 86400
-    with _lock:
+    with _file_lock('ledger'):
+        if not LEDGER.exists():
+            return 0
         lines = LEDGER.read_text().splitlines()
         kept = []
         for line in lines:
@@ -348,9 +430,7 @@ def _trim_ledger(keep_days):
                 continue
         if len(kept) == len(lines):
             return 0
-        tmp = LEDGER.with_name(f'.{LEDGER.name}.{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex[:6]}.tmp')
-        tmp.write_text('\n'.join(kept) + ('\n' if kept else ''))
-        tmp.replace(LEDGER)
+        _write_text_atomic(LEDGER, '\n'.join(kept) + ('\n' if kept else ''))
     return len(lines) - len(kept)
 
 

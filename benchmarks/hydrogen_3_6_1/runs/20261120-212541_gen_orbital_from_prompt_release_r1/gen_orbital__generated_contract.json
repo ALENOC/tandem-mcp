@@ -1,0 +1,21 @@
+{
+  "job_id": "20261120-212707-b53d5d",
+  "kind": "delegate",
+  "goal": "Create a single self-contained index.html implementing an interactive full-viewport HTML5 Canvas orbital particle simulation in dark space (#060913) with a central pulsing star, >=5 planets with >=3 moons and fading trails, >=150 twinkling stars, a glassmorphism HUD overlay (Play/Pause, Trails ON/OFF, Reset, speed range slider 0.2-3.0 step 0.1 default 1.0 with readout, live FPS, simulation time, burst particle count), and click-to-spawn radial glowing particle bursts with velocity damping and fade-out.",
+  "verify_commands": [
+    "node -e 'const fs=require(\"fs\"),vm=require(\"vm\");const h=fs.readFileSync(\"index.html\",\"utf8\");for(const k of [\"<canvas\",\"#060913\",\"requestAnimationFrame\",\"devicePixelRatio\",\"createRadialGradient\",\"type=\\\"range\\\"\"])if(!h.includes(k))process.exit(1);if(/src\\s*=\\s*[\"\\x27]https?:|href\\s*=\\s*[\"\\x27]https?:/i.test(h))process.exit(2);const m=[...h.matchAll(/<script\\b[^>]*>([\\s\\S]*?)<\\/script>/gi)];if(!m.length)process.exit(3);for(const x of m)new vm.Script(x[1]);console.log(\"OK\");'"
+  ],
+  "constraints": [
+    "Single self-contained index.html with zero external dependencies (no external scripts, stylesheets, fonts, or images) and valid inline JS.",
+    "Full-viewport responsive <canvas> (100vw x 100vh, overflow:hidden) on #060913 background using requestAnimationFrame and devicePixelRatio scaling.",
+    "Central glowing star rendered with createRadialGradient and a smooth subtle corona pulse animation.",
+    "At least 5 orbiting planets with distinct orbital radii, angular speeds, sizes, and colors, plus at least 3 orbiting moons/satellites.",
+    "Fading orbital trails behind planets and moons, toggleable via the HUD Trails button.",
+    "Twinkling background starfield with at least 150 stars that subtly vary in brightness/opacity over time.",
+    "Glassmorphism HUD overlay (translucent dark backdrop-filter blur) with Play/Pause toggle, Trails ON/OFF toggle, and Reset buttons.",
+    "HUD speed slider (<input type='range' min='0.2' max='3.0' step='0.1' value='1.0'>) with live multiplier readout (e.g. 1.0x).",
+    "HUD live telemetry readouts for FPS, elapsed simulation time in seconds (s), and active burst particle count.",
+    "Clicking anywhere on the canvas spawns a radial burst of glowing particles with velocity damping and smooth alpha fade-out."
+  ],
+  "tasks": null
+}

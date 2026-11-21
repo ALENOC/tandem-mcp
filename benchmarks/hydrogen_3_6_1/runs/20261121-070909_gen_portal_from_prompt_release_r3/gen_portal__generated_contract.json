@@ -1,0 +1,19 @@
+{
+  "job_id": "20261121-071055-8bae38",
+  "kind": "delegate",
+  "goal": "Create a self-contained 3D neon portal web demo (index.html, or index.html + scene.js + engine3d.js + app.js) with a software 3D renderer on a full-viewport <canvas id=\"c\">, dark radial-gradient space background, a two-tier platform, twin pillars, lintel and crown cap (36 box faces), six orbiting octahedral crystals (48 triangles), a portal core with two counter-rotating rings, a cyber grid floor, 180 twinkling stars, 110 rising particles, an orbiting camera, and a glassmorphism HUD (NEON PORTAL 3D, FPS/POLYS/PARTS, Pause/Orbit ON/Reset buttons, speed slider).",
+  "verify_commands": [
+    "node -e 'const fs=require(\"fs\"),vm=require(\"vm\");const h=fs.readFileSync(\"index.html\",\"utf8\");if(!/id=[\"\\x27]c[\"\\x27]/.test(h))throw new Error(\"missing canvas#c\");for(const t of[\"NEON PORTAL 3D\",\"FPS\",\"POLYS\",\"PARTS\",\"Pause\",\"Reset\"])if(!h.includes(t))throw new Error(\"missing \"+t);for(const m of h.matchAll(/<script\\b([^>]*)>([\\s\\S]*?)<\\/script>/gi)){const a=m[1],s=a.match(/src=[\"\\x27]([^\"\\x27]+)[\"\\x27]/i);if(s)new vm.Script(fs.readFileSync(s[1],\"utf8\"),{filename:s[1]});else if(m[2].trim())new vm.Script(m[2],{filename:\"inline.js\"});}console.log(\"OK\")'"
+  ],
+  "constraints": [
+    "Full-viewport <canvas id=\"c\"> with dark radial-gradient space background and custom software 3D projection/painter's-algorithm renderer.",
+    "Build portal monument from 6 boxes (two-tier platform, twin pillars, lintel, crown cap) = 36 box faces with neon edges and shaded faces.",
+    "Render 6 orbiting octahedral crystals = 48 triangles total, rotating smoothly around the portal with glowing edges and shading.",
+    "Render portal core with swirling energy glow and 2 counter-rotating 3D rings, plus a perspective cyber grid floor beneath the platform.",
+    "Render 180 twinkling background stars and 110 rising glowing neon particles with lifecycle recycling.",
+    "Implement orbiting camera with smooth auto-orbit and mouse/pointer drag + wheel zoom support.",
+    "Add glassmorphism HUD displaying 'NEON PORTAL 3D', live FPS/POLYS/PARTS counters, Pause, Orbit ON/OFF, Reset buttons, and speed slider.",
+    "Keep app self-contained with no external CDN/network dependencies so index.html works offline when opened directly."
+  ],
+  "tasks": null
+}

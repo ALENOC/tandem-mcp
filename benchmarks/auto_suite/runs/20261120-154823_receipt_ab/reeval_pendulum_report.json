@@ -1,0 +1,798 @@
+{
+  "run_id": "20261120-154823_receipt_ab",
+  "checker": "benchmarks/auto_suite/check_pendulum_v2.mjs",
+  "checker_sha256": "aacfea36f74d28fe059f8d074a351acbf596196633998c8d6ea7798ac704d84b",
+  "entries": [
+    {
+      "pair": 1,
+      "mode": "A_direct",
+      "html_sha256": "37ff96c4b35f8b1c6b7d0c27dd04b75bb33e2c6b6c1c0f08257a3c65f6535273",
+      "old_artifact_correct": false,
+      "old_reason": "failed: reset",
+      "new_artifact_correct": true,
+      "new_reason": "all Pendulum v2 checks passed",
+      "reset_semantics": {
+        "passed": true,
+        "semantics": "valid_reset_to_user_angle",
+        "distToOrig": 0.1961,
+        "distToUser": 0.0007,
+        "distFromEvolved": 0.2737
+      },
+      "delivered_in_budget": true,
+      "new_success_in_budget": true,
+      "timed_out": false,
+      "server_checks": [],
+      "checks": {
+        "layoutAndTheme": {
+          "passed": true,
+          "w": 1280,
+          "h": 800,
+          "bgOk": true
+        },
+        "glassmorphismHud": {
+          "passed": true,
+          "hasGlass": true,
+          "fpsVal": 58,
+          "speedVal": 1
+        },
+        "controlsPresent": {
+          "passed": true,
+          "playPause": "\u25b6 Play",
+          "step": "\u23ed Step",
+          "reset": "\u21ba Reset",
+          "slider": {
+            "min": 0.5,
+            "max": 3,
+            "val": 1
+          }
+        },
+        "startsPaused": {
+          "passed": true,
+          "buttonText": "\u25b6 Play",
+          "hashStatic": true
+        },
+        "clickCanvas": {
+          "passed": true,
+          "distFromOrig": 0.1965
+        },
+        "step": {
+          "passed": true,
+          "hashChanged": true,
+          "massDelta": 0.00085
+        },
+        "play": {
+          "passed": true
+        },
+        "pause": {
+          "passed": true,
+          "hashSame": true,
+          "massDrift": 0
+        },
+        "reset": {
+          "passed": true,
+          "semantics": "valid_reset_to_user_angle",
+          "distToOrig": 0.1961,
+          "distToUser": 0.0007,
+          "distFromEvolved": 0.2737
+        },
+        "speedSlider": {
+          "passed": true
+        },
+        "noJsErrors": {
+          "passed": true,
+          "runtimeErrors": [],
+          "consoleErrors": []
+        }
+      }
+    },
+    {
+      "pair": 1,
+      "mode": "B_cur",
+      "html_sha256": "1946153a3c30e37a299a7150a65ca8f541bbde81ba86a29afd35f40c4ea1bd51",
+      "old_artifact_correct": false,
+      "old_reason": "failed: pause",
+      "new_artifact_correct": false,
+      "new_reason": "failed: pause",
+      "reset_semantics": {
+        "passed": true,
+        "semantics": "valid_reset_to_original",
+        "distToOrig": 0.0001,
+        "distToUser": 0.1774,
+        "distFromEvolved": 0.3769
+      },
+      "delivered_in_budget": true,
+      "new_success_in_budget": false,
+      "timed_out": false,
+      "server_checks": [
+        {
+          "cmd": "python3 -c \"import re, subprocess, shutil; html=open('index.html', encoding='utf-8').read(); assert len(html)>1000; assert '#090d16' in html.lower(); assert '<canvas' in html.lower(); assert 'backdrop-filter' in html.lower(); assert '0.5' in html and ('3.0' in html or 'max=\\\"3\\\"' in html); assert 'Play' in html and 'Step' in html and 'Reset' in html; assert not re.search(r'https?://', html); scripts=re.findall(r'<script[^>]*>(.*?)</script>', html, re.S|re.I); assert len(scripts)>=1; js='\\n'.join(scripts); node=shutil.which('node'); (subprocess.run([node, '--check'], input=js, text=True, check=True) if node else None); print('VERIFIED_OK')\"",
+          "exit": 0
+        },
+        {
+          "cmd": "tandem:web_check",
+          "exit": 0
+        }
+      ],
+      "checks": {
+        "layoutAndTheme": {
+          "passed": true,
+          "w": 1280,
+          "h": 800,
+          "bgOk": true
+        },
+        "glassmorphismHud": {
+          "passed": true,
+          "hasGlass": true,
+          "fpsVal": 60,
+          "speedVal": 1
+        },
+        "controlsPresent": {
+          "passed": true,
+          "playPause": "Play",
+          "step": "Step",
+          "reset": "Reset",
+          "slider": {
+            "min": 0.5,
+            "max": 3,
+            "val": 1
+          }
+        },
+        "startsPaused": {
+          "passed": true,
+          "buttonText": "Play",
+          "hashStatic": true
+        },
+        "clickCanvas": {
+          "passed": true,
+          "distFromOrig": 0.1773
+        },
+        "step": {
+          "passed": true,
+          "hashChanged": true,
+          "massDelta": 0.00053
+        },
+        "play": {
+          "passed": true
+        },
+        "pause": {
+          "passed": false,
+          "hashSame": false,
+          "massDrift": 0.00022
+        },
+        "reset": {
+          "passed": true,
+          "semantics": "valid_reset_to_original",
+          "distToOrig": 0.0001,
+          "distToUser": 0.1774,
+          "distFromEvolved": 0.3769
+        },
+        "speedSlider": {
+          "passed": true
+        },
+        "noJsErrors": {
+          "passed": true,
+          "runtimeErrors": [],
+          "consoleErrors": []
+        }
+      }
+    },
+    {
+      "pair": 1,
+      "mode": "B_mod",
+      "html_sha256": "ba2a3975f12a4f09f693f7c779cc2f3ebd2c74e9cc3e334adce690c2d3216d13",
+      "old_artifact_correct": false,
+      "old_reason": "failed: reset",
+      "new_artifact_correct": true,
+      "new_reason": "all Pendulum v2 checks passed",
+      "reset_semantics": {
+        "passed": true,
+        "semantics": "valid_reset_to_user_angle",
+        "distToOrig": 0.1231,
+        "distToUser": 0,
+        "distFromEvolved": 0.4607
+      },
+      "delivered_in_budget": true,
+      "new_success_in_budget": true,
+      "timed_out": false,
+      "server_checks": [
+        {
+          "cmd": "python3 -c \"import re, subprocess; html=open('index.html').read(); assert '#090d16' in html.lower() and '<canvas' in html.lower(); assert not re.search(r'<(script|link)[^>]+https?://', html, re.I), 'External dependency found'; m=re.findall(r'<script[^>]*>([\\s\\S]*?)</script>', html, re.I); assert m, 'No script tag'; subprocess.run(['node', '--check', '-'], input=m[0].encode(), check=True)\"",
+          "exit": 0
+        },
+        {
+          "cmd": "tandem:web_check",
+          "exit": 0
+        }
+      ],
+      "checks": {
+        "layoutAndTheme": {
+          "passed": true,
+          "w": 1280,
+          "h": 800,
+          "bgOk": true
+        },
+        "glassmorphismHud": {
+          "passed": true,
+          "hasGlass": true,
+          "fpsVal": 61,
+          "speedVal": 1
+        },
+        "controlsPresent": {
+          "passed": true,
+          "playPause": "Play",
+          "step": "Step",
+          "reset": "Reset",
+          "slider": {
+            "min": 0.5,
+            "max": 3,
+            "val": 1
+          }
+        },
+        "startsPaused": {
+          "passed": true,
+          "buttonText": "Play",
+          "hashStatic": true
+        },
+        "clickCanvas": {
+          "passed": true,
+          "distFromOrig": 0.1231
+        },
+        "step": {
+          "passed": true,
+          "hashChanged": true,
+          "massDelta": 0.00145
+        },
+        "play": {
+          "passed": true
+        },
+        "pause": {
+          "passed": true,
+          "hashSame": true,
+          "massDrift": 0
+        },
+        "reset": {
+          "passed": true,
+          "semantics": "valid_reset_to_user_angle",
+          "distToOrig": 0.1231,
+          "distToUser": 0,
+          "distFromEvolved": 0.4607
+        },
+        "speedSlider": {
+          "passed": true
+        },
+        "noJsErrors": {
+          "passed": true,
+          "runtimeErrors": [],
+          "consoleErrors": []
+        }
+      }
+    },
+    {
+      "pair": 2,
+      "mode": "A_direct",
+      "html_sha256": "6de9d92f3d39724e0263a62711846571a183715a60840da65a5cbe1db557403e",
+      "old_artifact_correct": false,
+      "old_reason": "failed: reset",
+      "new_artifact_correct": true,
+      "new_reason": "all Pendulum v2 checks passed",
+      "reset_semantics": {
+        "passed": true,
+        "semantics": "valid_reset_to_user_angle",
+        "distToOrig": 0.1246,
+        "distToUser": 0.0011,
+        "distFromEvolved": 0.3351
+      },
+      "delivered_in_budget": true,
+      "new_success_in_budget": true,
+      "timed_out": false,
+      "server_checks": [],
+      "checks": {
+        "layoutAndTheme": {
+          "passed": true,
+          "w": 1280,
+          "h": 800,
+          "bgOk": true
+        },
+        "glassmorphismHud": {
+          "passed": true,
+          "hasGlass": true,
+          "fpsVal": 60,
+          "speedVal": 1
+        },
+        "controlsPresent": {
+          "passed": true,
+          "playPause": "Play",
+          "step": "Step",
+          "reset": "Reset",
+          "slider": {
+            "min": 0.5,
+            "max": 3,
+            "val": 1
+          }
+        },
+        "startsPaused": {
+          "passed": true,
+          "buttonText": "Play",
+          "hashStatic": true
+        },
+        "clickCanvas": {
+          "passed": true,
+          "distFromOrig": 0.1242
+        },
+        "step": {
+          "passed": true,
+          "hashChanged": true,
+          "massDelta": 0.00131
+        },
+        "play": {
+          "passed": true
+        },
+        "pause": {
+          "passed": true,
+          "hashSame": true,
+          "massDrift": 0
+        },
+        "reset": {
+          "passed": true,
+          "semantics": "valid_reset_to_user_angle",
+          "distToOrig": 0.1246,
+          "distToUser": 0.0011,
+          "distFromEvolved": 0.3351
+        },
+        "speedSlider": {
+          "passed": true
+        },
+        "noJsErrors": {
+          "passed": true,
+          "runtimeErrors": [],
+          "consoleErrors": []
+        }
+      }
+    },
+    {
+      "pair": 2,
+      "mode": "B_cur",
+      "html_sha256": "e8e8055f41c469f0e01ea93d5fc9a59910d4bc9c4b6391c926022edd2760512f",
+      "old_artifact_correct": true,
+      "old_reason": "all Pendulum checks passed",
+      "new_artifact_correct": false,
+      "new_reason": "failed: step",
+      "reset_semantics": {
+        "passed": true,
+        "semantics": "valid_reset_to_original",
+        "distToOrig": 0,
+        "distToUser": 0.0826,
+        "distFromEvolved": 0.3008
+      },
+      "delivered_in_budget": false,
+      "new_success_in_budget": false,
+      "timed_out": true,
+      "server_checks": [],
+      "checks": {
+        "layoutAndTheme": {
+          "passed": true,
+          "w": 1280,
+          "h": 800,
+          "bgOk": true
+        },
+        "glassmorphismHud": {
+          "passed": true,
+          "hasGlass": true,
+          "fpsVal": 64.3,
+          "speedVal": 1
+        },
+        "controlsPresent": {
+          "passed": true,
+          "playPause": "Play",
+          "step": "Step",
+          "reset": "Reset",
+          "slider": {
+            "min": 0.5,
+            "max": 3,
+            "val": 1
+          }
+        },
+        "startsPaused": {
+          "passed": true,
+          "buttonText": "Play",
+          "hashStatic": true
+        },
+        "clickCanvas": {
+          "passed": true,
+          "distFromOrig": 0.0826
+        },
+        "step": {
+          "passed": false,
+          "hashChanged": true,
+          "massDelta": 2e-05
+        },
+        "play": {
+          "passed": true
+        },
+        "pause": {
+          "passed": true,
+          "hashSame": true,
+          "massDrift": 0
+        },
+        "reset": {
+          "passed": true,
+          "semantics": "valid_reset_to_original",
+          "distToOrig": 0,
+          "distToUser": 0.0826,
+          "distFromEvolved": 0.3008
+        },
+        "speedSlider": {
+          "passed": true
+        },
+        "noJsErrors": {
+          "passed": true,
+          "runtimeErrors": [],
+          "consoleErrors": []
+        }
+      }
+    },
+    {
+      "pair": 2,
+      "mode": "B_mod",
+      "html_sha256": "856f7831450e11cd7614947665095f7e39b562b430693fda2d8d06d195a1860b",
+      "old_artifact_correct": false,
+      "old_reason": "failed: step, reset",
+      "new_artifact_correct": false,
+      "new_reason": "failed: step",
+      "reset_semantics": {
+        "passed": true,
+        "semantics": "valid_reset_to_original",
+        "distToOrig": 0.0298,
+        "distToUser": 0,
+        "distFromEvolved": 0.2267
+      },
+      "delivered_in_budget": true,
+      "new_success_in_budget": false,
+      "timed_out": false,
+      "server_checks": [
+        {
+          "cmd": "python3 -c \"import re, subprocess, shutil; h=open('index.html', encoding='utf-8').read(); assert '#090d16' in h.lower(), 'missing #090d16'; assert '<canvas' in h.lower(), 'missing canvas'; assert not re.search(r'<script[^>]+src=|<link[^>]+href=[\\\"\\']https?://', h, re.I), 'external dep found'; assert 'Play' in h and 'Step' in h and 'Reset' in h, 'missing controls'; assert '0.5' in h and ('3.0' in h or '3' in h), 'missing slider bounds'; scripts=re.findall(r'<script[^>]*>(.*?)</script>', h, re.S|re.I); assert scripts, 'no script tag'; js='\\n'.join(scripts); p=subprocess.run(['node','--check'], input=js, text=True) if shutil.which('node') else None; assert p is None or p.returncode==0, 'JS syntax error'; print('VERIFY_OK')\"",
+          "exit": 0
+        },
+        {
+          "cmd": "tandem:web_check",
+          "exit": 0
+        }
+      ],
+      "checks": {
+        "layoutAndTheme": {
+          "passed": true,
+          "w": 1280,
+          "h": 800,
+          "bgOk": true
+        },
+        "glassmorphismHud": {
+          "passed": true,
+          "hasGlass": true,
+          "fpsVal": 62,
+          "speedVal": 1
+        },
+        "controlsPresent": {
+          "passed": true,
+          "playPause": "Play",
+          "step": "Step",
+          "reset": "Reset",
+          "slider": {
+            "min": 0.5,
+            "max": 3,
+            "val": 1
+          }
+        },
+        "startsPaused": {
+          "passed": true,
+          "buttonText": "Play",
+          "hashStatic": true
+        },
+        "clickCanvas": {
+          "passed": true,
+          "distFromOrig": 0.0298
+        },
+        "step": {
+          "passed": false,
+          "hashChanged": false,
+          "massDelta": 0
+        },
+        "play": {
+          "passed": true
+        },
+        "pause": {
+          "passed": true,
+          "hashSame": true,
+          "massDrift": 0
+        },
+        "reset": {
+          "passed": true,
+          "semantics": "valid_reset_to_original",
+          "distToOrig": 0.0298,
+          "distToUser": 0,
+          "distFromEvolved": 0.2267
+        },
+        "speedSlider": {
+          "passed": true
+        },
+        "noJsErrors": {
+          "passed": true,
+          "runtimeErrors": [],
+          "consoleErrors": []
+        }
+      }
+    },
+    {
+      "pair": 3,
+      "mode": "A_direct",
+      "html_sha256": "fcbf2be8bc28d1363221b6a35a9c85356d315d008a861f824ca7eff39dbb00bf",
+      "old_artifact_correct": true,
+      "old_reason": "all Pendulum checks passed",
+      "new_artifact_correct": true,
+      "new_reason": "all Pendulum v2 checks passed",
+      "reset_semantics": {
+        "passed": true,
+        "semantics": "valid_reset_to_user_angle",
+        "distToOrig": 0.1196,
+        "distToUser": 0,
+        "distFromEvolved": 0.3267
+      },
+      "delivered_in_budget": true,
+      "new_success_in_budget": true,
+      "timed_out": false,
+      "server_checks": [],
+      "checks": {
+        "layoutAndTheme": {
+          "passed": true,
+          "w": 1280,
+          "h": 800,
+          "bgOk": true
+        },
+        "glassmorphismHud": {
+          "passed": true,
+          "hasGlass": true,
+          "fpsVal": 60,
+          "speedVal": 1
+        },
+        "controlsPresent": {
+          "passed": true,
+          "playPause": "Play",
+          "step": "Step",
+          "reset": "Reset",
+          "slider": {
+            "min": 0.5,
+            "max": 3,
+            "val": 1
+          }
+        },
+        "startsPaused": {
+          "passed": true,
+          "buttonText": "Play",
+          "hashStatic": true
+        },
+        "clickCanvas": {
+          "passed": true,
+          "distFromOrig": 0.1196
+        },
+        "step": {
+          "passed": true,
+          "hashChanged": true,
+          "massDelta": 0.00154
+        },
+        "play": {
+          "passed": true
+        },
+        "pause": {
+          "passed": true,
+          "hashSame": true,
+          "massDrift": 0
+        },
+        "reset": {
+          "passed": true,
+          "semantics": "valid_reset_to_user_angle",
+          "distToOrig": 0.1196,
+          "distToUser": 0,
+          "distFromEvolved": 0.3267
+        },
+        "speedSlider": {
+          "passed": true
+        },
+        "noJsErrors": {
+          "passed": true,
+          "runtimeErrors": [],
+          "consoleErrors": []
+        }
+      }
+    },
+    {
+      "pair": 3,
+      "mode": "B_cur",
+      "html_sha256": "66b8db9e49d8001c054cd87034a478047a7ce9a4e917d12dee2b8269978dd6f7",
+      "old_artifact_correct": false,
+      "old_reason": "failed: reset",
+      "new_artifact_correct": true,
+      "new_reason": "all Pendulum v2 checks passed",
+      "reset_semantics": {
+        "passed": true,
+        "semantics": "valid_reset_to_user_angle",
+        "distToOrig": 0.1247,
+        "distToUser": 0,
+        "distFromEvolved": 0.2419
+      },
+      "delivered_in_budget": false,
+      "new_success_in_budget": false,
+      "timed_out": true,
+      "server_checks": [
+        {
+          "cmd": "test -f index.html",
+          "exit": 0
+        },
+        {
+          "cmd": "python3 -c \"import re; html=open('index.html', encoding='utf-8').read(); assert '#090d16' in html.lower(); assert '<canvas' in html.lower(); assert not re.search(r'(https?:)?//', html); scripts=re.findall(r'<script[^>]*>(.*?)</script>', html, re.S|re.I); assert scripts; open('/tmp/_verify_pendulum.js','w').write('\\n'.join(scripts))\"",
+          "exit": 0
+        },
+        {
+          "cmd": "node --check /tmp/_verify_pendulum.js",
+          "exit": 1
+        },
+        {
+          "cmd": "tandem:web_check",
+          "exit": 0
+        }
+      ],
+      "checks": {
+        "layoutAndTheme": {
+          "passed": true,
+          "w": 1280,
+          "h": 800,
+          "bgOk": true
+        },
+        "glassmorphismHud": {
+          "passed": true,
+          "hasGlass": true,
+          "fpsVal": 60,
+          "speedVal": 1
+        },
+        "controlsPresent": {
+          "passed": true,
+          "playPause": "Play",
+          "step": "Step",
+          "reset": "Reset",
+          "slider": {
+            "min": 0.5,
+            "max": 3,
+            "val": 1
+          }
+        },
+        "startsPaused": {
+          "passed": true,
+          "buttonText": "Play",
+          "hashStatic": true
+        },
+        "clickCanvas": {
+          "passed": true,
+          "distFromOrig": 0.1247
+        },
+        "step": {
+          "passed": true,
+          "hashChanged": true,
+          "massDelta": 0.00072
+        },
+        "play": {
+          "passed": true
+        },
+        "pause": {
+          "passed": true,
+          "hashSame": true,
+          "massDrift": 0
+        },
+        "reset": {
+          "passed": true,
+          "semantics": "valid_reset_to_user_angle",
+          "distToOrig": 0.1247,
+          "distToUser": 0,
+          "distFromEvolved": 0.2419
+        },
+        "speedSlider": {
+          "passed": true
+        },
+        "noJsErrors": {
+          "passed": true,
+          "runtimeErrors": [],
+          "consoleErrors": []
+        }
+      }
+    },
+    {
+      "pair": 3,
+      "mode": "B_mod",
+      "html_sha256": "4dab6aece8a3d94fc9bfe48388d8f38563478149121e3dc85bd975e013825f8f",
+      "old_artifact_correct": false,
+      "old_reason": "failed: reset",
+      "new_artifact_correct": true,
+      "new_reason": "all Pendulum v2 checks passed",
+      "reset_semantics": {
+        "passed": true,
+        "semantics": "valid_reset_to_user_angle",
+        "distToOrig": 0.0479,
+        "distToUser": 0,
+        "distFromEvolved": 0.2639
+      },
+      "delivered_in_budget": false,
+      "new_success_in_budget": false,
+      "timed_out": true,
+      "server_checks": [
+        {
+          "cmd": "python3 -c \"import re, shutil, subprocess, sys, tempfile; html = open('index.html', encoding='utf-8').read(); assert '#090d16' in html.lower(), 'missing #090d16'; assert '<canvas' in html.lower(), 'missing canvas'; assert 'min=\\\"0.5\\\"' in html or \\\"min='0.5'\\\" in html, 'missing min 0.5'; assert 'max=\\\"3.0\\\"' in html or 'max=\\\"3\\\"' in html or \\\"max='3.0'\\\" in html, 'missing max 3.0'; assert 'play' in html.lower() and 'step' in html.lower() and 'reset' in html.lower(), 'missing controls'; assert not re.search(r'<(?:script|link)[^>]+(?:src|href)=[\\\"\\\\']https?://', html, re.I), 'external dependency found'; scripts = re.findall(r'<script[^>]*>(.*?)</script>', html, re.S | re.I); assert scripts, 'missing script'; node = shutil.which('node'); (subprocess.run([node, '--check', '/dev/stdin'], input=scripts[0], text=True, check=True) if node else None); print('OK')\"",
+          "exit": 1
+        },
+        {
+          "cmd": "tandem:web_check",
+          "exit": 0
+        }
+      ],
+      "checks": {
+        "layoutAndTheme": {
+          "passed": true,
+          "w": 1280,
+          "h": 800,
+          "bgOk": true
+        },
+        "glassmorphismHud": {
+          "passed": true,
+          "hasGlass": true,
+          "fpsVal": 0,
+          "speedVal": 1
+        },
+        "controlsPresent": {
+          "passed": true,
+          "playPause": "Play",
+          "step": "Step",
+          "reset": "Reset",
+          "slider": {
+            "min": 0.5,
+            "max": 3,
+            "val": 1
+          }
+        },
+        "startsPaused": {
+          "passed": true,
+          "buttonText": "Play",
+          "hashStatic": true
+        },
+        "clickCanvas": {
+          "passed": true,
+          "distFromOrig": 0.0479
+        },
+        "step": {
+          "passed": true,
+          "hashChanged": true,
+          "massDelta": 0.0028
+        },
+        "play": {
+          "passed": true
+        },
+        "pause": {
+          "passed": true,
+          "hashSame": true,
+          "massDrift": 0
+        },
+        "reset": {
+          "passed": true,
+          "semantics": "valid_reset_to_user_angle",
+          "distToOrig": 0.0479,
+          "distToUser": 0,
+          "distFromEvolved": 0.2639
+        },
+        "speedSlider": {
+          "passed": true
+        },
+        "noJsErrors": {
+          "passed": true,
+          "runtimeErrors": [],
+          "consoleErrors": []
+        }
+      }
+    }
+  ]
+}

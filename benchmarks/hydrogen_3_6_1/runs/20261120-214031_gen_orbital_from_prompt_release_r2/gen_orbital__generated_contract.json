@@ -1,0 +1,21 @@
+{
+  "job_id": "20261120-214148-028eda",
+  "kind": "delegate",
+  "goal": "Create a single self-contained index.html implementing an interactive full-viewport HTML5 Canvas orbital particle simulation in dark space (#060913) with a central pulsing star, 5+ planets with fading trails, 3+ moons, 150+ twinkling background stars, a glassmorphism HUD (Play/Pause, Trails ON/OFF, Reset, speed range slider 0.2..3.0 step 0.1 default 1.0 with readout, live FPS, sim time in seconds, burst particle count), and click-to-spawn radial glowing particle bursts with damping and fade-out.",
+  "verify_commands": [
+    "node -e \"const fs=require('fs'),os=require('os'),path=require('path'),cp=require('child_process');const h=fs.readFileSync('index.html','utf8');if(!h.includes('<canvas')||!h.includes('requestAnimationFrame')||!h.includes('devicePixelRatio')||!h.includes('createRadialGradient')||!h.includes('#060913'))process.exit(1);const m=[...h.matchAll(/<script(?:\\s[^>]*)?>([\\s\\S]*?)<\\/script>/gi)].map(x=>x[1]).join('\\n');if(!m.trim())process.exit(1);const f=path.join(os.tmpdir(),'chk_'+process.pid+'.js');fs.writeFileSync(f,m);try{cp.execFileSync('node',['--check',f],{stdio:'inherit'})}finally{fs.unlinkSync(f)}\""
+  ],
+  "constraints": [
+    "Single self-contained index.html with zero external dependencies and dark space #060913 background.",
+    "Full-viewport responsive <canvas> using requestAnimationFrame and devicePixelRatio scaling.",
+    "Central glowing star rendered with createRadialGradient and a subtle corona pulse animation.",
+    "At least 5 orbiting planets with distinct radii, speeds, colors, and fading orbital trails.",
+    "At least 3 moons or satellites orbiting planets in the system.",
+    "Twinkling background starfield containing at least 150 stars.",
+    "Glassmorphism HUD overlay with Play/Pause toggle, Trails ON/OFF toggle, and Reset buttons.",
+    "Speed slider <input type=\"range\" min=\"0.2\" max=\"3.0\" step=\"0.1\" value=\"1.0\"> with live multiplier readout.",
+    "Live HUD telemetry showing FPS, simulation time in seconds, and active burst particle count.",
+    "Canvas click spawns a radial burst of glowing particles with velocity damping and fade-out."
+  ],
+  "tasks": null
+}

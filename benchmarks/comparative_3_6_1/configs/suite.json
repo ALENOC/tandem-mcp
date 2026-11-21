@@ -15,9 +15,9 @@
   },
   "chars_per_token": 3.6,
   "scenarios": [
-    "gemini_direct",
-    "gemini_lmstudio",
-    "gemini_tandem"
+    "direct",
+    "lmstudio",
+    "tandem"
   ],
   "default_repeats": {
     "reading": 3,

@@ -1,8 +1,8 @@
 # Tandem MCP v3.6.1 Benchmark — Gemini 4 Hydrogen (Medium) + qwen3.8-27b@iq3_s
 
-- **Run ID**: `20261117-205412`
-- **Date (UTC)**: `2026-11-17T19:54:12.698650+00:00`
-- **Orchestrator**: `gemini-4-hydrogen-medium` (`agy` 1.5.10)
+- **Run ID**: `20261118-152320`
+- **Date (UTC)**: `2026-11-18T14:23:20.901521+00:00`
+- **Orchestrator**: `gemini-4-hydrogen-medium` (`agy` 1.5.11)
 - **Executor**: `qwen3.8-27b@iq3_s` on LM Studio (`http://127.0.0.1:1234/v1`)
 - **Accounting**: Cloud tokens measured directly via `agy --output-format json`; local tokens measured via Tandem `ledger.jsonl`.
 
@@ -10,28 +10,24 @@
 
 | Task | Scenario | n | E2E Success | Mean Cloud Tokens | Cloud Savings vs Direct | Median Time (s) | Mean Local Tokens |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `bugfix_multifile` | `direct` | 1 | 100.0% (1/1) | 24,760.0 | baseline | 25.80 | 0.0 |
-| `bugfix_multifile` | `tandem` | 1 | 100.0% (1/1) | 23,048.0 | +6.9% | 144.65 | 20,644.0 |
-| `gen_orbital` | `direct` | 1 | 100.0% (1/1) | 40,808.0 | baseline | 58.28 | 0.0 |
-| `gen_orbital` | `tandem` | 1 | 100.0% (1/1) | 41,548.0 | -1.8% | 1038.31 | 107,236.0 |
-| `gen_portal` | `direct` | 1 | 100.0% (1/1) | 59,783.0 | baseline | 121.97 | 0.0 |
-| `gen_portal` | `tandem` | 1 | 100.0% (1/1) | 61,286.0 | -2.5% | 2429.72 | 279,991.0 |
-| `refactor_rename` | `direct` | 1 | 100.0% (1/1) | 25,558.0 | baseline | 26.18 | 0.0 |
-| `refactor_rename` | `tandem` | 1 | 100.0% (1/1) | 24,884.0 | +2.6% | 220.02 | 30,885.0 |
-| `reading_incident_log` | `direct` | 1 | 100.0% (1/1) | 72,298.0 | baseline | 21.36 | 0.0 |
-| `reading_incident_log` | `tandem` | 1 | 100.0% (1/1) | 25,151.0 | +65.2% | 397.79 | 40,083.0 |
+| `gen_orbital` | `direct` | 3 | 100.0% (3/3) | 35,887.3 | baseline | 50.99 | 0.0 |
+| `gen_orbital` | `tandem` | 3 | 66.7% (2/3) | 51,800.7 | -44.3% | 892.90 | 108,343.0 |
+| `gen_portal` | `direct` | 3 | 100.0% (3/3) | 68,495.0 | baseline | 84.97 | 0.0 |
+| `gen_portal` | `tandem` | 3 | 33.3% (1/3) | 52,921.7 | +22.7% | 32.60 | 397,527.0 |
 
 ## Per-Attempt Details
 
 | Attempt | Completed | Valid | E2E | Time (s) | Turns | Cloud Input | Cloud Output | Cloud Total | Local Total | Reason |
 | --- | :---: | :---: | :---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| `bugfix_multifile__direct__r1` | True | True | True | 25.80 | 1 | 22966 | 1794 | 24760 | 0 | test_suite.py passed |
-| `refactor_rename__direct__r1` | True | True | True | 26.18 | 1 | 23766 | 1792 | 25558 | 0 | test_rename.py passed (13 files renamed) |
-| `reading_incident_log__direct__r1` | True | True | True | 21.36 | 1 | 69759 | 2539 | 72298 | 0 | Incident reconstructed (service, start, cause, resolution) |
-| `bugfix_multifile__tandem__r1` | True | True | True | 144.65 | 1 | 20909 | 2139 | 23048 | 20644 | test_suite.py passed |
-| `refactor_rename__tandem__r1` | True | True | True | 220.02 | 1 | 22551 | 2333 | 24884 | 30885 | test_rename.py passed (13 files renamed) |
-| `reading_incident_log__tandem__r1` | True | True | True | 397.79 | 1 | 22197 | 2954 | 25151 | 40083 | Incident reconstructed (service, start, cause, resolution) |
-| `gen_orbital__direct__r1` | True | True | True | 58.28 | 1 | 28936 | 11872 | 40808 | 0 | check_page.js passed (page ok) |
-| `gen_portal__direct__r1` | True | True | True | 121.97 | 1 | 41245 | 18538 | 59783 | 0 | check_engine.js passed (engine ok) |
-| `gen_orbital__tandem__r1` | True | True | True | 1038.31 | 1 | 38424 | 3124 | 41548 | 107236 | check_page.js passed (page ok) |
-| `gen_portal__tandem__r1` | True | True | True | 2429.72 | 1 | 56541 | 4745 | 61286 | 279991 | check_engine.js passed (engine ok) |
+| `gen_orbital__tandem__r1` | True | False | False | 21.79 | 1 | 20242 | 1857 | 22099 | unavailable | index.html missing |
+| `gen_orbital__direct__r1` | True | True | True | 51.41 | 1 | 26686 | 9539 | 36225 | 0 | check_page.js and browser check passed |
+| `gen_portal__direct__r1` | True | True | True | 101.31 | 1 | 46322 | 16337 | 62659 | 0 | check_engine.js and browser check passed |
+| `gen_portal__tandem__r1` | True | True | True | 3390.64 | 1 | 86947 | 8227 | 95174 | 397527 | check_engine.js and browser check passed |
+| `gen_orbital__direct__r2` | True | True | True | 50.99 | 1 | 26460 | 9353 | 35813 | 0 | check_page.js and browser check passed |
+| `gen_orbital__tandem__r2` | True | True | True | 1763.37 | 1 | 86038 | 5010 | 91048 | 152159 | check_page.js and browser check passed |
+| `gen_portal__tandem__r2` | True | False | False | 32.35 | 1 | 26422 | 4302 | 30724 | unavailable | Missing files: ['index.html', 'scene.js', 'engine3d.js', 'app.js'] |
+| `gen_portal__direct__r2` | True | True | True | 75.14 | 1 | 35767 | 15331 | 51098 | 0 | check_engine.js and browser check passed |
+| `gen_orbital__tandem__r3` | True | True | True | 892.90 | 1 | 38192 | 4063 | 42255 | 64527 | check_page.js and browser check passed |
+| `gen_orbital__direct__r3` | True | True | True | 46.68 | 1 | 26404 | 9220 | 35624 | 0 | check_page.js and browser check passed |
+| `gen_portal__direct__r3` | True | True | True | 84.97 | 1 | 73906 | 17822 | 91728 | 0 | check_engine.js and browser check passed |
+| `gen_portal__tandem__r3` | True | False | False | 32.60 | 1 | 29362 | 3505 | 32867 | unavailable | Missing files: ['index.html', 'scene.js', 'engine3d.js', 'app.js'] |

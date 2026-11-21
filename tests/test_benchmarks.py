@@ -11,6 +11,8 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import time
+from unittest.mock import patch, MagicMock
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -21,6 +23,7 @@ if str(CMP_DIR) not in sys.path:
 import evaluate  # noqa: E402
 import metrics  # noqa: E402
 import run_comparison  # noqa: E402
+import lm_studio_harness as harness  # noqa: E402
 
 
 def _make_record(status='COMPLETED', passed=True, cloud_total=1000, local_total=2000, wall=10.0, evaluated=True):
@@ -41,6 +44,155 @@ def _make_record(status='COMPLETED', passed=True, cloud_total=1000, local_total=
         'local_compute': {'local_total_tokens': local_total, 'provenance': 'measured', 'repair_attempts': 0},
         'quality': quality,
     }
+
+
+class TestBenchmarkDeadlines(unittest.TestCase):
+    def test_defaults_are_bounded(self):
+        cfg = run_comparison.load_config()
+        self.assertTrue(all(t > 0 for t in cfg['timeouts_seconds'].values()))
+        with self.assertRaises(ValueError):
+            harness.run_task(Path('/tmp'), 'test', timeout=0)
+        with self.assertRaises(ValueError):
+            harness.run_bounded(['true'], timeout=0)
+
+    def test_timeout_kills_descendants_and_preserves_output(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pid_file = Path(tmp) / 'child.pid'
+            code = ('import os,time; pid=os.fork(); '
+                    f'open({str(pid_file)!r}, "w").write(str(pid)) if pid else None; '
+                    'print("started", flush=True); time.sleep(30)')
+            start = time.monotonic()
+            with self.assertRaises(subprocess.TimeoutExpired) as caught:
+                harness.run_bounded([sys.executable, '-c', code], timeout=0.5)
+            self.assertLess(time.monotonic() - start, 3)
+            self.assertIn('started', caught.exception.output)
+            child = int(pid_file.read_text())
+            # A killed orphan can remain a zombie until the system reaps it.
+            stat = Path(f'/proc/{child}/stat')
+            for _ in range(50):
+                if not stat.exists() or stat.read_text().split()[2] == 'Z':
+                    break
+                time.sleep(0.01)
+            else:
+                self.fail('timed-out descendant is still running')
+
+    def test_success_does_not_wait_for_inherited_output_pipes(self):
+        code = ('import subprocess,sys; subprocess.Popen([sys.executable,"-c",'
+                '"import time; time.sleep(30)"]); print("done")')
+        start = time.monotonic()
+        result = harness.run_bounded([sys.executable, '-c', code], timeout=2)
+        self.assertEqual(result.returncode, 0)
+        self.assertIn('done', result.stdout)
+        self.assertLess(time.monotonic() - start, 3)
+
+    def test_http_timeout_uses_remaining_budget_and_persists_failure(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            stats_file = Path(tmp) / 'stats.json'
+            with patch.object(harness.time, 'perf_counter', return_value=100), \
+                    patch.object(harness.urllib.request, 'urlopen', side_effect=TimeoutError('stalled')) as request:
+                result = harness.run_task(Path(tmp), 'test', timeout=7, stats_out=stats_file)
+            self.assertEqual(request.call_args.kwargs['timeout'], 7)
+            self.assertEqual(result['status'], 'TIMEOUT')
+            self.assertEqual(json.loads(stats_file.read_text())['status'], 'TIMEOUT')
+
+    def test_step_exhaustion_is_explicit_and_usage_is_saved(self):
+        response = MagicMock()
+        response.__enter__.return_value.read.return_value = json.dumps({
+            'usage': {'prompt_tokens': 20, 'completion_tokens': 5},
+            'choices': [{'message': {'role': 'assistant', 'tool_calls': [
+                {'id': 'x', 'function': {'name': 'list_files', 'arguments': '{}'}}]}}],
+        }).encode()
+        with tempfile.TemporaryDirectory() as tmp:
+            stats_file = Path(tmp) / 'stats.json'
+            with patch.object(harness.urllib.request, 'urlopen', return_value=response):
+                result = harness.run_task(Path(tmp), 'test', max_steps=1, stats_out=stats_file)
+            self.assertEqual(result['status'], 'STEP_LIMIT')
+            saved = json.loads(stats_file.read_text())
+            self.assertEqual(saved['local_total_tokens'], 25)
+            self.assertEqual(saved['local_requests'], 1)
+
+    def test_no_tools_execute_after_inference_exhausts_budget(self):
+        clock = [0]
+        response = MagicMock()
+        def read():
+            clock[0] = 11
+            return json.dumps({'choices': [{'message': {'tool_calls': [
+                {'id': 'x', 'function': {'name': 'list_files', 'arguments': '{}'}}]}}]}).encode()
+        response.__enter__.return_value.read.side_effect = read
+        with patch.object(harness.time, 'perf_counter', side_effect=lambda: clock[0]), \
+                patch.object(harness.urllib.request, 'urlopen', return_value=response), \
+                patch.object(harness, '_exec_tool') as execute:
+            result = harness.run_task(Path('/tmp'), 'test', timeout=10)
+        self.assertEqual(result['status'], 'TIMEOUT')
+        execute.assert_not_called()
+
+    def test_prompts_use_short_waits_and_configured_executor(self):
+        cfg = run_comparison.load_config()
+        fixtures = CMP_DIR / 'fixtures'
+        for task in cfg['tasks']:
+            prompt = run_comparison._build_prompt(task, 'gemini_tandem', Path('/tmp/ws'), fixtures, 180)
+            self.assertNotIn('wait_seconds=1500', prompt)
+            self.assertNotIn('wait_seconds=600', prompt)
+        prompt = run_comparison._build_prompt(cfg['tasks'][0], 'gemini_lmstudio', Path('/tmp/ws'), fixtures,
+                                              180, {'endpoint': 'http://localhost:4321/v1', 'model_id': 'custom-model'})
+        self.assertIn('--timeout 162', prompt)
+        self.assertIn('--model "custom-model"', prompt)
+        self.assertIn('--endpoint "http://localhost:4321/v1"', prompt)
+
+    def test_preflight_fails_before_starting_unavailable_executor(self):
+        with patch.object(run_comparison.shutil, 'which', return_value='/bin/agy'), \
+                patch.object(run_comparison.urllib.request, 'urlopen', side_effect=OSError('offline')):
+            with self.assertRaisesRegex(RuntimeError, 'Cannot reach local executor'):
+                run_comparison.check_runtime(run_comparison.load_config(), ['gemini_lmstudio'])
+
+    def test_runner_does_not_accept_unfinished_local_execution(self):
+        cfg = run_comparison.load_config()
+        task = next(t for t in cfg['tasks'] if t['id'] == 'extraction_manifest')
+        def incomplete(command, *, cwd, **kwargs):
+            (cwd / 'lm_studio_stats.json').write_text(json.dumps({'status': 'RUNNING', 'local_requests': 1}))
+            return subprocess.CompletedProcess(command, 0, json.dumps({'status': 'COMPLETED', 'response': 'still waiting'}), '')
+        with tempfile.TemporaryDirectory() as tmp:
+            # Keep all runner workspaces under a directory that this test cleans up.
+            real_mkdtemp = tempfile.mkdtemp
+            with patch.object(run_comparison.tempfile, 'mkdtemp', side_effect=lambda **kw: real_mkdtemp(dir=tmp, **kw)), \
+                    patch.object(run_comparison, 'run_bounded', side_effect=incomplete):
+                record = run_comparison.run_single(task, 'gemini_lmstudio', 1, cfg, CMP_DIR / 'fixtures', 20)
+        self.assertEqual(record['status'], 'PARTIAL')
+        self.assertFalse(record['outcome']['end_to_end_success'])
+
+    def test_runner_timeout_is_recorded_with_partial_logs(self):
+        cfg = run_comparison.load_config()
+        task = next(t for t in cfg['tasks'] if t['id'] == 'extraction_manifest')
+        with tempfile.TemporaryDirectory() as tmp:
+            real_mkdtemp = tempfile.mkdtemp
+            with patch.object(run_comparison.tempfile, 'mkdtemp', side_effect=lambda **kw: real_mkdtemp(dir=tmp, **kw)), \
+                    patch.object(run_comparison, 'run_bounded', side_effect=subprocess.TimeoutExpired(
+                        'agy', 10, output='partial stdout', stderr='partial stderr')):
+                record = run_comparison.run_single(task, 'gemini_direct', 1, cfg, CMP_DIR / 'fixtures',
+                                                   10, run_dir=Path(tmp) / 'run')
+            self.assertEqual(record['status'], 'TIMEOUT')
+            self.assertEqual(record['timeout_seconds'], 10)
+            log = Path(tmp) / 'run/logs/extraction_manifest/gemini_direct/r1/stdout.txt'
+            self.assertEqual(log.read_text(), 'partial stdout')
+            self.assertIn('partial stderr', record['error_preview'])
+
+    def test_interrupt_cleans_up_the_process_group(self):
+        process = MagicMock()
+        process.pid = 123456
+        process.wait.side_effect = [KeyboardInterrupt, 0, 0]
+        with patch.object(harness.subprocess, 'Popen', return_value=process), \
+                patch.object(harness.os, 'killpg') as kill:
+            with self.assertRaises(KeyboardInterrupt):
+                harness.run_bounded(['command'], timeout=10)
+        self.assertEqual(kill.call_count, 2)
+
+    def test_preflight_checks_model_identity(self):
+        response = MagicMock()
+        response.__enter__.return_value.read.return_value = b'{"data": [{"id": "different-model"}]}'
+        with patch.object(run_comparison.shutil, 'which', return_value='/bin/agy'), \
+                patch.object(run_comparison.urllib.request, 'urlopen', return_value=response):
+            with self.assertRaisesRegex(RuntimeError, 'Required executor model'):
+                run_comparison.check_runtime(run_comparison.load_config(), ['gemini_tandem'])
 
 
 class TestExecutionVsArtifactOutcomes(unittest.TestCase):

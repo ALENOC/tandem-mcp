@@ -1,0 +1,30 @@
+{
+  "job_id": "20261121-064153-f6d3b9",
+  "kind": "delegate",
+  "goal": "Create a self-contained 3D neon portal web demo (index.html, or index.html + engine3d.js + scene.js + app.js) with a software 3D renderer on a full-viewport <canvas id=\"c\">, dark radial-gradient space background, a two-tier platform, twin pillars, lintel and crown cap (36 box faces), six orbiting octahedral crystals (48 triangles), a portal core with two counter-rotating rings, a cyber grid floor, 180 twinkling stars, 110 rising particles, an orbiting camera, and a glassmorphism HUD (NEON PORTAL 3D, FPS/POLYS/PARTS, Pause/Orbit ON/Reset buttons, speed slider).",
+  "verify_commands": [
+    "node -e 'const fs=require(\"fs\"),cp=require(\"child_process\"),os=require(\"os\"),path=require(\"path\");const html=fs.readFileSync(\"index.html\",\"utf8\");for(const s of [\"NEON PORTAL 3D\",\"FPS\",\"POLYS\",\"PARTS\",\"Pause\",\"Reset\"]){if(!html.includes(s))throw new Error(\"Missing: \"+s);}if(!/<canvas[^>]*id=[\"\\x27]c[\"\\x27]/.test(html))throw new Error(\"Missing canvas#c\");const scripts=[...html.matchAll(/<script(?![^>]*\\bsrc=)[^>]*>([\\s\\S]*?)<\\/script>/gi)].map(m=>m[1]);let checked=0;for(const s of scripts){if(!s.trim())continue;const p=path.join(os.tmpdir(),\"neon_portal_inline_\"+checked+\".js\");fs.writeFileSync(p,s);cp.execFileSync(\"node\",[\"--check\",p],{stdio:\"inherit\"});checked++;}for(const f of [\"engine3d.js\",\"scene.js\",\"app.js\"]){if(fs.existsSync(f)){cp.execFileSync(\"node\",[\"--check\",f],{stdio:\"inherit\"});checked++;}}if(checked===0)throw new Error(\"No JS found to check\");console.log(\"OK checked=\"+checked);'"
+  ],
+  "constraints": [
+    "Full-viewport <canvas id=\"c\"> fills the browser window.",
+    "Background uses a dark radial-gradient space theme.",
+    "Software 3D renderer implements perspective projection.",
+    "Software 3D renderer implements backface culling.",
+    "Software 3D renderer sorts faces using painter's depth algorithm.",
+    "Portal monument has 6 boxes (36 faces): two-tier platform, twin pillars, lintel, crown cap.",
+    "Six orbiting octahedral crystals total 48 triangles.",
+    "Portal core glows inside the arch.",
+    "Two counter-rotating 3D neon rings surround the portal core.",
+    "Cyber perspective grid floor renders beneath the monument.",
+    "Background renders 180 twinkling stars.",
+    "Scene animates 110 rising neon particles.",
+    "Camera orbits the portal automatically when Orbit is ON.",
+    "Mouse drag rotates the orbiting camera.",
+    "Glassmorphism HUD displays 'NEON PORTAL 3D' title.",
+    "HUD displays live FPS, POLYS, PARTS counters.",
+    "HUD provides Pause, Orbit ON, Reset buttons.",
+    "HUD provides a speed slider.",
+    "Demo is self-contained with zero external dependencies."
+  ],
+  "tasks": null
+}

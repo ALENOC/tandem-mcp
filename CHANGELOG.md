@@ -1,5 +1,29 @@
 # Changelog
 
+## 3.7.0
+
+### Routing and host-managed execution
+- Added `auto_route` (`tandem_mcp/router.py`): classifies a request as `deterministic`, `direct_or_targeted` or `delegate_local` with no LLM call, and honors `solo locale` / `read only` constraints. `TANDEM_AUTO_POLICY` selects `first_turn` (default: act directly in turn 1) or `mandatory_route`.
+- Added `tandem_mcp/host_runner.py` and `TANDEM_HOST_MANAGED=1`: one cloud planning call starts the job, a local host process waits with no cloud polling, and the cloud is woken for review only when a failure needs a decision.
+- Added the lean profile receipts and `TANDEM_WAIT_SECONDS` for lean calls.
+
+### Executor efficiency
+- `TANDEM_COMPACT_WRITES=1` (default): older `write_file` bodies are replaced by a short stub in the executor context, while `messages.json` keeps the full history. On the 3D Portal task this cut local tokens by 18.1% and wall time by 21.6% (3 pairs).
+- `TANDEM_COMPACT_RECEIPT=1` (default): host-managed receipts start with `VERDICT:` and carry only the evidence needed for review.
+
+### Verification
+- Added a built-in Chromium runtime and animation check for web deliverables (`tandem_mcp/web_check.py`, `tandem_mcp/_web_probe.mjs`, `TANDEM_WEB_CHECK`, `TANDEM_CHROME`). Start-paused pages are resumed through their Play/Start button before motion is measured.
+- New job state `not_evaluated`: a check that cannot run because a prerequisite is missing (exit code `2`) ends the job without repair attempts and never reports `verified`.
+
+### Benchmarks
+- Behavioral evaluators for the Orbital and 3D Portal demos (`check_orbital_behavioral.mjs`, `check_portal_behavioral.mjs`) and from-prompt A/B runners (`run_from_prompt_pair.py`, `run_ab_portal.py`, `run_compaction_ab.py`).
+- Fixed false negatives in the Orbital evaluator (speed label read as time, value-before-label HUDs, trails timing under load) and in the Portal Orbit check (edge-on floor). Negative controls still fail.
+- Added `reeval_release.py`: every artifact is evaluated three times and the report records the evaluator SHA-256.
+- `docs/BENCHMARKS.md` and the README now report only the latest runs, with direct vs Tandem previews of both demos.
+
+### Testing
+- New offline suites for routing, host runner, compaction, compact receipts, `not_evaluated` and the web check. Updated outdated assertions in `tests/test_protocol.py`, `tests/test_compaction.py` and `tests/test_web_check.py`.
+
 ## 3.6.1
 
 ### Testing

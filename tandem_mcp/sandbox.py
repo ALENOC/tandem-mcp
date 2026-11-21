@@ -16,6 +16,7 @@ import stat
 import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 
 # Never run for the executor, whatever the allow list says.
@@ -610,7 +611,7 @@ def _log_cap(default=64 * 1024 * 1024):
 
 
 def run(command, cwd, timeout=None, jail=False, allow_net=False, strip_env=None, max_output_bytes=None,
-        guard_symlinks=True, log_path=None, log_cap_bytes=None):
+        guard_symlinks=True, log_path=None, log_cap_bytes=None, stop_event=None, extra_env=None):
     """Run a shell command, return (exit code, combined output). jail=True runs it inside the
     operating system sandbox when there is one. Output kept in RAM is bounded to avoid OOM."""
     # no bytecode files: a check run just before an edit must not leave a stale .pyc behind
@@ -619,6 +620,8 @@ def run(command, cwd, timeout=None, jail=False, allow_net=False, strip_env=None,
     if strip_env is None:
         strip_env = bool(jail)
     env = clean_env(strip_secrets=strip_env)
+    if extra_env:
+        env.update({str(k): str(v) for k, v in extra_env.items()})
     profile = _sandbox_profile()
     use_jail = bool(jail and jail_available())
     if jail and not use_jail and profile == 'secure':
@@ -687,10 +690,9 @@ def run(command, cwd, timeout=None, jail=False, allow_net=False, strip_env=None,
     reader = threading.Thread(target=_drain, daemon=True)
     reader.start()
     timed_out = False
-    try:
-        proc.wait(timeout=timeout)
-    except subprocess.TimeoutExpired:
-        timed_out = True
+    stopped = False
+
+    def _kill_group():
         if os.name == 'posix':
             try:
                 os.killpg(proc.pid, signal.SIGKILL)
@@ -702,6 +704,30 @@ def run(command, cwd, timeout=None, jail=False, allow_net=False, strip_env=None,
             proc.wait(timeout=5)
         except subprocess.TimeoutExpired:
             pass
+
+    if stop_event is None:
+        try:
+            proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            _kill_group()
+    else:
+        deadline = time.monotonic() + float(timeout)
+        while True:
+            if stop_event.is_set():
+                stopped = True
+                _kill_group()
+                break
+            rem = deadline - time.monotonic()
+            if rem <= 0:
+                timed_out = True
+                _kill_group()
+                break
+            try:
+                proc.wait(timeout=min(0.1, rem))
+                break
+            except subprocess.TimeoutExpired:
+                continue
     reader.join(timeout=2)
     with buf_lock:
         head_b = b''.join(head)
@@ -724,6 +750,8 @@ def run(command, cwd, timeout=None, jail=False, allow_net=False, strip_env=None,
     if tot > hk + tk:
         text += f'\n[output truncated: {tot} bytes total, kept first {hk} and last {tk} bytes]\n'
     text += tail_b.decode('utf-8', errors='replace')
+    if stopped:
+        return 130, text + '\n[stopped by request]'
     if timed_out:
         return 124, text + f'\n[timeout after {timeout} s]'
     return (proc.returncode if proc.returncode is not None else 124), text

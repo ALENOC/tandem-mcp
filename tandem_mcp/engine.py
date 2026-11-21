@@ -448,15 +448,23 @@ def chat_json(messages, schema, tool='chat', model='', **kwargs):
              + json.dumps(schema, separators=(',', ':')))
     turns = list(messages)
     why = 'no answer'
+    raw_timeout = kwargs.pop('timeout', None)
+    deadline = (time.time() + float(raw_timeout)) if raw_timeout is not None else None
     for attempt in range(3):
+        if deadline is not None:
+            rem = deadline - time.time()
+            if rem <= 0:
+                raise ExecutorError('the executor timed out before completing JSON response')
+            kwargs['timeout'] = max(0.5, rem)
         sent = turns if native else turns[:-1] + [{**turns[-1], 'content': str(turns[-1]['content']) + guide}]
         try:
             reply, used = chat(sent, tool=tool, model=model, schema=schema if native else None, **kwargs)
         except ExecutorError as exc:
-            if native and attempt == 0:                  # go on with the schema in the prompt
+            if deadline is not None and time.time() >= deadline:
+                raise
+            if native and attempt == 0 and _schema_refused(exc):  # go on with the schema in the prompt
                 native = False
-                if _schema_refused(exc):                 # a refusal is remembered, a timeout or a dropped link is not
-                    remember(model, schema=False)
+                remember(model, schema=False)
                 continue
             raise
         total = {k: total[k] + used[k] for k in total}
