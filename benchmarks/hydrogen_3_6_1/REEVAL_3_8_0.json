@@ -1,0 +1,423 @@
+{
+  "reevaluated_at": "2026-11-21T12:45:45.664008+00:00",
+  "repeats": 3,
+  "rule": "success = every repetition passes and the attempt did not time out",
+  "evaluator_sha256": {
+    "check_orbital_behavioral.mjs": "49393c9d72acd2a14406b93b55597ab4587b8694e3ec6c7ad473830742f85e8f",
+    "check_portal_behavioral.mjs": "d3bd364c628846ee4d0ac886250bfd926fa2ebf9474a5e6780fb13ff1f7690fb"
+  },
+  "summary": {
+    "gen_orbital/direct_from_prompt": {
+      "attempts": 3,
+      "successes": 3,
+      "cloud_tokens_total": 106465,
+      "cloud_tokens_per_success": 35488,
+      "local_tokens_total": 0,
+      "cloud_parts_total": {
+        "input_tokens": 77941,
+        "output_tokens": 28524,
+        "cache_read_tokens": 127489
+      },
+      "fallbacks": 0,
+      "median_wall_seconds": 49.96,
+      "wall_seconds_per_success": 51.61
+    },
+    "gen_orbital/tandem_from_prompt": {
+      "attempts": 6,
+      "successes": 5,
+      "cloud_tokens_total": 138831,
+      "cloud_tokens_per_success": 27766,
+      "local_tokens_total": 447822,
+      "cloud_parts_total": {
+        "input_tokens": 118528,
+        "output_tokens": 20303,
+        "cache_read_tokens": 192083
+      },
+      "fallbacks": 0,
+      "median_wall_seconds": 895.29,
+      "wall_seconds_per_success": 1133.17
+    },
+    "gen_portal/direct_from_prompt": {
+      "attempts": 3,
+      "successes": 2,
+      "cloud_tokens_total": 148745,
+      "cloud_tokens_per_success": 74372,
+      "local_tokens_total": 0,
+      "cloud_parts_total": {
+        "input_tokens": 101344,
+        "output_tokens": 47401,
+        "cache_read_tokens": 220559
+      },
+      "fallbacks": 0,
+      "median_wall_seconds": 82.05,
+      "wall_seconds_per_success": 128.16
+    },
+    "gen_portal/tandem_from_prompt": {
+      "attempts": 6,
+      "successes": 4,
+      "cloud_tokens_total": 199216,
+      "cloud_tokens_per_success": 49804,
+      "local_tokens_total": 1557286,
+      "cloud_parts_total": {
+        "input_tokens": 164429,
+        "output_tokens": 34787,
+        "cache_read_tokens": 325100
+      },
+      "fallbacks": 1,
+      "median_wall_seconds": 2599.21,
+      "wall_seconds_per_success": 3797.62
+    }
+  },
+  "attempts": [
+    {
+      "run": "20261120-212541_gen_orbital_from_prompt_release_r1",
+      "task": "gen_orbital",
+      "mode": "direct_from_prompt",
+      "timed_out": false,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "wall_seconds": 56.54,
+      "cloud_tokens": 35898,
+      "local_tokens": 0,
+      "cloud_parts": {
+        "input_tokens": 26178,
+        "output_tokens": 9720,
+        "cache_read_tokens": 42665
+      },
+      "fallback_used": false,
+      "stored_e2e": false
+    },
+    {
+      "run": "20261120-212541_gen_orbital_from_prompt_release_r1",
+      "task": "gen_orbital",
+      "mode": "tandem_from_prompt",
+      "timed_out": false,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "wall_seconds": 810.76,
+      "cloud_tokens": 20491,
+      "local_tokens": 59425,
+      "cloud_parts": {
+        "input_tokens": 17905,
+        "output_tokens": 2586,
+        "cache_read_tokens": 24447
+      },
+      "fallback_used": false,
+      "stored_e2e": true
+    },
+    {
+      "run": "20261120-214031_gen_orbital_from_prompt_release_r2",
+      "task": "gen_orbital",
+      "mode": "direct_from_prompt",
+      "timed_out": false,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "wall_seconds": 49.96,
+      "cloud_tokens": 36002,
+      "local_tokens": 0,
+      "cloud_parts": {
+        "input_tokens": 26209,
+        "output_tokens": 9793,
+        "cache_read_tokens": 42692
+      },
+      "fallback_used": false,
+      "stored_e2e": true
+    },
+    {
+      "run": "20261120-214031_gen_orbital_from_prompt_release_r2",
+      "task": "gen_orbital",
+      "mode": "tandem_from_prompt",
+      "timed_out": false,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "wall_seconds": 948.77,
+      "cloud_tokens": 20815,
+      "local_tokens": 70127,
+      "cloud_parts": {
+        "input_tokens": 18571,
+        "output_tokens": 2244,
+        "cache_read_tokens": 24190
+      },
+      "fallback_used": false,
+      "stored_e2e": true
+    },
+    {
+      "run": "20261120-215733_gen_orbital_from_prompt_release_r3",
+      "task": "gen_orbital",
+      "mode": "direct_from_prompt",
+      "timed_out": false,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "wall_seconds": 48.34,
+      "cloud_tokens": 34565,
+      "local_tokens": 0,
+      "cloud_parts": {
+        "input_tokens": 25554,
+        "output_tokens": 9011,
+        "cache_read_tokens": 42132
+      },
+      "fallback_used": false,
+      "stored_e2e": true
+    },
+    {
+      "run": "20261120-215733_gen_orbital_from_prompt_release_r3",
+      "task": "gen_orbital",
+      "mode": "tandem_from_prompt",
+      "timed_out": false,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "wall_seconds": 838.86,
+      "cloud_tokens": 19925,
+      "local_tokens": 54731,
+      "cloud_parts": {
+        "input_tokens": 17972,
+        "output_tokens": 1953,
+        "cache_read_tokens": 23860
+      },
+      "fallback_used": false,
+      "stored_e2e": false
+    },
+    {
+      "run": "20261121-055139_gen_portal_from_prompt_release_r1",
+      "task": "gen_portal",
+      "mode": "direct_from_prompt",
+      "timed_out": false,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "wall_seconds": 77.41,
+      "cloud_tokens": 45146,
+      "local_tokens": 0,
+      "cloud_parts": {
+        "input_tokens": 31857,
+        "output_tokens": 13289,
+        "cache_read_tokens": 68531
+      },
+      "fallback_used": false,
+      "stored_e2e": false
+    },
+    {
+      "run": "20261121-055139_gen_portal_from_prompt_release_r1",
+      "task": "gen_portal",
+      "mode": "tandem_from_prompt",
+      "timed_out": false,
+      "success": false,
+      "verdicts_agree": true,
+      "failed_checks": [
+        "visual"
+      ],
+      "wall_seconds": 2774.95,
+      "cloud_tokens": 24977,
+      "local_tokens": 268032,
+      "cloud_parts": {
+        "input_tokens": 20923,
+        "output_tokens": 4054,
+        "cache_read_tokens": 40351
+      },
+      "fallback_used": false,
+      "stored_e2e": true
+    },
+    {
+      "run": "20261121-063929_gen_portal_from_prompt_release_r2",
+      "task": "gen_portal",
+      "mode": "direct_from_prompt",
+      "timed_out": false,
+      "success": false,
+      "verdicts_agree": true,
+      "failed_checks": [
+        "visual"
+      ],
+      "wall_seconds": 96.87,
+      "cloud_tokens": 54818,
+      "local_tokens": 0,
+      "cloud_parts": {
+        "input_tokens": 37036,
+        "output_tokens": 17782,
+        "cache_read_tokens": 103268
+      },
+      "fallback_used": false,
+      "stored_e2e": true
+    },
+    {
+      "run": "20261121-063929_gen_portal_from_prompt_release_r2",
+      "task": "gen_portal",
+      "mode": "tandem_from_prompt",
+      "timed_out": false,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "wall_seconds": 1667.02,
+      "cloud_tokens": 29986,
+      "local_tokens": 165508,
+      "cloud_parts": {
+        "input_tokens": 24163,
+        "output_tokens": 5823,
+        "cache_read_tokens": 57954
+      },
+      "fallback_used": false,
+      "stored_e2e": true
+    },
+    {
+      "run": "20261121-070909_gen_portal_from_prompt_release_r3",
+      "task": "gen_portal",
+      "mode": "direct_from_prompt",
+      "timed_out": false,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "wall_seconds": 82.05,
+      "cloud_tokens": 48781,
+      "local_tokens": 0,
+      "cloud_parts": {
+        "input_tokens": 32451,
+        "output_tokens": 16330,
+        "cache_read_tokens": 48760
+      },
+      "fallback_used": false,
+      "stored_e2e": true
+    },
+    {
+      "run": "20261121-070909_gen_portal_from_prompt_release_r3",
+      "task": "gen_portal",
+      "mode": "tandem_from_prompt",
+      "timed_out": false,
+      "success": false,
+      "verdicts_agree": true,
+      "failed_checks": [
+        "interactions"
+      ],
+      "wall_seconds": 2423.47,
+      "cloud_tokens": 20806,
+      "local_tokens": 222009,
+      "cloud_parts": {
+        "input_tokens": 18217,
+        "output_tokens": 2589,
+        "cache_read_tokens": 24944
+      },
+      "fallback_used": false,
+      "stored_e2e": false
+    },
+    {
+      "run": "20261121-102424_gen_orbital_from_prompt_uitest_r1",
+      "task": "gen_orbital",
+      "mode": "tandem_from_prompt",
+      "timed_out": false,
+      "success": false,
+      "verdicts_agree": true,
+      "failed_checks": [
+        "trailsToggle"
+      ],
+      "wall_seconds": 1083.13,
+      "cloud_tokens": 26679,
+      "local_tokens": 92162,
+      "cloud_parts": {
+        "input_tokens": 21909,
+        "output_tokens": 4770,
+        "cache_read_tokens": 41093
+      },
+      "fallback_used": false,
+      "stored_e2e": false
+    },
+    {
+      "run": "20261121-104239_gen_orbital_from_prompt_uitest_r2",
+      "task": "gen_orbital",
+      "mode": "tandem_from_prompt",
+      "timed_out": false,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "wall_seconds": 1142.5,
+      "cloud_tokens": 25961,
+      "local_tokens": 103786,
+      "cloud_parts": {
+        "input_tokens": 21429,
+        "output_tokens": 4532,
+        "cache_read_tokens": 39840
+      },
+      "fallback_used": false,
+      "stored_e2e": true
+    },
+    {
+      "run": "20261121-110154_gen_orbital_from_prompt_uitest_r3",
+      "task": "gen_orbital",
+      "mode": "tandem_from_prompt",
+      "timed_out": false,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "wall_seconds": 841.81,
+      "cloud_tokens": 24960,
+      "local_tokens": 67591,
+      "cloud_parts": {
+        "input_tokens": 20742,
+        "output_tokens": 4218,
+        "cache_read_tokens": 38653
+      },
+      "fallback_used": false,
+      "stored_e2e": false
+    },
+    {
+      "run": "20261121-111609_gen_portal_from_prompt_uitest_r1",
+      "task": "gen_portal",
+      "mode": "tandem_from_prompt",
+      "timed_out": false,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "wall_seconds": 3681.34,
+      "cloud_tokens": 75045,
+      "local_tokens": 407637,
+      "cloud_parts": {
+        "input_tokens": 60933,
+        "output_tokens": 14112,
+        "cache_read_tokens": 137775
+      },
+      "fallback_used": true,
+      "stored_e2e": true
+    },
+    {
+      "run": "20261121-121739_gen_portal_from_prompt_uitest_r2",
+      "task": "gen_portal",
+      "mode": "tandem_from_prompt",
+      "timed_out": false,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "wall_seconds": 3395.66,
+      "cloud_tokens": 26389,
+      "local_tokens": 378461,
+      "cloud_parts": {
+        "input_tokens": 21523,
+        "output_tokens": 4866,
+        "cache_read_tokens": 39986
+      },
+      "fallback_used": false,
+      "stored_e2e": true
+    },
+    {
+      "run": "20261121-131423_gen_portal_from_prompt_uitest_r3",
+      "task": "gen_portal",
+      "mode": "tandem_from_prompt",
+      "timed_out": false,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "wall_seconds": 1248.03,
+      "cloud_tokens": 22013,
+      "local_tokens": 115639,
+      "cloud_parts": {
+        "input_tokens": 18670,
+        "output_tokens": 3343,
+        "cache_read_tokens": 24090
+      },
+      "fallback_used": false,
+      "stored_e2e": true
+    }
+  ]
+}

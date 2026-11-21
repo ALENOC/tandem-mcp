@@ -44,6 +44,7 @@ All settings are controlled via environment variables read by the `tandem-mcp` s
 | `TANDEM_COMPACT_RECEIPT` | `1`: host-managed receipts lead with `VERDICT:` and keep only the evidence needed for review | `1` |
 | `TANDEM_WEB_CHECK` | `1`: run the built-in Chromium runtime and animation check on web deliverables | `1` |
 | `TANDEM_CHROME` | Path to the Chromium or Chrome binary used by the web check | auto-detected |
+| `TANDEM_MIN_LOCAL_SUCCESS` | Least estimated local success rate of a task family for `auto_route` to delegate a write (used after 3 finished jobs) | `0.6` |
 
 ## Backend & Model Notes
 

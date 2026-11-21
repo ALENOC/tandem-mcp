@@ -1,0 +1,27 @@
+{
+  "job_id": "20261121-104309-c301ba",
+  "kind": "delegate",
+  "goal": "Create a single self-contained index.html implementing an interactive full-viewport HTML5 Canvas orbital particle simulation in dark space (#060913) with zero external dependencies and valid JavaScript syntax.\n\nRequirements:\n1. Responsive full-window <canvas id=\"canvas\"> using requestAnimationFrame and devicePixelRatio scaling (100vw x 100vh, overflow: hidden, background: #060913).\n2. Central glowing star at canvas center using createRadialGradient and a subtle corona pulse.\n3. At least 5 orbiting planets with distinct orbital radii, speeds, colors, at least 3 moons/satellites orbiting planets, and fading orbital trails.\n4. Twinkling background starfield with at least 150 stars.\n5. Interactive glassmorphism HUD overlay positioned in a corner (e.g. top-left, not covering canvas center) with:\n   - Play/Pause toggle button (#play-pause-btn, text \"Pause\" when running, \"Play\" when paused). When paused, pause all animation (planets, moons, corona, particles, twinkling) so the canvas is static.\n   - Trails toggle button (#trails-btn, text \"Trails: ON\" / \"Trails: OFF\").\n   - Reset button (#reset-btn, resets simulation time to \"0.0s\", clears burst particles so #particle-count is \"0\", clears trails, resets planet angles).\n   - Speed range slider (<input type=\"range\" id=\"speed-slider\" min=\"0.2\" max=\"3.0\" step=\"0.1\" value=\"1.0\">) with live multiplier readout (#speed-value, e.g. \"1.0x\").\n   - Live readouts: FPS (#fps, integer), simulation time (#sim-time, e.g. \"0.0s\"), and active burst particle count (#particle-count, integer).\n6. Clicking anywhere on #canvas spawns a radial burst of glowing particles with velocity damping and fade-out, updating #particle-count.",
+  "verify_commands": [
+    "tandem:ui_test {\"steps\":[{\"color\":\"#060913\",\"min\":0.4},{\"expect\":\"moving\"},{\"text\":\"#fps\",\"match\":\"\\\\d\"},{\"text\":\"#sim-time\",\"match\":\"\\\\d\"},{\"click\":\"#canvas\"},{\"text\":\"#particle-count\",\"match\":\"[1-9]\"},{\"click\":\"#trails-btn\"},{\"text\":\"#trails-btn\",\"match\":\"OFF\"},{\"click\":\"#trails-btn\"},{\"text\":\"#trails-btn\",\"match\":\"ON\"},{\"click\":\"#play-pause-btn\"},{\"expect\":\"static\"},{\"click\":\"#play-pause-btn\"},{\"expect\":\"moving\"},{\"click\":\"#reset-btn\"},{\"text\":\"#particle-count\",\"match\":\"0\"}]}"
+  ],
+  "constraints": [
+    "Single self-contained index.html with zero external dependencies and valid HTML5/JS syntax.",
+    "Full-viewport #canvas (#060913 background, 100vw x 100vh, overflow: hidden) using requestAnimationFrame and devicePixelRatio scaling.",
+    "Central glowing star drawn with createRadialGradient and a subtle animated corona pulse.",
+    "At least 5 orbiting planets with distinct orbital radii, speeds, and colors.",
+    "At least 3 moons/satellites orbiting planets.",
+    "Fading orbital trails rendered behind orbiting planets when trails are enabled.",
+    "Twinkling background starfield containing at least 150 stars.",
+    "Glassmorphism HUD overlay positioned in a corner with backdrop-filter blur.",
+    "HUD includes #play-pause-btn that toggles between Pause and Play and pauses all canvas animation when paused.",
+    "HUD includes #trails-btn that toggles between Trails: ON and Trails: OFF.",
+    "HUD includes #reset-btn that resets simulation time, clears burst particles and trails, and resets planet angles.",
+    "HUD includes #speed-slider (min 0.2, max 3.0, step 0.1, value 1.0) and #speed-value multiplier readout.",
+    "HUD displays live integer FPS in #fps.",
+    "HUD displays live simulation time in seconds in #sim-time (e.g. 1.2s).",
+    "HUD displays active burst particle count in #particle-count.",
+    "Clicking #canvas spawns a radial burst of glowing particles with velocity damping and fade-out."
+  ],
+  "tasks": null
+}

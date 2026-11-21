@@ -52,6 +52,15 @@ def cloud_tokens(result: dict) -> int | None:
     return sum(c["usage"]["total_tokens"] for c in calls)
 
 
+def usage_parts(result: dict) -> dict:
+    """Input, output and cache-read tokens of an attempt: output usually costs several times more than input."""
+    parts = {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0}
+    for c in result.get("cloud_calls") or []:
+        for k in parts:
+            parts[k] += int((c.get("usage") or {}).get(k) or 0)
+    return parts
+
+
 def main() -> int:
     out = Path(sys.argv[1])
     attempts = []
@@ -74,6 +83,8 @@ def main() -> int:
                 "wall_seconds": r.get("wall_seconds"),
                 "cloud_tokens": cloud_tokens(r),
                 "local_tokens": r.get("local_tokens") or 0,
+                "cloud_parts": usage_parts(r),
+                "fallback_used": bool(r.get("fallback_used")),
                 "stored_e2e": r.get("e2e_success"),
             })
             a = attempts[-1]
@@ -92,6 +103,9 @@ def main() -> int:
             "cloud_tokens_total": cloud_total,
             "cloud_tokens_per_success": round(cloud_total / len(ok)) if ok and cloud_total is not None else None,
             "local_tokens_total": sum(a["local_tokens"] for a in rows),
+            "cloud_parts_total": {k: sum(a["cloud_parts"][k] for a in rows)
+                                  for k in ("input_tokens", "output_tokens", "cache_read_tokens")},
+            "fallbacks": sum(a["fallback_used"] for a in rows),
             "median_wall_seconds": round(statistics.median(a["wall_seconds"] for a in rows), 2),
             "wall_seconds_per_success": round(sum(a["wall_seconds"] for a in rows) / len(ok), 2) if ok else None,
         }

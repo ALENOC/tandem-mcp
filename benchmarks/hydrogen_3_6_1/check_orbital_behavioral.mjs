@@ -274,8 +274,9 @@ async function evaluateBehavioral(wsDir) {
     if (!sl) {
       requirements.speedSlider = { status: 'Fail', evidence: 'input[type="range"] not found' };
     } else {
+      // 2.5 s windows: a HUD that shows whole seconds still advances by 2-3 s at 1x and 7-8 s at 3x
       const m0 = await inspectPage();
-      await sleep(600);
+      await sleep(2500);
       const m1 = await inspectPage();
       const dt1x = (m1.timeSec ?? 0) - (m0.timeSec ?? 0);
 
@@ -288,11 +289,11 @@ async function evaluateBehavioral(wsDir) {
       })()`);
       await sleep(100);
       const m2 = await inspectPage();
-      await sleep(600);
+      await sleep(2500);
       const m3 = await inspectPage();
       const dt3x = (m3.timeSec ?? 0) - (m2.timeSec ?? 0);
       const readoutOk = m2.speedX !== null && Math.abs(m2.speedX - 3.0) < 0.05;
-      const fasterOk = dt1x > 0 && dt3x > dt1x * 1.5;
+      const fasterOk = dt1x > 0 && dt3x >= dt1x * 2.0;
 
       requirements.speedSlider = {
         status: (attrsOk && readoutOk && fasterOk) ? 'Pass' : 'Fail',

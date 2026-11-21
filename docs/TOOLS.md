@@ -30,11 +30,45 @@ Structured JSON extraction from a file against a JSON schema string.
 Classify a request before acting, with no LLM call. Returns JSON with a `route`: `deterministic` (exact parsing or counting with scripts), `direct_or_targeted` (the cloud model acts directly, or reads and edits a few lines) or `delegate_local` (local executor). Honors explicit `solo locale` / `local only` and `read only` constraints.
 - **Parameters:** `request` (required), `workspace` (required), `budget_seconds` (`null`).
 - **When it is called:** only when `TANDEM_AUTO_POLICY=mandatory_route`. With the default `first_turn` policy the orchestrator acts directly in turn 1 and may skip it.
+- **Local success rate:** before choosing `delegate_local` for a write, the router counts finished jobs of the same family (`web`, `python`, `other`) in the job store. With at least 3 of them and an estimated success rate `(verified + 1) / (n + 2)` below `TANDEM_MIN_LOCAL_SUCCESS` (default `0.6`), it routes direct: a failed delegation costs the plan and then the direct work, so the break-even is about 0.5. `solo locale` is always honoured.
 
 ### `delegate`
 Delegate a bounded coding task in `workspace` under a strict contract (`TANDEM_STRICT=1` default).
 - **Parameters:** `goal` (required), `workspace` (required), `verify_commands` (`[]`), `write_globs` (`[]`), `allow_run` (`[]`), `immutable` (`[]`), `context` (`""`), `max_steps` (`30`), `max_repairs` (`2`), `wait_seconds` (`240`), `model` (`""`), `baseline` (`true`), `max_seconds` (`0`), `checks_network` (`false`), `unjailed_checks` (`false`), `constraints` (`[]`), `read_globs` (`[]`).
 - **Contract rules (strict mode):** `goal` must have concrete targets (>= 8 words, >= 40 chars); `write_globs` must name specific files/folders (no `*` or `**/*`); `verify_commands` must include at least one command that can fail; `constraints` (<= 160 chars, one requirement each) are required for visual/UI files or text-only checks. `read_globs` optionally restricts `read_file`, `list_files`, and `search` (empty: all workspace files).
+- **Web pages:** a task that writes `.html` is refused when its checks only parse or lint the code (`node --check`, `py_compile`, `eslint`, ...). Add a behavioural check, usually a `tandem:ui_test` (below), or a script that runs the page.
+
+#### `tandem:ui_test`: UI acceptance tests in the contract
+A verify command of the form `tandem:ui_test {json}` is not run in the shell: Tandem runs the JSON scenario in headless Chromium. The scenario lives in the contract, so the executor cannot edit or weaken it, and the full scenario is shown to the executor while receipts for the orchestrator show only `tandem:ui_test (N steps)`.
+
+```json
+{"steps": [
+  {"expect": "moving"},
+  {"click": "text:^pause"}, {"expect": "static"},
+  {"click": "#reset"}, {"expect": "moving"},
+  {"input": "#speed", "value": "3"}, {"text": "#speedVal", "match": "^3\\.0x$"},
+  {"color": "#0b1020", "min": 0.3}, {"color": "#ffffff", "max": 0.05}
+]}
+```
+
+| Step | Meaning |
+| --- | --- |
+| `click` | CSS selector, or `text:<regex>` for a visible control by its label |
+| `input` + `value` | set a value and fire `input` and `change` |
+| `key` | press a key (`Space`, `ArrowLeft`, ...) |
+| `wait` | milliseconds |
+| `expect` | `moving` or `static`: the canvas (or the whole view) changes or not over 0.8 s |
+| `exists` | an element is present |
+| `text` + `match` | visible text matches a regex |
+| `js` | a JavaScript expression is truthy |
+| `color` + `min`/`max` | share of screenshot pixels near a color (`tol` 48, optional `region` `[x0, y0, x1, y1]` as fractions) |
+
+Top-level keys: `entry` (default `index.html`), `wait_ms` (default `1000`), `viewport` `[w, h]`, `allow_errors`. JavaScript errors fail the test unless `allow_errors` is `true`. A scenario must assert something, not only act. A failed step is reported to the executor with its observed value, so it is repaired locally at no cloud cost.
+
+#### Built-in web check
+Every web deliverable also gets `tandem:web_check`: startup with 0 JavaScript errors and, for animations, a moving canvas. Two generic rules are added:
+- **Reset restores the initial state:** when the page animates at load and Pause stops it, Pause followed by Reset must bring the motion back. A constraint saying that Reset keeps the paused state turns this rule off.
+- **No overexposure on dark themes:** when the goal or constraints ask for a dark, neon, night or space look, more than 5% near-white pixels in the central part of the canvas fails the check.
 
 ### `delegate_many`
 Run a dependency-ordered DAG of delegated tasks (`BatchTaskSpec` items).

@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Orbital Particle Simulation</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100vw; height: 100vh; overflow: hidden; background: #060913; }
+#canvas { display: block; width: 100vw; height: 100vh; background: #060913; }
+#hud {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  z-index: 10;
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  padding: 16px;
+  color: #e0e6f0;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: 13px;
+  min-width: 180px;
+  user-select: none;
+}
+#hud h3 { margin: 0 0 10px 0; font-size: 14px; font-weight: 600; color: #fff; }
+.hud-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.hud-row:last-child { margin-bottom: 0; }
+.hud-btn {
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.2);
+  color: #e0e6f0;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background 0.2s;
+}
+.hud-btn:hover { background: rgba(255,255,255,0.18); }
+.hud-label { font-size: 12px; color: #aab; }
+.hud-value { font-size: 12px; color: #fff; font-weight: 600; }
+#speed-slider { width: 100px; accent-color: #6ea8fe; }
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<div id="hud">
+  <h3>Orbital Sim</h3>
+  <div class="hud-row">
+    <button class="hud-btn" id="play-pause-btn">Pause</button>
+    <button class="hud-btn" id="trails-btn">Trails: ON</button>
+    <button class="hud-btn" id="reset-btn">Reset</button>
+  </div>
+  <div class="hud-row">
+    <span class="hud-label">Speed</span>
+    <input type="range" id="speed-slider" min="0.2" max="3.0" step="0.1" value="1.0">
+    <span class="hud-value" id="speed-value">1.0x</span>
+  </div>
+  <div class="hud-row">
+    <span class="hud-label">FPS</span>
+    <span class="hud-value" id="fps">0</span>
+  </div>
+  <div class="hud-row">
+    <span class="hud-label">Time</span>
+    <span class="hud-value" id="sim-time">0.0s</span>
+  </div>
+  <div class="hud-row">
+    <span class="hud-label">Particles</span>
+    <span class="hud-value" id="particle-count">0</span>
+  </div>
+</div>
+<script>
+(function() {
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+  const playPauseBtn = document.getElementById('play-pause-btn');
+  const trailsBtn = document.getElementById('trails-btn');
+  const resetBtn = document.getElementById('reset-btn');
+  const speedSlider = document.getElementById('speed-slider');
+  const speedValue = document.getElementById('speed-value');
+  const fpsEl = document.getElementById('fps');
+  const simTimeEl = document.getElementById('sim-time');
+  const particleCountEl = document.getElementById('particle-count');
+
+  let W, H, cx, cy;
+  let dpr = window.devicePixelRatio || 1;
+
+  function resize() {
+    dpr = window.devicePixelRatio || 1;
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    cx = W / 2;
+    cy = H / 2;
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  // State
+  let running = true;
+  let trailsOn = true;
+  let speedMult = 1.0;
+  let simTime = 0;
+  let lastTime = performance.now();
+  let fpsCounter = 0;
+  let fpsTime = 0;
+  let currentFps = 0;
+
+  // Starfield
+  const STAR_COUNT = 200;
+  let stars = [];
+  function initStars() {
+    stars = [];
+    for (let i = 0; i < STAR_COUNT; i++) {
+      stars.push({
+        x: Math.random() * W,
+        y: Math.random() * H,
+        r: Math.random() * 1.5 + 0.3,
+        phase: Math.random() * Math.PI * 2,
+        speed: Math.random() * 2 + 1
+      });
+    }
+  }
+  initStars();
+
+  // Planets
+  const planets = [
+    { radius: 60, speed: 0.8, color: '#4a9eff', size: 5, angle: 0, moons: [] },
+    { radius: 100, speed: 0.5, color: '#ff6b6b', size: 7, angle: 1.2, moons: [
+      { dist: 14, speed: 2.0, size: 2.5, angle: 0, color: '#ffa0a0' }
+    ]},
+    { radius: 150, speed: 0.35, color: '#51cf66', size: 6, angle: 2.5, moons: [
+      { dist: 16, speed: 1.8, size: 2, angle: 0.5, color: '#8ce99a' },
+      { dist: 24, speed: 1.2, size: 3, angle: 2.0, color: '#b2f2bb' }
+    ]},
+    { radius: 210, speed: 0.25, color: '#ffd43b', size: 8, angle: 3.8, moons: [
+      { dist: 18, speed: 1.5, size: 3, angle: 1.0, color: '#ffe066' }
+    ]},
+    { radius: 280, speed: 0.15, color: '#b197fc', size: 6, angle: 5.0, moons: [] },
+    { radius: 350, speed: 0.1, color: '#63e6be', size: 5, angle: 0.8, moons: [] }
+  ];
+
+  // Trails
+  let trails = [];
+  function initTrails() {
+    trails = planets.map(() => []);
+  }
+  initTrails();
+
+  // Burst particles
+  let burstParticles = [];
+
+  // Corona pulse
+  let coronaPhase = 0;
+
+  function resetSim() {
+    simTime = 0;
+    burstParticles = [];
+    initTrails();
+    planets.forEach(p => {
+      p.angle = 0;
+      p.moons.forEach(m => m.angle = 0);
+    });
+    coronaPhase = 0;
+    updateHUD();
+  }
+
+  function updateHUD() {
+    fpsEl.textContent = String(currentFps);
+    simTimeEl.textContent = simTime.toFixed(1) + 's';
+    particleCountEl.textContent = String(burstParticles.length);
+  }
+
+  // Click handler
+  canvas.addEventListener('click', function(e) {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const count = 20 + Math.floor(Math.random() * 15);
+    for (let i = 0; i < count; i++) {
+      const angle = (Math.PI * 2 * i) / count + Math.random() * 0.3;
+      const speed = 60 + Math.random() * 120;
+      burstParticles.push({
+        x: mx, y: my,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life: 1.0,
+        decay: 0.4 + Math.random() * 0.4,
+        size: 2 + Math.random() * 3,
+        color: `hsl(${Math.random() * 60 + 180}, 80%, 65%)`
+      });
+    }
+  });
+
+  // Buttons
+  playPauseBtn.addEventListener('click', function() {
+    running = !running;
+    playPauseBtn.textContent = running ? 'Pause' : 'Play';
+    if (running) {
+      lastTime = performance.now();
+    }
+  });
+
+  trailsBtn.addEventListener('click', function() {
+    trailsOn = !trailsOn;
+    trailsBtn.textContent = trailsOn ? 'Trails: ON' : 'Trails: OFF';
+    if (!trailsOn) {
+      initTrails();
+    }
+  });
+
+  resetBtn.addEventListener('click', function() {
+    resetSim();
+    if (!running) {
+      running = true;
+      playPauseBtn.textContent = 'Pause';
+      lastTime = performance.now();
+    }
+  });
+
+  speedSlider.addEventListener('input', function() {
+    speedMult = parseFloat(speedSlider.value);
+    speedValue.textContent = speedMult.toFixed(1) + 'x';
+  });
+
+  // Draw functions
+  function drawStarfield(t) {
+    for (let i = 0; i < stars.length; i++) {
+      const s = stars[i];
+      const alpha = 0.3 + 0.7 * (0.5 + 0.5 * Math.sin(t * s.speed + s.phase));
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255,255,255,${alpha.toFixed(2)})`;
+      ctx.fill();
+    }
+  }
+
+  function drawCentralStar(t) {
+    const pulse = 1 + 0.08 * Math.sin(coronaPhase);
+    const baseR = 30 * pulse;
+    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, baseR * 3);
+    grad.addColorStop(0, 'rgba(255, 255, 240, 1)');
+    grad.addColorStop(0.2, 'rgba(255, 220, 100, 0.8)');
+    grad.addColorStop(0.5, 'rgba(255, 160, 50, 0.3)');
+    grad.addColorStop(1, 'rgba(255, 100, 0, 0)');
+    ctx.beginPath();
+    ctx.arc(cx, cy, baseR * 3, 0, Math.PI * 2);
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // Core
+    const coreGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, baseR);
+    coreGrad.addColorStop(0, 'rgba(255,255,255,1)');
+    coreGrad.addColorStop(0.6, 'rgba(255,230,150,0.9)');
+    coreGrad.addColorStop(1, 'rgba(255,180,50,0.4)');
+    ctx.beginPath();
+    ctx.arc(cx, cy, baseR, 0, Math.PI * 2);
+    ctx.fillStyle = coreGrad;
+    ctx.fill();
+  }
+
+  function drawTrails() {
+    if (!trailsOn) return;
+    for (let i = 0; i < planets.length; i++) {
+      const trail = trails[i];
+      if (trail.length < 2) continue;
+      for (let j = 1; j < trail.length; j++) {
+        const alpha = (j / trail.length) * 0.5;
+        ctx.beginPath();
+        ctx.moveTo(trail[j - 1].x, trail[j - 1].y);
+        ctx.lineTo(trail[j].x, trail[j].y);
+        ctx.strokeStyle = planets[i].color + Math.floor(alpha * 255).toString(16).padStart(2, '0');
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+    }
+  }
+
+  function drawPlanets() {
+    for (let i = 0; i < planets.length; i++) {
+      const p = planets[i];
+      const px = cx + Math.cos(p.angle) * p.radius;
+      const py = cy + Math.sin(p.angle) * p.radius;
+
+      // Trail
+      if (trailsOn) {
+        const trail = trails[i];
+        trail.push({ x: px, y: py });
+        if (trail.length > 80) trail.shift();
+      }
+
+      // Planet glow
+      const glow = ctx.createRadialGradient(px, py, 0, px, py, p.size * 2.5);
+      glow.addColorStop(0, p.color);
+      glow.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.beginPath();
+      ctx.arc(px, py, p.size * 2.5, 0, Math.PI * 2);
+      ctx.fillStyle = glow;
+      ctx.fill();
+
+      // Planet body
+      ctx.beginPath();
+      ctx.arc(px, py, p.size, 0, Math.PI * 2);
+      ctx.fillStyle = p.color;
+      ctx.fill();
+
+      // Moons
+      for (let m = 0; m < p.moons.length; m++) {
+        const moon = p.moons[m];
+        const mx = px + Math.cos(moon.angle) * moon.dist;
+        const my = py + Math.sin(moon.angle) * moon.dist;
+        ctx.beginPath();
+        ctx.arc(mx, my, moon.size, 0, Math.PI * 2);
+        ctx.fillStyle = moon.color;
+        ctx.fill();
+      }
+    }
+  }
+
+  function drawBurstParticles() {
+    for (let i = burstParticles.length - 1; i >= 0; i--) {
+      const p = burstParticles[i];
+      if (p.life <= 0) {
+        burstParticles.splice(i, 1);
+        continue;
+      }
+      ctx.globalAlpha = p.life;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+      ctx.fillStyle = p.color;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  function update(dt) {
+    const sdt = dt * speedMult;
+    simTime += sdt;
+    coronaPhase += sdt * 2;
+
+    // Update planets
+    for (let i = 0; i < planets.length; i++) {
+      const p = planets[i];
+      p.angle += p.speed * sdt;
+      for (let m = 0; m < p.moons.length; m++) {
+        p.moons[m].angle += p.moons[m].speed * sdt;
+      }
+    }
+
+    // Update burst particles
+    for (let i = burstParticles.length - 1; i >= 0; i--) {
+      const p = burstParticles[i];
+      p.x += p.vx * sdt;
+      p.y += p.vy * sdt;
+      p.vx *= (1 - 0.5 * sdt);
+      p.vy *= (1 - 0.5 * sdt);
+      p.life -= p.decay * sdt;
+      if (p.life <= 0) {
+        burstParticles.splice(i, 1);
+      }
+    }
+  }
+
+  function render() {
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = '#060913';
+    ctx.fillRect(0, 0, W, H);
+
+    drawStarfield(simTime);
+    drawCentralStar(simTime);
+    drawTrails();
+    drawPlanets();
+    drawBurstParticles();
+  }
+
+  let animId = null;
+  let lastRendered = false;
+  function loop(now) {
+    animId = requestAnimationFrame(loop);
+    const dt = Math.min((now - lastTime) / 1000, 0.1);
+    lastTime = now;
+
+    // FPS
+    fpsCounter++;
+    fpsTime += dt;
+    if (fpsTime >= 1.0) {
+      currentFps = Math.round(fpsCounter / fpsTime);
+      fpsCounter = 0;
+      fpsTime = 0;
+    }
+
+    if (running) {
+      update(dt);
+      render();
+      lastRendered = true;
+    } else if (lastRendered) {
+      render();
+      lastRendered = false;
+    }
+
+    updateHUD();
+  }
+
+  lastTime = performance.now();
+  animId = requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

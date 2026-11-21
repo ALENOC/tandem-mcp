@@ -129,6 +129,13 @@ try:
        f'JSON fallback assistant message must remain valid JSON: {parsed_asst}')
     ok('[compacted write_file output: a.js' in j_view[3]['content'], f'JSON fallback tool output must compact: {j_view[3]}')
 
+    # 4. The executor copying a placeholder as file content is refused and the file stays intact
+    before = (proj / 'mod.py').read_text()
+    stub = '[compacted persisted write_file: mod.py, lines 1..40, sha256=deadbeef; use read_file(path, start, end) to inspect]'
+    res_stub = t.call('write_file', {'path': 'mod.py', 'content': stub})
+    ok(res_stub.startswith('ERROR: refused') and (proj / 'mod.py').read_text() == before,
+       f'stub write must be refused and leave the file unchanged: {res_stub}')
+
     print(f'{checks} checks, 0 failures')
 finally:
     os.environ.pop('TANDEM_WEB_CHECK', None)

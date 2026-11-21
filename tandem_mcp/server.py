@@ -30,7 +30,7 @@ except ImportError:
 
 from mcp.server.mcpserver import MCPServer
 
-from . import __version__, agent, digest, engine, router, sandbox, store
+from . import __version__, agent, digest, engine, router, sandbox, store, ui_test
 
 GUIDE = '''Hybrid orchestration (cloud model = architect & reviewer, local model = reader & bounded executor, free to use):
 - Reading & extraction: use digest_file (with grep when possible), digest_command, digest_many, and extract_from_file
@@ -42,7 +42,7 @@ GUIDE = '''Hybrid orchestration (cloud model = architect & reviewer, local model
   must cite a line for each, so a compound constraint hides requirements). A contract without them is refused.
   The quality of the result is set by the contract: state interfaces, exact numbers and formulas, not wishes.
   Design stays with you: write every design decision into the contract before the work (structure, layout, colors,
-  sizes, motion, edge cases). The executor takes the simplest reading of what is left unsaid, and after the work
+  sizes, motion, edge cases, what every control does). The executor takes the simplest reading of what is left unsaid, and after the work
   you can only check the result against what the contract says, not against a solution you do not have.
   For multi-file or >150-line features, split into small modular tasks via delegate_many (with `after` dependencies)
   rather than asking a small local model for one giant single-shot file.
@@ -57,7 +57,7 @@ LEAN_GUIDE = '''Tandem (lean): the local model reads and edits for you so your c
 - Never read a file yourself before calling Tandem: pass paths. Use digest_file (always with grep when you know a
   keyword), digest_many, digest_command, extract_from_file.
 - Coding: one delegate call with write_globs, verify_commands that fail until done, atomic constraints. Do not read
-  the sources first: name the files and the behaviour, the executor reads them.
+  the sources first: name files and behaviour. UI: exact hex colors and what each control does.
 - A receipt that says ACCEPTED is final: do not re-read files, re-run checks, inspect diffs or call anything else.
 - If it says running, call job_status once more (it waits). Use job_continue(hint) only after FAIL, job_rollback to undo.
 - Never debug Tandem itself (processes, job folders, ledgers). Report errors to the user instead.'''
@@ -407,7 +407,7 @@ def _receipt(job):
     for c in data.get('checks', []):
         was = before.get(c['command'])
         note = '' if was is None else ('  (failed before the job)' if was != 0 else '  (already passed before the job)')
-        lines.append(f'  check {"PASS" if c["exit"] == 0 else "FAIL"}  $ {c["command"]}{note}')
+        lines.append(f'  check {"PASS" if c["exit"] == 0 else "FAIL"}  $ {ui_test.label(c["command"])}{note}')
         if c['exit'] != 0:
             lines.append('    ' + c['tail'][-500:].replace('\n', '\n    '))
     if data.get('constraints'):
@@ -480,6 +480,13 @@ _SHELL_ONLY = {'for', 'done', 'fi', 'case', 'esac', '}', ')'}
 _PRESENCE = {'grep', 'egrep', 'fgrep', 'rg', 'test', '[', 'ls', 'wc', 'stat', 'find', 'cat', 'head', 'tail'}
 _NO_PROOF = {'true', ':', 'echo', 'printf', 'exit', 'pwd', 'sleep', 'date'}
 _VISUAL = re.compile(r'\.(?:html?|css|scss|sass|less|svg|vue|svelte|jsx|tsx)$', re.I)
+_PAGE = re.compile(r'\.html?$', re.I)
+# checks that only parse or lint the code: they never run the page, so they cannot prove how it behaves
+_SYNTAX_ONLY = re.compile(r'(?:\b(?:node|deno|bun)\s+(?:--check|-c)\b|py_compile|compileall|\btsc\b|html-?validate|htmlhint|'
+                          r'\beslint\b|\bprettier\b|\bstylelint\b|\bjshint\b|\bxmllint\b)', re.I)
+_UI_TEST_HINT = ('a tandem:ui_test check, e.g. tandem:ui_test {"steps":[{"expect":"moving"},{"click":"text:^pause"},'
+                 '{"expect":"static"},{"click":"#reset"},{"expect":"moving"},{"color":"#0b1020","min":0.3}]}. '
+                 'Steps: click, input+value, key, wait, expect moving|static, exists, text+match, js, color+min|max')
 
 
 def strict():
@@ -529,11 +536,24 @@ def _strict_contract(text, constraints, verify_commands, write_globs):
         raise ValueError('contract refused: verify_commands is required, give at least one command that fails '
                          'until the work is done (a test, a build, a script that runs the code)')
     names = []
+    ui_tests = [c for c in checks if ui_test.is_ui_test(c)]
+    for check in ui_tests:
+        try:
+            ui_test.parse(check)
+        except ValueError as exc:
+            raise ValueError(f'contract refused: {exc}') from None
     for check in checks:
+        if ui_test.is_ui_test(check):
+            names.append('tandem:ui_test')
+            continue
         ran = _commands_of(check)
         if ran and all(n in _NO_PROOF for n in ran):
             raise ValueError(f'contract refused: the check {check[:60]!r} cannot fail, so it proves nothing')
         names += ran
+    if any(_PAGE.search(g) for g in globs) and not ui_tests and all(
+            _SYNTAX_ONLY.search(c) or all(n in _PRESENCE or n in _NO_PROOF for n in _commands_of(c)) for c in checks):
+        raise ValueError('contract refused: this task writes a web page but its checks only parse the code, so nothing '
+                         'proves how the page behaves. Add the acceptance test the result must pass: ' + _UI_TEST_HINT)
     if any(_VISUAL.search(g) for g in globs) and not constraints:
         raise ValueError('contract refused: this task writes files whose look no command can prove, so constraints are '
                          'required: write your design decisions (layout, colors, sizes, motion, behaviour) as constraints. '
@@ -586,6 +606,9 @@ def delegate(goal: str, workspace: str, verify_commands: list[str] = [], write_g
              max_seconds: int = 0, checks_network: bool = False, unjailed_checks: bool = False,
              constraints: list[str] = [], read_globs: list[str] = []) -> str:
     """Give the local executor a bounded task in a project and get a receipt.
+
+    A web page needs a behavioural acceptance check: tandem:ui_test {"steps": [...]} runs a JSON
+    scenario in Chromium (click, input, key, wait, expect moving|static, exists, text, js, color).
 
     The contract is strict (TANDEM_STRICT=0 relaxes it): a call is refused unless it gives a goal
     with concrete targets, write_globs that name files, and verify_commands that can fail. When the
@@ -1058,14 +1081,20 @@ def _lean_receipt(job):
     if data.get('accepted') is not True:
         why = _proven(data)
         if why:
-            return _receipt(job) + f'\nNOT ACCEPTED automatically ({why}).'
+            after = ''
+            if data.get('state') != 'verified' and (data.get('hints') or 0) >= 1:
+                after = (f'\nIt already failed after a hint: do not send it on again. job_rollback({job!r}) if the '
+                         'files are worse than before, then do the work yourself.')
+            return _receipt(job) + f'\nNOT ACCEPTED automatically ({why}).' + after
         data['accepted'], data['auto_accepted'] = True, True
         store.write_job(job, data)
         store.log('feedback', kind='feedback', job=job, accepted=True, auto=True, state='verified',
                   model=data.get('used') or data.get('model') or 'default')
     files = ', '.join(f'{rel} +{add} -{rem}' for rel, _, add, rem in data.get('changes', []))
-    checks = ', '.join(c['command'] for c in data.get('checks', []))
-    note = ' Render it to judge the look.' if any(_VISUAL.search(r[0]) for r in data.get('changes') or []) else ''
+    checks = ', '.join(ui_test.label(c['command']) for c in data.get('checks', []))
+    # a passed ui_test already proved behaviour and colors in a browser: no extra render step is asked for
+    ui_proven = any(ui_test.is_ui_test(c['command']) and c['exit'] == 0 for c in data.get('checks', []))
+    note = ' Render it to judge the look.' if (not ui_proven and any(_VISUAL.search(r[0]) for r in data.get('changes') or [])) else ''
     return sandbox.redact_secrets(
         f'job {job}: ACCEPTED (verified: checks failed before and pass now: {checks}; '
         f'{len(data.get("constraints") or [])} constraints cited). Changed: {files}.{note} '
@@ -1183,7 +1212,9 @@ _LEAN_TOOLS = {
     'delegate_contract': (lean_delegate_contract, 'Run a trusted workspace JSON contract using its caller-supplied SHA-256. '
                                                   'Use when the caller provides a known digest. Poll the same job if running.'),
     'delegate': (lean_delegate, 'Local executor does a bounded coding task. write_globs: files it may write. '
-                                'verify_commands: checks that fail until done. constraints: one requirement each. '
+                                'verify_commands: checks that fail until done; for a web page add tandem:ui_test '
+                                '{"steps":[{"click":"#id"},{"expect":"moving|static"},{"text":"#fps","match":"\\d"},'
+                                '{"color":"#hex","min":0.3}]} (run in Chromium). constraints: one requirement each. '
                                 'allow_run: regexes of commands it may run (e.g. ^python3\\b). Returns ACCEPTED, '
                                 'running, or a failure receipt.'),
     'delegate_many': (lean_delegate_many, 'Several delegate tasks: list of {name, goal, write_globs, verify_commands, '

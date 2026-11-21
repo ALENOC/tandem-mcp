@@ -1,5 +1,26 @@
 # Changelog
 
+## 3.8.0
+
+### Quality floor for delegated work
+- `tandem:ui_test {json}`: a declarative UI acceptance test that the orchestrator writes into `verify_commands`. Tandem runs it in headless Chromium (click, input, key, wait, expect moving or static, exists, text, js, color share). It lives in the contract, so the executor cannot edit it; each failed step goes back to the executor with its observed value and is repaired locally. Receipts for the orchestrator show it as `tandem:ui_test (N steps)`.
+- Strict contracts refuse a task that writes an `.html` page when its checks only parse or lint the code.
+- Built-in web check: Pause followed by Reset must bring back the initial running state (unless a constraint says Reset keeps the pause), and a dark or neon page fails when more than 5% of the central canvas is near-white. The Play button is now found when its label starts with a symbol (`▶ Play`).
+- `host_runner.run_host_managed(cloud_fallback_fn=...)`: when the local result still does not verify after the review, the cloud does the work itself. After a review, the host now waits for the continued job before deciding.
+- A failure receipt after a `job_continue` hint tells the orchestrator to stop sending the job on and do the work itself.
+
+### Routing
+- `auto_route` estimates the local success rate of a task family (`web`, `python`, `other`) from finished jobs and routes direct when it is below `TANDEM_MIN_LOCAL_SUCCESS` (default `0.6`, used after 3 jobs).
+- The lean guide asks for exact colors and the effect of every control in UI contracts.
+
+### Fixes
+- `write_file` refuses the context placeholder of an earlier write (`[compacted persisted write_file: ...]`) as file content. The executor had copied it into a source file in 2 benchmark runs.
+- The wheel now ships the browser scripts (`*.mjs`), so the web check works after `pip install`.
+
+### Benchmarks
+- 3D Portal: 3/3 delegated runs passed at 41,149 cloud tokens per success, against 74,372 direct (-44.7%). Orbital: 2/3 at 38,800 against 35,488 (+9.3%), because writing the acceptance test costs more than it saves on a small page.
+- The Orbital speed check uses 2.5 s windows, so a HUD showing whole seconds is measured correctly. `reeval_release.py` reports input, output and cache-read tokens and the number of fallbacks. `run_from_prompt_pair.py --no-fallback` measures the local path alone.
+
 ## 3.7.0
 
 ### Routing and host-managed execution

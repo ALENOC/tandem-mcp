@@ -3,6 +3,8 @@
 2. Host-managed local wait (0 cloud calls): keeps worker alive, monitors progress, enforces timeout/cancellation,
    and supports reconnecting to an existing job_id without starting duplicates.
 3. Conditional cloud review (0 or 1 cloud call): only wakes the cloud if a failure or contract decision requires it.
+4. Optional direct fallback (0 or 1 cloud call): when the local result still does not verify, the cloud does the
+   work itself, so the delivered quality never falls below the direct path.
 """
 from __future__ import annotations
 
@@ -17,7 +19,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
-from . import agent, server, store
+from . import agent, server, store, ui_test
 
 
 @dataclass
@@ -34,6 +36,7 @@ class HostRunResult:
     timed_out: bool = False
     cancelled: bool = False
     error: str = ""
+    fallback_used: bool = False
 
     @property
     def cloud_calls_during_wait(self) -> int:
@@ -125,6 +128,8 @@ def run_host_managed(
     timeout_s: float = 2400.0,
     stop_event: threading.Event | None = None,
     review_on_failure: bool = True,
+    cloud_fallback_fn: Callable[[str, str], dict[str, Any]] | None = None,
+    review_timeout_s: float = 0.0,
 ) -> HostRunResult:
     """Execute or re-attach to a Tandem job with zero cloud calls during the local wait phase."""
     t0 = time.monotonic()
@@ -217,10 +222,28 @@ def run_host_managed(
     ):
         rev_res = cloud_reviewer_fn(job_id, receipt)
         cloud_calls.append({"phase": "review", **rev_res})
+        # the review may send the job on (job_continue): wait for that run locally, still with 0 cloud calls
+        rev_deadline = time.monotonic() + (review_timeout_s if review_timeout_s > 0 else max(60.0, float(timeout_s) / 2))
+        while True:
+            data = store.read_job(job_id) or {}
+            if data.get("state") != "running" and not _job_alive(job_id):
+                break
+            if (stop_event is not None and stop_event.is_set()) or time.monotonic() >= rev_deadline:
+                _stop_job_tree(job_id)
+                break
+            wait_polls += 1
+            time.sleep(poll_interval_s)
         data = store.read_job(job_id) or {}
         state = data.get("state", state)
         receipt = _build_receipt(job_id)
         accepted = "ACCEPTED (" in receipt or (data.get("accepted") is True)
+
+    # Phase 4: the local result still does not verify, so the cloud does the work itself (quality floor = direct)
+    fallback_used = False
+    if cloud_fallback_fn is not None and not cancelled and state != "verified":
+        fb_res = cloud_fallback_fn(job_id, receipt)
+        cloud_calls.append({"phase": "fallback", **fb_res})
+        fallback_used = True
 
     return HostRunResult(
         mode=mode,
@@ -234,6 +257,7 @@ def run_host_managed(
         local_tokens=_total_job_tokens(job_id),
         timed_out=timed_out,
         cancelled=cancelled,
+        fallback_used=fallback_used,
     )
 
 
@@ -402,7 +426,7 @@ def _format_host_summary(job_id: str, elapsed: float, timed_out: bool) -> str:
         if checks:
             lines.append("CHECKS_SUMMARY:")
             for c in checks:
-                lines.append(f"  - exit={c.get('exit')} cmd={c.get('command')}")
+                lines.append(f"  - exit={c.get('exit')} cmd={ui_test.label(c.get('command'))}")
         elif data.get("kind") == "batch":
             lines.append("BATCH_TASKS:")
             for row in data.get("tasks", []):
@@ -446,15 +470,15 @@ def _format_host_summary(job_id: str, elapsed: float, timed_out: bool) -> str:
     if checks:
         lines.append("CHECKS_SUMMARY:")
         for c in passed_checks:
-            lines.append(f"  - exit=0 cmd={c.get('command')}")
+            lines.append(f"  - exit=0 cmd={ui_test.label(c.get('command'))}")
         for c in not_eval_checks:
             mp = c.get("missing_prerequisite") or "prerequisite missing"
-            lines.append(f"  - not_evaluated (exit={c.get('exit')}) cmd={c.get('command')} ({mp})")
+            lines.append(f"  - not_evaluated (exit={c.get('exit')}) cmd={ui_test.label(c.get('command'))} ({mp})")
         for c in skipped_checks:
-            lines.append(f"  - skipped cmd={c.get('command')}")
+            lines.append(f"  - skipped cmd={ui_test.label(c.get('command'))}")
         for c in failed_checks:
             hist_note = " [historical exit=2: outcome_unknown_prereq_vs_defect]" if ("outcome" not in c and c.get("exit") == 2) else ""
-            lines.append(f"  - exit={c.get('exit')} cmd={c.get('command')}{hist_note}")
+            lines.append(f"  - exit={c.get('exit')} cmd={ui_test.label(c.get('command'))}{hist_note}")
             if c.get("tail"):
                 lines.append(f"    tail: {str(c.get('tail')).strip()[-300:]}")
     else:

@@ -1,0 +1,100 @@
+{
+  "run_id": "20261121-110154_gen_orbital_from_prompt_uitest_r3",
+  "task": "gen_orbital",
+  "timestamp": "2026-11-21T10:16:08.228476+00:00",
+  "results": [
+    {
+      "mode": "tandem_from_prompt",
+      "task_id": "gen_orbital",
+      "mcp_installation": "/home/ale/Projects/tandem-mcp/tandem_mcp/__init__.py",
+      "job_id": "20261121-110223-d2d556",
+      "job_state": "verified",
+      "completed": true,
+      "timed_out": false,
+      "local_timed_out": false,
+      "artifact_valid": false,
+      "visual_passed": true,
+      "fallback_used": false,
+      "e2e_success": false,
+      "eval_reason": "speedSlider:Fail",
+      "wall_seconds": 841.81,
+      "first_runtime_pass_s": 811.94,
+      "repairs": 1,
+      "rejected_run_commands": 0,
+      "local_calls": 9,
+      "wait_polls": 405,
+      "cloud_calls": [
+        {
+          "phase": "plan",
+          "status": "SUCCESS",
+          "duration_seconds": 28.797367514,
+          "num_turns": 1,
+          "conversation_id": "155aaa42-6aef-42a3-92bf-c154791c6096",
+          "usage": {
+            "input_tokens": 20742,
+            "output_tokens": 4218,
+            "thinking_tokens": 2292,
+            "cache_read_tokens": 38653,
+            "total_tokens": 24960
+          },
+          "response": "Delegated to the local Tandem executor.\n\n- **Job ID:** `20261121-110223-d2d556` (running, step 0)\n"
+        }
+      ],
+      "cloud_calls_during_wait": 0,
+      "local_tokens": 67591,
+      "behavioral": {
+        "passed": false,
+        "requirements": {
+          "viewportCanvas": {
+            "status": "Pass",
+            "evidence": "1280x800 (backing 1280x800)"
+          },
+          "timeAdvances": {
+            "status": "Pass",
+            "evidence": "t0=0s -> t1=1s after 700ms; canvas=6d24263c:1940 -> cdfff533:1724"
+          },
+          "pauseStopsTime": {
+            "status": "Pass",
+            "evidence": "clicked \"Pause\"; t=1s -> 1s over 700ms; labelChanged=true"
+          },
+          "resumeRestartsTime": {
+            "status": "Pass",
+            "evidence": "clicked \"Play\"; t=1s -> 2s over 700ms"
+          },
+          "speedSlider": {
+            "status": "Fail",
+            "evidence": "attrsOk=true (min=0.2,max=3.0,step=0.1,val=1.0); readout=3x; dt@1x=0.00s vs dt@3x=2.00s"
+          },
+          "trailsToggle": {
+            "status": "Pass",
+            "evidence": "label \"Trails: ON\" -> \"Trails: OFF\"; orbitalNonBg@320x200: ON=325 vs OFF=301 (drop=24, min=15)"
+          },
+          "clickSpawnsBurst": {
+            "status": "Pass",
+            "evidence": "particles before=0, afterClick=38, after2.2s=0"
+          },
+          "resetRestoresInitialState": {
+            "status": "Pass",
+            "evidence": "clicked \"Reset\"; t=4s -> 0s; particles=0"
+          },
+          "hudFps": {
+            "status": "Pass",
+            "evidence": "fps=60"
+          },
+          "noJsErrors": {
+            "status": "Pass",
+            "evidence": "jsErrors=0, consoleErrors=0"
+          },
+          "starDistribution": {
+            "status": "Pass",
+            "evidence": "occupiedCells=16/16 (min 12), bgStars=undefined, dots=undefined"
+          }
+        },
+        "jsErrors": [],
+        "consoleErrors": []
+      },
+      "generated_contract_path": "/home/ale/Projects/tandem-mcp/benchmarks/hydrogen_3_6_1/runs/20261121-110154_gen_orbital_from_prompt_uitest_r3/gen_orbital__generated_contract.json",
+      "workspace": "/home/ale/Projects/tandem-mcp/benchmarks/hydrogen_3_6_1/runs/20261121-110154_gen_orbital_from_prompt_uitest_r3/workspaces/gen_orbital__tandem_from_prompt"
+    }
+  ]
+}

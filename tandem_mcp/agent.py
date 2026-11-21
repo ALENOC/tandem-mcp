@@ -30,7 +30,7 @@ import time
 import zlib
 from pathlib import Path
 
-from . import engine, sandbox, store, web_check
+from . import engine, sandbox, store, ui_test, web_check
 
 TOOLS = [
     ('list_files', 'List files of the workspace that match a glob such as "src/*.c" or "*.md".',
@@ -419,6 +419,8 @@ def _compact_writes_enabled():
     return os.environ.get('TANDEM_COMPACT_WRITES', '1').strip().lower() not in ('0', 'false', 'no', 'off')
 
 
+_COMPACT_STUB_RE = re.compile(r'^\[compacted (?:persisted write_file|write_file output)\b')
+
 def _compact_messages_view(messages, keep_recent=2):
     """Build a reversible compacted copy of messages for model inference, preserving original audit history."""
     if not _compact_writes_enabled() or len(messages) <= keep_recent:
@@ -711,9 +713,14 @@ class Task:
                 p = self.ws.writable(args['path'])
                 if p.is_dir():
                     return f'ERROR: {args["path"]} is a folder'
+                body_text = str(args['content'])
+                if _COMPACT_STUB_RE.match(body_text.strip()):
+                    # the executor copied the placeholder that stands for an earlier write in its context
+                    return (f'ERROR: refused, that text is only a placeholder for an earlier write of {args["path"]}, not '
+                            f'file content. The file on disk is unchanged. Write the full real content, or use '
+                            f'replace_in_file after read_file({args["path"]!r}).')
                 self._remember(p)
                 p.parent.mkdir(parents=True, exist_ok=True)
-                body_text = str(args['content'])
                 p.write_text(body_text)
                 lines = body_text.splitlines()
                 header = f'written, {len(lines)} lines'
@@ -1030,6 +1037,17 @@ class Task:
                     os.close(fd)
                     extra_env['TANDEM_PROOF_FILE'] = proof_path
                 try:
+                    if ui_test.is_ui_test(command):
+                        # the orchestrator's UI acceptance test: run by Tandem in Chromium, never in the shell
+                        code, out = ui_test.run(command, self.ws.root, timeout_s=min(120.0, check_timeout))
+                        entry = {'command': command, 'exit': code,
+                                 'outcome': 'passed' if code == 0 else ('not_evaluated' if code == 2 else 'failed'),
+                                 'tail': out.strip()[-1500:]}
+                        if code == 2:
+                            entry['not_evaluated'] = True
+                            entry['missing_prerequisite'] = out.strip()[:240]
+                        results.append(entry)
+                        continue
                     code, out = sandbox.run(
                         command,
                         self.ws.root,
@@ -1541,7 +1559,7 @@ class Task:
 
     def opening(self):
         """System and task messages; runs the checks once to know where the work starts."""
-        self.ws.protect(self.verify)
+        self.ws.protect([c for c in self.verify if not ui_test.is_ui_test(c)])
         self.take_guard()
         self.take_snapshot()
         self.used = self.model or engine.default_model('delegate')
@@ -1985,7 +2003,7 @@ def resume(job, hint, extra_steps=15):
         task.restored, task.touched = data.get('restored', []), set(data.get('touched', []))
         task.created_dirs = list(data.get('created_dirs', []))
         task.used = data.get('used') or task.model or engine.default_model('delegate')
-        ws.protect(task.verify)
+        ws.protect([c for c in task.verify if not ui_test.is_ui_test(c)])
         task.take_guard()
         task.take_snapshot()
         task.native = data.get('protocol') != 'JSON replies'

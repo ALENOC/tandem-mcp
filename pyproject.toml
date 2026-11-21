@@ -22,5 +22,8 @@ tandem-mcp = "tandem_mcp.server:main"
 [tool.setuptools]
 packages = ["tandem_mcp"]
 
+[tool.setuptools.package-data]
+tandem_mcp = ["*.mjs"]
+
 [tool.setuptools.dynamic]
 version = { attr = "tandem_mcp.__version__" }

@@ -46,3 +46,11 @@ jobs:
         run: python tests/test_b05_b06.py
       - name: Store concurrency, workspace lease, and cancellation tests (P02, P03, P04, no model)
         run: python tests/test_p02_p03_p04.py
+      - name: UI acceptance tests, web controls and contract rule for pages (no model)
+        run: |
+          python tests/test_ui_test.py
+          python tests/test_web_controls.py
+      - name: Direct fallback and local success routing (no model)
+        run: |
+          python tests/test_fallback.py
+          python tests/test_router_success.py

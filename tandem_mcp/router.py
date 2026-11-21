@@ -57,6 +57,50 @@ _DIAG_OR_EXPLAIN_RE = re.compile(
 _FILE_MENTION_RE = re.compile(r"\b([A-Za-z0-9_./-]+\.(?:py|js|mjs|ts|html|htm|json|jsonl|toml|yaml|yml|csv|log|md|txt))\b")
 
 
+# Delegation pays only when the local result usually verifies: a failure costs the plan and then the direct work.
+# With plan ~= 0.5 x direct, the break-even local success rate is 0.5; TANDEM_MIN_LOCAL_SUCCESS adds a margin.
+_FAILED_STATES = {"checks_failed", "blocked", "out_of_time", "error", "unverified", "not_evaluated"}
+_MIN_HISTORY = 3
+
+
+def task_family(paths: list[str] | tuple[str, ...]) -> str:
+    """Coarse family of a task from the files it writes: web, python or other."""
+    low = [str(p).lower() for p in paths or []]
+    if any(p.endswith((".html", ".htm", ".css", ".js", ".mjs", ".jsx", ".tsx", ".vue", ".svelte")) for p in low):
+        return "web"
+    if any(p.endswith(".py") for p in low):
+        return "python"
+    return "other"
+
+
+def min_local_success() -> float:
+    try:
+        return max(0.0, min(1.0, float(os.environ.get("TANDEM_MIN_LOCAL_SUCCESS", "0.6"))))
+    except ValueError:
+        return 0.6
+
+
+def local_success_estimate(family: str) -> dict[str, Any]:
+    """Share of finished delegate jobs of this family that verified and were not rejected, from the job store.
+
+    Returns {"family", "n", "verified", "p"}; p uses a uniform prior ((verified + 1) / (n + 2))."""
+    verified = n = 0
+    if store.JOBS.exists():
+        for folder in store.JOBS.iterdir():
+            data = store.read_json(folder / "job.json", None) if folder.is_dir() else None
+            if not isinstance(data, dict) or data.get("kind") == "batch":
+                continue
+            if task_family(data.get("write_globs") or []) != family:
+                continue
+            state = data.get("state")
+            if state == "verified" and data.get("accepted") is not False:
+                verified += 1
+                n += 1
+            elif state in _FAILED_STATES or (state == "verified" and data.get("accepted") is False):
+                n += 1
+    return {"family": family, "n": n, "verified": verified, "p": round((verified + 1) / (n + 2), 3)}
+
+
 def inspect_workspace(workspace: str | Path, request: str) -> dict[str, Any]:
     """Cheaply scan workspace metadata (sizes, extensions, test presence) without reading file contents."""
     root = Path(workspace).resolve()
@@ -180,6 +224,17 @@ def classify_request(
             recommended_tools = ["read_file", "grep"]
             reason = f"Small read/diagnosis volume (relevant_bytes={relevant_bytes} < 20KB) or tight budget ({'absent' if budget_absent else f'{budget_seconds}s'}); direct targeted read avoids local latency."
 
+    local_stats = None
+    if route == "delegate_local" and is_write and not local_only:
+        local_stats = local_success_estimate(task_family(ws_info.get("mentioned_files") or (
+            ["index.html"] if ws_info.get("has_web") or re.search(r"\b(html5?|canvas|web\s*app|index\.html)\b", req, re.I) else [])))
+        if local_stats["n"] >= _MIN_HISTORY and local_stats["p"] < min_local_success():
+            route = "direct_or_targeted"
+            recommended_tools = ["read_file", "edit_file"]
+            reason = (f"Local executor verified {local_stats['verified']}/{local_stats['n']} earlier {local_stats['family']} jobs "
+                      f"(estimate {local_stats['p']:.2f} < {min_local_success():.2f}): a failed delegation costs the plan plus "
+                      f"the direct work, so direct is cheaper here.")
+
     decision = {
         "route": route,
         "recommended_tools": recommended_tools,
@@ -198,6 +253,7 @@ def classify_request(
             "budget_seconds": budget_seconds,
             "budget_absent": budget_absent,
             "prefer_cloud_savings": prefer_cloud_savings,
+            "local_success": local_stats,
             **ws_info,
         },
     }

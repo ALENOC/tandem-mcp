@@ -16,6 +16,9 @@ _ANIM_RE = re.compile(
     r"\b(animat\w*|requestAnimationFrame|orbit\w*|twinkl\w*|particle\w*|rotat\w*|canvas|3d|portal|fps)\b",
     re.I,
 )
+# A contract may keep the paused state on Reset on purpose: then the Reset check is skipped.
+_RESET_KEEPS_PAUSE_RE = re.compile(r"reset[^.]{0,80}\b(keep|keeps|preserv\w*|stays?|remain\w*)\b[^.]{0,40}paus", re.I)
+_DARK_RE = re.compile(r"\b(dark|neon|night|space|cyberpunk|synthwave)\b", re.I)
 
 
 def enabled() -> bool:
@@ -56,7 +59,9 @@ def spec_for(goal: str, write_globs: list[str], constraints: list[str] | None = 
     preferred_entry = "index.html" if ("index.html" in globs or not html_globs) else html_globs[0]
     text = f"{goal or ''}\n" + "\n".join(constraints or [])
     require_anim = bool(_ANIM_RE.search(text))
-    return {"preferred_entry": preferred_entry, "html_globs": html_globs, "require_animation": require_anim}
+    return {"preferred_entry": preferred_entry, "html_globs": html_globs, "require_animation": require_anim,
+            "dark_theme": bool(_DARK_RE.search(text)),
+            "reset_check": not _RESET_KEEPS_PAUSE_RE.search(text)}
 
 
 def _resolve_entry(ws_root: Path, spec: dict[str, Any]) -> str | None:
@@ -94,7 +99,8 @@ def run(ws_root: str | Path, spec: dict[str, Any], timeout_s: float = 45.0) -> t
 
     try:
         proc = subprocess.run(
-            [node_bin, str(_PROBE_SCRIPT), str(root), entry, chrome_bin, "1" if require_anim else "0"],
+            [node_bin, str(_PROBE_SCRIPT), str(root), entry, chrome_bin, "1" if require_anim else "0",
+             "1" if spec.get("dark_theme") else "0", "0" if spec.get("reset_check") is False else "1"],
             capture_output=True,
             text=True,
             timeout=max(10.0, float(timeout_s)),
@@ -112,7 +118,8 @@ def run(ws_root: str | Path, spec: dict[str, Any], timeout_s: float = 45.0) -> t
 
     status = data.get("status")
     if proc.returncode == 0 and status == "passed":
-        return 0, f"OK: browser verified {entry} with 0 JS errors (canvas animated={data.get('animated')})."
+        return 0, (f"OK: browser verified {entry} with 0 JS errors (canvas animated={data.get('animated')}, "
+                   f"reset={(data.get('resetCheck') or {}).get('status')}, exposure={(data.get('exposure') or {}).get('status')}).")
     if status == "not_evaluated" or proc.returncode == 2:
         reason = data.get("reason") or (proc.stderr or "").strip() or "browser check unavailable"
         return 2, f"not_evaluated: {reason}"
@@ -132,6 +139,10 @@ def run(ws_root: str | Path, spec: dict[str, Any], timeout_s: float = 45.0) -> t
             if obs else ""
         )
         lines.append(f"  - canvas pixels remained static across 3 sampled frames{obs_str}.")
+    for key in ("resetCheck", "exposure"):
+        sub = data.get(key) or {}
+        if sub.get("status") == "failed":
+            lines.append(f"  - {sub.get('reason')}.")
     if len(lines) == 1:
         tail = (proc.stderr or proc.stdout or "").strip()[-300:]
         lines.append(f"  - probe exited {proc.returncode}: {tail}")

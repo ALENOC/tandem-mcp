@@ -1,0 +1,89 @@
+{
+  "run_id": "20261121-111609_gen_portal_from_prompt_uitest_r1",
+  "task": "gen_portal",
+  "timestamp": "2026-11-21T11:17:38.484240+00:00",
+  "results": [
+    {
+      "mode": "tandem_from_prompt",
+      "task_id": "gen_portal",
+      "mcp_installation": "/home/ale/Projects/tandem-mcp/tandem_mcp/__init__.py",
+      "job_id": "20261121-111631-88f7c1",
+      "job_state": "timeout",
+      "completed": false,
+      "timed_out": false,
+      "local_timed_out": true,
+      "artifact_valid": true,
+      "visual_passed": true,
+      "fallback_used": true,
+      "e2e_success": true,
+      "eval_reason": "startup=passed, motion=passed, interactions=passed, visual=passed",
+      "wall_seconds": 3681.34,
+      "first_runtime_pass_s": 3177.2,
+      "repairs": 1,
+      "rejected_run_commands": 2,
+      "local_calls": 25,
+      "wait_polls": 1787,
+      "cloud_calls": [
+        {
+          "phase": "plan",
+          "status": "SUCCESS",
+          "duration_seconds": 23.103895555,
+          "num_turns": 1,
+          "conversation_id": "3dac73f5-e291-42c8-98fe-721866492f8a",
+          "usage": {
+            "input_tokens": 19330,
+            "output_tokens": 4020,
+            "thinking_tokens": 2938,
+            "cache_read_tokens": 24155,
+            "total_tokens": 23350
+          },
+          "response": "Delegated the 3D neon portal web demo build to Tandem MCP.\n\nRunning job ID: `20261121-111631-88f7c1`\n"
+        },
+        {
+          "phase": "fallback",
+          "status": "SUCCESS",
+          "duration_seconds": 71.24,
+          "usage": {
+            "input_tokens": 41603,
+            "output_tokens": 10092,
+            "thinking_tokens": 5366,
+            "cache_read_tokens": 113620,
+            "total_tokens": 51695
+          },
+          "conversation_id": "20026d32-8e87-4328-9cac-8e7b650ae850"
+        }
+      ],
+      "cloud_calls_during_wait": 0,
+      "local_tokens": 407637,
+      "behavioral": {
+        "functional_passed": true,
+        "visual_passed": true,
+        "startup": {
+          "status": "passed",
+          "evidence": "0 runtime/console errors"
+        },
+        "canvasMotion": {
+          "status": "passed",
+          "evidence": "size=1280x800, diff=30.703, hash=87b09ea1->dc0aa8be"
+        },
+        "interactions": {
+          "status": "passed",
+          "resetControlsOk": true,
+          "evidence": "hudMetrics=true; pause=[runDiff=30.70, pauseDiff=0.00, resumeDiff=31.19]; orbit=[label=\"Orbit ON\"->\"Orbit OFF\", floorDiffOn=25.427, floorDiffOff=0.125, fullDiffOn=30.087, fullDiffOff=6.394]; speed=[diff@0.1x=8.004 vs diff@3x=34.532]; reset=[pauseRestored=true, animAfterReset=true, extraControlsReset=true (speed=true, orbit=true)]"
+        },
+        "visual": {
+          "status": "passed",
+          "passed": true,
+          "darkBlueFaces": 96374,
+          "saturatedCyan": 83961,
+          "saturatedMagenta": 11513,
+          "overexposedWhite": 237
+        },
+        "runtimeErrors": [],
+        "consoleErrors": []
+      },
+      "generated_contract_path": "/home/ale/Projects/tandem-mcp/benchmarks/hydrogen_3_6_1/runs/20261121-111609_gen_portal_from_prompt_uitest_r1/gen_portal__generated_contract.json",
+      "workspace": "/home/ale/Projects/tandem-mcp/benchmarks/hydrogen_3_6_1/runs/20261121-111609_gen_portal_from_prompt_uitest_r1/workspaces/gen_portal__tandem_from_prompt"
+    }
+  ]
+}

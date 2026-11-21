@@ -16,6 +16,7 @@ const MIME = {
 
 const W = 1280;
 const H = 800;
+const WHITE_LIMIT = 0.05;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function serveDir(dir) {
@@ -53,7 +54,7 @@ function formatException(details, baseUrl) {
   return { message: firstLine, location: loc, raw: String(desc).slice(0, 400) };
 }
 
-async function runProbe(wsDir, entryRel, chromePath, requireAnim) {
+async function runProbe(wsDir, entryRel, chromePath, requireAnim, darkTheme, resetWanted = true) {
   if (!chromePath || !fs.existsSync(chromePath)) {
     return { status: 'not_evaluated', reason: `Chromium binary not found (${chromePath || 'unset'})` };
   }
@@ -164,7 +165,7 @@ async function runProbe(wsDir, entryRel, chromePath, requireAnim) {
             const r = el.getBoundingClientRect();
             if (r.width <= 0 || r.height <= 0) return false;
             const txt = (el.innerText || el.textContent || el.value || el.getAttribute('aria-label') || '').trim();
-            return /^(?:play|start|resume|avvia)(?:\\s*\\/\\s*pause)?$/i.test(txt);
+            return /^[^a-z0-9]*(?:play|start|resume|avvia)(?:\\s*\\/\\s*pause)?$/i.test(txt);
           });
           if (!cand) return false;
           cand.click();
@@ -184,9 +185,80 @@ async function runProbe(wsDir, entryRel, chromePath, requireAnim) {
       }
     }
 
+    // Generic control check: Reset must bring back the initial running state, even after Pause.
+    // Only judged when the page animated on its own at load and Pause really stopped the canvas.
+    let resetCheck = { status: 'skipped' };
+    if (resetWanted && requireAnim && canvasSized && animated && !startedViaPlayButton) {
+      const clickBtn = async (reSrc) => (await call('Runtime.evaluate', {
+        expression: `(() => {
+          const re = new RegExp(${JSON.stringify(reSrc)}, 'i');
+          const btns = Array.from(document.querySelectorAll('button, [role="button"], input[type="button"]'));
+          const el = btns.find((b) => {
+            const r = b.getBoundingClientRect();
+            const t = (b.innerText || b.textContent || b.value || b.getAttribute('aria-label') || '').trim();
+            return r.width > 0 && r.height > 0 && re.test(t);
+          });
+          if (!el) return false;
+          el.click();
+          return true;
+        })()`,
+        returnByValue: true,
+      })).result?.value === true;
+      const moving = async () => {
+        const a = await sampleCanvas();
+        await sleep(400);
+        const b = await sampleCanvas();
+        await sleep(400);
+        const c = await sampleCanvas();
+        return a.hash !== b.hash || b.hash !== c.hash;
+      };
+      if (await clickBtn('^(?:\\W*\\s*)?(?:pause|stop|pausa)\\b')) {
+        await sleep(300);
+        if (await moving()) {
+          resetCheck = { status: 'skipped', reason: 'canvas keeps moving while paused' };
+        } else if (await clickBtn('^(?:\\W*\\s*)?(?:reset|restart|ricomincia)\\b')) {
+          await sleep(400);
+          const resumed = await moving();
+          resetCheck = resumed
+            ? { status: 'passed' }
+            : { status: 'failed', reason: 'after Pause then Reset the canvas stayed frozen; Reset must restore the initial running state' };
+        } else {
+          resetCheck = { status: 'skipped', reason: 'no Reset button' };
+        }
+      } else {
+        resetCheck = { status: 'skipped', reason: 'no Pause button' };
+      }
+    }
+
+    // Dark or neon theme requested: a large near-white area means overexposed surfaces.
+    let exposure = { status: 'skipped' };
+    if (darkTheme && canvasSized) {
+      const res = await call('Runtime.evaluate', {
+        expression: `(() => {
+          const c = document.querySelector('canvas');
+          const tmp = document.createElement('canvas');
+          tmp.width = 160; tmp.height = 100;
+          const ctx = tmp.getContext('2d');
+          ctx.drawImage(c, 0, 0, 160, 100);
+          const d = ctx.getImageData(32, 15, 96, 72).data;
+          let white = 0, n = 0;
+          for (let i = 0; i < d.length; i += 4) {
+            n++;
+            if (d[i] >= 185 && d[i + 1] >= 185 && d[i + 2] >= 185) white++;
+          }
+          return n ? white / n : 0;
+        })()`,
+        returnByValue: true,
+      });
+      const frac = Number(res.result?.value || 0);
+      exposure = frac > WHITE_LIMIT
+        ? { status: 'failed', whiteFraction: Number(frac.toFixed(4)), reason: `${(frac * 100).toFixed(1)}% of the central canvas is near-white (limit ${WHITE_LIMIT * 100}%) on a dark/neon theme: surfaces are overexposed` }
+        : { status: 'passed', whiteFraction: Number(frac.toFixed(4)) };
+    }
+
     const errorsOk = runtimeErrors.length === 0 && consoleErrors.length === 0;
     const animOk = !requireAnim || (canvasSized && animated);
-    const passed = errorsOk && animOk;
+    const passed = errorsOk && animOk && resetCheck.status !== 'failed' && exposure.status !== 'failed';
 
     return {
       status: passed ? 'passed' : 'failed',
@@ -196,6 +268,8 @@ async function runProbe(wsDir, entryRel, chromePath, requireAnim) {
       canvasSized,
       animated,
       startedViaPlayButton,
+      resetCheck,
+      exposure,
       canvasObserved: hasCanvas ? { w: s1.w, h: s1.h, cw: s1.cw, ch: s1.ch, nonZeroPixels: s1.nonZero, hashes: [s1.hash, s2.hash, s3.hash] } : null,
       runtimeErrors,
       consoleErrors,
@@ -209,12 +283,12 @@ async function runProbe(wsDir, entryRel, chromePath, requireAnim) {
   }
 }
 
-const [, , wsDir, entryRel, chromePath, reqAnim] = process.argv;
+const [, , wsDir, entryRel, chromePath, reqAnim, darkArg, resetArg] = process.argv;
 if (!wsDir || !entryRel) {
   console.error('Usage: _web_probe.mjs <wsDir> <entryRel> <chromePath> <requireAnim:0|1>');
   process.exit(2);
 }
-const out = await runProbe(path.resolve(wsDir), entryRel, chromePath || '', reqAnim === '1');
+const out = await runProbe(path.resolve(wsDir), entryRel, chromePath || '', reqAnim === '1', darkArg === '1', resetArg !== '0');
 console.log(JSON.stringify(out));
 if (out.status === 'passed') process.exit(0);
 if (out.status === 'not_evaluated') process.exit(2);

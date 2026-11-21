@@ -19,9 +19,13 @@ Tandem's local model is free; your context is not. Keep your own reading and tur
 5. If the receipt says running, call job_status once more (it waits). Never resubmit a job
    and never delete its output to start over.
 6. After a FAIL receipt, use job_continue with a one-line hint; use job_rollback to undo.
+   If it fails again after the hint, do the work yourself (roll back first if the files got worse).
 7. Never debug Tandem itself (processes, job folders, ledgers): report the error and stop.
 8. Do it yourself when the whole task is smaller than one delegate call: a 1-line edit,
    or a file you have already read.
+9. Web page: add a `tandem:ui_test` check that clicks every control and asserts its effect
+   (`expect` moving/static, `text`, `color`), with exact hex colors in the constraints. The
+   executor repairs against it locally, so a passed receipt needs no render from you.
 ```
 
 ## Why each rule exists

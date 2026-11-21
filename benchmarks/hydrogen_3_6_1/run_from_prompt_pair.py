@@ -168,7 +168,36 @@ def run_direct_from_prompt(task_id: str, prompt_text: str, timeout_s: float, run
     }
 
 
-def run_tandem_from_prompt(task_id: str, prompt_text: str, timeout_s: float, run_dir: Path) -> dict:
+FALLBACK_RESERVE_S = 600.0
+
+
+def _agy_direct_call(prompt: str, ws: Path, timeout_s: float) -> dict:
+    """One direct agy turn with Tandem disabled (used by the direct fallback of the Tandem arm)."""
+    subprocess.run(["agy", "mcp", "disable", "tandem-mcp"], capture_output=True)
+    t0 = time.monotonic()
+    try:
+        proc = subprocess.run(
+            ["agy", "-p", prompt, "--model", ORCHESTRATOR_MODEL, "--output-format", "json", "--mode", "auto",
+             "--dangerously-skip-permissions", "--disable-slash-commands"],
+            cwd=str(ws), capture_output=True, text=True, timeout=timeout_s,
+        )
+        stdout = proc.stdout or ""
+    except subprocess.TimeoutExpired as exc:
+        stdout = exc.stdout if isinstance(exc.stdout, str) else ""
+    parsed = {}
+    for line in stdout.splitlines():
+        line = line.strip()
+        if line.startswith("{") and line.endswith("}"):
+            try:
+                parsed = json.loads(line)
+            except json.JSONDecodeError:
+                pass
+    return {"status": parsed.get("status", "ERROR"), "duration_seconds": round(time.monotonic() - t0, 2),
+            "usage": parsed.get("usage") or {}, "conversation_id": parsed.get("conversation_id")}
+
+
+def run_tandem_from_prompt(task_id: str, prompt_text: str, timeout_s: float, run_dir: Path,
+                           fallback: bool = True) -> dict:
     ws = run_dir / "workspaces" / f"{task_id}__tandem_from_prompt"
     ws.mkdir(parents=True, exist_ok=True)
     tandem_home = run_dir / "tandem_homes" / f"{task_id}__tandem_from_prompt"
@@ -190,7 +219,8 @@ def run_tandem_from_prompt(task_id: str, prompt_text: str, timeout_s: float, run
         "Use Tandem MCP (`delegate` or `delegate_many`) to have the local executor build this from scratch:\n"
         f"- Write only inside `write_globs={write_targets}` (do not write the deliverable files yourself).\n"
         "- Author clear, atomic `constraints` (<=160 chars each) covering the required behavior and visual design, "
-        "plus at least one real `verify_commands` check (e.g. extracting inline JS and running `node --check` or a Node smoke check) that fails before the file exists.\n"
+        "plus a `tandem:ui_test` acceptance check that clicks every control and asserts its effect "
+        "(`expect` moving/static, `text`, `color`), so the local executor repairs behaviour before you see it.\n"
         "- As soon as `delegate` / `delegate_many` returns the running job/batch ID, stop immediately and reply with that ID "
         "(do NOT call `job_status`; the host process will manage the wait locally)."
     )
@@ -206,13 +236,21 @@ def run_tandem_from_prompt(task_id: str, prompt_text: str, timeout_s: float, run
     uv, _th, mcp_url = host_runner.start_local_http_mcp()
     try:
         planner = host_runner.make_agy_planner(plan_prompt, ws, ORCHESTRATOR_MODEL, os.environ.copy(), timeout_s=180.0)
+        def _fallback(job_id: str, receipt: str) -> dict:
+            fb_prompt = (
+                f"{prompt_text}\n\nA previous attempt in this folder failed its acceptance checks:\n"
+                f"{receipt[-1500:]}\n\nWrite or fix the files yourself so every requirement holds."
+            )
+            return _agy_direct_call(fb_prompt, ws, FALLBACK_RESERVE_S)
+
         res = host_runner.run_host_managed(
             cloud_planner_fn=planner,
             mcp_url=mcp_url,
             cloud_reviewer_fn=_reviewer,
             poll_interval_s=2.0,
-            timeout_s=timeout_s,
+            timeout_s=timeout_s - (FALLBACK_RESERVE_S if fallback else 0.0),
             review_on_failure=True,
+            cloud_fallback_fn=_fallback if fallback else None,
         )
         # If a review/continue happened and re-entered running, wait once more locally
         if res.state == "running" and res.job_id:
@@ -255,10 +293,12 @@ def run_tandem_from_prompt(task_id: str, prompt_text: str, timeout_s: float, run
         "job_id": res.job_id,
         "job_state": res.state,
         "completed": res.state == "verified",
-        "timed_out": res.timed_out,
+        "timed_out": res.wall_seconds > timeout_s,
+        "local_timed_out": res.timed_out,
         "artifact_valid": ev["valid"],
         "visual_passed": ev["visual_passed"],
-        "e2e_success": bool(res.state == "verified" and ev["valid"]),
+        "fallback_used": res.fallback_used,
+        "e2e_success": bool((res.state == "verified" or res.fallback_used) and ev["valid"]),
         "eval_reason": ev["reason"],
         "wall_seconds": res.wall_seconds,
         "first_runtime_pass_s": jm["first_runtime_pass_s"],
@@ -280,6 +320,7 @@ def main() -> int:
     parser.add_argument("--task", choices=["gen_orbital", "gen_portal"], default="gen_orbital")
     parser.add_argument("--skip-direct", action="store_true")
     parser.add_argument("--tag", default="")
+    parser.add_argument("--no-fallback", action="store_true", help="measure the local path alone, no direct fallback")
     args = parser.parse_args()
 
     prompt_file = "orbital_prompt.txt" if args.task == "gen_orbital" else "portal_prompt.txt"
@@ -301,10 +342,10 @@ def main() -> int:
             print(f"  -> direct e2e={r_dir['e2e_success']} vis={r_dir['visual_passed']} time={r_dir['wall_seconds']}s cloud={c_dir} ({r_dir['eval_reason']})", flush=True)
 
         print(f"[{run_id}] Running {args.task} (tandem_from_prompt)...", flush=True)
-        r_tan = run_tandem_from_prompt(args.task, prompt_text, timeout_s, run_dir)
+        r_tan = run_tandem_from_prompt(args.task, prompt_text, timeout_s, run_dir, fallback=not args.no_fallback)
         results.append(r_tan)
         c_tan = sum((c.get("usage") or {}).get("total_tokens") or 0 for c in r_tan["cloud_calls"])
-        print(f"  -> tandem e2e={r_tan['e2e_success']} vis={r_tan['visual_passed']} state={r_tan['job_state']} time={r_tan['wall_seconds']}s cloud={c_tan} wait_cloud={r_tan['cloud_calls_during_wait']} local={r_tan['local_tokens']} repairs={r_tan['repairs']} rejected_runs={r_tan['rejected_run_commands']} ({r_tan['eval_reason']})", flush=True)
+        print(f"  -> tandem e2e={r_tan['e2e_success']} vis={r_tan['visual_passed']} state={r_tan['job_state']} time={r_tan['wall_seconds']}s cloud={c_tan} wait_cloud={r_tan['cloud_calls_during_wait']} local={r_tan['local_tokens']} repairs={r_tan['repairs']} rejected_runs={r_tan['rejected_run_commands']} fallback={r_tan['fallback_used']} ({r_tan['eval_reason']})", flush=True)
     finally:
         _restore_agy_mcp()
 

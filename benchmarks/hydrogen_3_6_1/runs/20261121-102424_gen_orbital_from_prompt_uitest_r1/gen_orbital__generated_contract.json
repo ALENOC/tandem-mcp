@@ -1,0 +1,30 @@
+{
+  "job_id": "20261121-102455-d6afb8",
+  "kind": "delegate",
+  "goal": "Create a single self-contained index.html implementing an interactive full-viewport HTML5 Canvas orbital particle simulation in dark space (#060913). Include: 1) Responsive full-window <canvas id=\"canvas\"> using requestAnimationFrame and devicePixelRatio scaling. 2) Central glowing star using createRadialGradient and a subtle corona pulse. 3) At least 5 orbiting planets with distinct orbital radii, speeds, colors, at least 3 moons/satellites, and fading orbital trails. 4) Twinkling background starfield with at least 150 stars. 5) Interactive glassmorphism HUD overlay with: Play/Pause button (#btn-play-pause, text 'Pause'/'Play'), Trails toggle button (#btn-trails, text 'Trails: ON'/'Trails: OFF'), Reset button (#btn-reset), Speed range slider (<input id=\"speed-slider\" type=\"range\" min=\"0.2\" max=\"3.0\" step=\"0.1\" value=\"1.0\">) with live multiplier readout (#speed-value showing e.g. '1.0x'), live FPS (#fps showing integer), simulation time (#sim-time showing e.g. '0.0s'), and active burst particle count (#burst-count showing integer, '0' initially). 6) Clicking anywhere on #canvas spawns a radial burst of glowing particles with velocity damping and fade-out. Keep everything self-contained in index.html with zero external dependencies.",
+  "verify_commands": [
+    "tandem:ui_test {\"steps\":[{\"color\":\"#060913\",\"min\":0.3},{\"expect\":\"moving\"},{\"text\":\"#fps\",\"match\":\"\\\\d+\"},{\"text\":\"#sim-time\",\"match\":\"\\\\d\"},{\"text\":\"#speed-value\",\"match\":\"1\\\\.0\"},{\"click\":\"#canvas\"},{\"text\":\"#burst-count\",\"match\":\"[1-9]\\\\d*\"},{\"click\":\"#btn-trails\"},{\"text\":\"#btn-trails\",\"match\":\"OFF\"},{\"click\":\"#btn-trails\"},{\"text\":\"#btn-trails\",\"match\":\"ON\"},{\"click\":\"#btn-play-pause\"},{\"expect\":\"static\"},{\"click\":\"#btn-play-pause\"},{\"expect\":\"moving\"},{\"click\":\"#btn-reset\"},{\"text\":\"#burst-count\",\"match\":\"^0$\"}]}"
+  ],
+  "constraints": [
+    "Single self-contained index.html with zero external dependencies.",
+    "Valid inline JavaScript syntax with no runtime errors.",
+    "Full-viewport <canvas id='canvas'> in dark space #060913.",
+    "Canvas uses requestAnimationFrame and devicePixelRatio scaling.",
+    "Central glowing star rendered with createRadialGradient and corona pulse.",
+    "At least 5 orbiting planets with distinct orbital radii, speeds, and colors.",
+    "Planets render fading orbital trails.",
+    "At least 3 moons/satellites orbiting around planets.",
+    "Twinkling background starfield with at least 150 stars.",
+    "Glassmorphism HUD overlay containing controls and live readouts.",
+    "#btn-play-pause toggles play/pause state of the simulation.",
+    "#btn-trails toggles orbital trails between 'Trails: ON' and 'Trails: OFF'.",
+    "#btn-reset resets simulation time, burst particles, and planet positions.",
+    "#speed-slider (min=0.2, max=3.0, step=0.1, value=1.0) controls simulation speed.",
+    "#speed-value displays the live speed multiplier (e.g. '1.0x').",
+    "#fps displays the live frames per second.",
+    "#sim-time displays the elapsed simulation time in seconds.",
+    "#burst-count displays the active burst particle count.",
+    "Clicking #canvas spawns a radial burst of glowing particles with velocity damping and fade-out."
+  ],
+  "tasks": null
+}

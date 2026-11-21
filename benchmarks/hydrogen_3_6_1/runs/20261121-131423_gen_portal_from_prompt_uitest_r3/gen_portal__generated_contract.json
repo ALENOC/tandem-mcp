@@ -1,0 +1,23 @@
+{
+  "job_id": "20261121-131448-d92765",
+  "kind": "delegate",
+  "goal": "Build a self-contained 3D neon portal web demo across index.html, engine3d.js, scene.js, and app.js with a software 3D renderer on <canvas id=\"c\">, dark radial-gradient space background, 36-face monument, 6 orbiting octahedral crystals (48 triangles), portal core with two counter-rotating rings, cyber grid floor, 180 twinkling stars, 110 rising particles, orbiting camera, and glassmorphism HUD (#fps, #polys, #parts, #btn-pause, #btn-orbit, #btn-reset, #speed).",
+  "verify_commands": [
+    "tandem:ui_test {\"steps\":[{\"text\":\"#fps\",\"match\":\"\\\\d\"},{\"text\":\"#polys\",\"match\":\"\\\\d\"},{\"text\":\"#parts\",\"match\":\"\\\\d\"},{\"color\":\"#030310\",\"min\":0.2},{\"expect\":\"moving\"},{\"click\":\"#btn-pause\"},{\"expect\":\"static\"},{\"text\":\"#btn-pause\",\"match\":\"Resume\"},{\"click\":\"#btn-pause\"},{\"expect\":\"moving\"},{\"text\":\"#btn-pause\",\"match\":\"Pause\"},{\"click\":\"#btn-orbit\"},{\"text\":\"#btn-orbit\",\"match\":\"OFF\"},{\"click\":\"#btn-orbit\"},{\"text\":\"#btn-orbit\",\"match\":\"ON\"},{\"click\":\"#btn-reset\"},{\"expect\":\"moving\"}]}"
+  ],
+  "constraints": [
+    "Self-contained HTML/CSS/JS (index.html, scene.js, engine3d.js, app.js) with zero external CDN dependencies and classic <script> tags working on file://.",
+    "Full-viewport <canvas id='c'> (100vw x 100vh, body margin 0, overflow hidden) with a dark radial-gradient space background (#0a0a24 to #020208).",
+    "Software 3D renderer in engine3d.js: perspective projection, 3D camera orbit matrix, z-sorted painter's algorithm, lighting/shading, and neon glow.",
+    "Portal monument in scene.js: two-tier platform, twin pillars, lintel, and crown cap (6 boxes = 36 faces) with neon cyan/magenta edge & face shading.",
+    "Six orbiting octahedral crystals (6 * 8 = 48 triangles) revolving around the portal monument with faceted neon shading.",
+    "Portal core with glowing energy center and two counter-rotating 3D neon rings, plus a perspective cyber grid floor beneath the platform.",
+    "180 twinkling stars in the dark background and 110 rising glowing particles drifting upward through the portal.",
+    "Glassmorphism HUD overlay (backdrop-filter blur, translucent dark panel, neon border) titled 'NEON PORTAL 3D' with #fps, #polys, and #parts readouts.",
+    "#btn-pause toggles pause/resume: text switches Pause/Resume, and canvas animation freezes completely when paused and resumes when clicked again.",
+    "#btn-orbit toggles camera auto-orbit: text switches 'Orbit ON' / 'Orbit OFF', stopping or resuming automatic camera rotation.",
+    "#btn-reset resets camera orbit angle, sets #speed slider back to 1, and restores running state if paused.",
+    "#speed range slider (id='speed', min='0.2', max='3', step='0.1', value='1') scales portal, crystal, and particle animation speed in real time."
+  ],
+  "tasks": null
+}

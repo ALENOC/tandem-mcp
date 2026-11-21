@@ -32,35 +32,20 @@ Tandem runs as a local MCP server over standard input and output (stdio). The in
 
 ## Does it save cloud tokens?
 
-It depends on the task. On the Orbital demo the local worker wrote the whole page and every run passed, using 42.5% fewer cloud tokens than the direct path, at about 17 times the wait. On the harder 3D Portal only one delegated run in three passed, so the cloud cost per working result came out level with doing it directly. For small edits and ordinary chat requests, the tool schemas, the wait and the review cost about as much as writing the code directly.
+It depends on the task. On the 3D Portal demo, the hardest one, Tandem delivered a working result in all three runs and used 44.7% fewer cloud tokens per working result than the direct path, at about 40 times the wait. On the smaller Orbital demo the acceptance test that the orchestrator now writes costs more than it saves: 9.3% more cloud tokens. For small edits and ordinary chat requests, the tool schemas, the wait and the review cost about as much as writing the code directly, so Tandem acts directly there.
 
-Figures are **cloud tokens per successful result**, with failed attempts counted, and the **median time** per attempt. Latest runs, Tandem 3.7.0:
+Quality has a floor: the orchestrator writes an acceptance test (`tandem:ui_test`), the local worker repairs against it at no cloud cost, and when the local result still fails, the orchestrator does the work itself. A passing result is only as good as that test, so one Orbital run passed it and still failed the independent evaluator.
+
+Figures are **cloud tokens per successful result**, with failed attempts counted, and the **median time** per attempt. Latest runs, Tandem 3.8.0:
 
 | Task | Direct | With Tandem | Cloud tokens |
 | --- | --- | --- | ---: |
-| Orbital demo, 3 runs | 35,488 · 3/3 · 50 s | 20,410 · 3/3 · 14 min | **-42.5%** |
-| 3D Portal demo, 3 runs | 74,372 · 2/3 · 82 s | 75,769 · 1/3 · 40 min | **+1.9%** |
+| 3D Portal demo, 3 runs | 74,372 · 2/3 · 82 s | 41,149 · 3/3 · 57 min | **-44.7%** |
+| Orbital demo, 3 runs | 35,488 · 3/3 · 50 s | 38,800 · 2/3 · 18 min | **+9.3%** |
 | Boids animation in chat, 3 runs | 33,532 · 3/3 · 54 s | 33,214 · 3/3 · 9.5 min | -0.95% |
 | Python fix in chat, 1 run | 26,953 · 1/1 · 24 s | 33,479 · 1/1 · 105 s | +24.2% |
 
-The local model also uses tokens, power and time on your machine: about 61,000 local tokens per Orbital run and 219,000 per Portal run. By default Tandem acts directly on the first turn and delegates only large from-scratch work when you ask to save cloud tokens. [All results and method](docs/BENCHMARKS.md) · [Decision report (Italian)](docs/DECISION_REPORT_20261120.md)
-
-### Orbital simulation
-
-<table>
-  <tr>
-    <th width="50%">Direct</th>
-    <th width="50%">With Tandem</th>
-  </tr>
-  <tr>
-    <td><img src="benchmarks/hydrogen_3_6_1/gifs/orbital_direct.gif" width="100%" alt="Orbital simulation written directly by the cloud model"></td>
-    <td><img src="benchmarks/hydrogen_3_6_1/gifs/orbital_tandem.gif" width="100%" alt="Orbital simulation written by the local worker through Tandem"></td>
-  </tr>
-  <tr>
-    <td align="center">Run 1 · 3 of 3 direct runs passed</td>
-    <td align="center">Run 1 · 3 of 3 delegated runs passed</td>
-  </tr>
-</table>
+One Portal run went past the local time limit and the orchestrator finished it directly. That run cost more than the direct path and is counted. The local model also uses tokens, power and time on your machine: about 88,000 local tokens per Orbital run and 300,000 per Portal run. Tandem stops delegating a kind of task when its local jobs usually fail (`TANDEM_MIN_LOCAL_SUCCESS`). [All results and method](docs/BENCHMARKS.md) · [Decision report (Italian)](docs/DECISION_REPORT_20261120.md)
 
 ### 3D neon portal
 
@@ -75,11 +60,28 @@ The local model also uses tokens, power and time on your machine: about 61,000 l
   </tr>
   <tr>
     <td align="center">Run 3, passed · 2 of 3 direct runs passed</td>
-    <td align="center">Run 2, the only delegated run of 3 that passed</td>
+    <td align="center">Run 3, written locally · 3 of 3 delegated runs passed</td>
   </tr>
 </table>
 
-The delegated portal passes every automated check, but its solid floor and particle trails look busier than the direct version.
+The delegated portal passes every automated check, but its crystals are drawn black instead of in color: the acceptance test checked the palette of the whole frame, not of each object.
+
+### Orbital simulation
+
+<table>
+  <tr>
+    <th width="50%">Direct</th>
+    <th width="50%">With Tandem</th>
+  </tr>
+  <tr>
+    <td><img src="benchmarks/hydrogen_3_6_1/gifs/orbital_direct.gif" width="100%" alt="Orbital simulation written directly by the cloud model"></td>
+    <td><img src="benchmarks/hydrogen_3_6_1/gifs/orbital_tandem.gif" width="100%" alt="Orbital simulation written by the local worker through Tandem"></td>
+  </tr>
+  <tr>
+    <td align="center">Run 1 · 3 of 3 direct runs passed</td>
+    <td align="center">Run 2 · 2 of 3 delegated runs passed</td>
+  </tr>
+</table>
 
 ## Try it
 
