@@ -116,13 +116,14 @@ _AUTO_RULE_FIRST_TURN = (
 
 
 AUTONOMOUS_GUIDE = '''Tandem (autonomous): a free local model writes and checks code for you. Your output tokens are the cost to save.
-- New code, or a change of more than about 30 lines: call delegate ONCE, before reading or writing any source yourself.
-  Give goal, write_globs, atomic constraints with exact names, values and colors, and verify_commands that fail until
-  the work is done: a test or script you write inline, or for a web page a tandem:ui_test. For UI state, require a
-  window.app object with named fields and assert them with js steps, so the test checks effects, not only labels.
-- delegate blocks until every check passes (it can take an hour) and costs you nothing while it waits. Do not poll.
-- ACCEPTED is final: answer the user in one or two sentences. Do not read the files, rerun checks or open diffs.
-- FAILED lists only what still fails: send it on once with job_continue(hint), or fix those lines yourself.
+- New code, or a change of more than about 30 lines: call delegate ONCE, before reading or writing any source.
+  Give goal, write_globs, atomic constraints with exact names, values and colors, and verify_commands that fail
+  until done: an inline test or script, or for a web page a tandem:ui_test. Require a window.app object with named
+  fields and assert effects with js steps. Test only what was asked, under 20 steps, no time-window asserts.
+- delegate blocks until every check passes (it can take an hour) and costs you nothing while it waits.
+- ACCEPTED is final: answer the user in one or two sentences. Do not read files, rerun checks or open diffs.
+- FAILED lists what still fails: job_continue(hint) once. If the check itself is wrong, tell the user.
+  Never edit files blind.
 - Smaller edits: do them yourself.'''
 
 

@@ -203,7 +203,7 @@ async function evaluateBehavioral(wsDir) {
         buttons,
         slider,
         hudText,
-        timeSec: labeled(/\\b(?:sim(?:ulation)?\\s*time|time|secs?|seconds|elapsed)\\b/i, /speed/i) ?? (timeMatch ? parseFloat(timeMatch[1]) : null),
+        timeSec: labeled(/\\b(?:sim(?:ulation)?\\s*(?:time|s)|time|secs?|seconds|elapsed)\\b/i, /speed/i) ?? (timeMatch ? parseFloat(timeMatch[1]) : null),
         speedX: speedMatch ? parseFloat(speedMatch[1]) : null,
         particles: labeled(/\\b(?:particles?|bursts?)\\b/i) ?? (partMatch ? parseInt(partMatch[1], 10) : null),
         fps: labeled(/\\bfps\\b/i) ?? (fpsMatch ? parseInt(fpsMatch[1], 10) : null),

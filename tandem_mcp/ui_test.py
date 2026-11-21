@@ -18,6 +18,8 @@ read it as a file to edit nor weaken it. Steps (one action each):
     {"color": "#0b1020", "min": 0.3}  fraction of pixels near a color (tol 48, optional region [x0,y0,x1,y1])
 
 Top-level keys: entry (default index.html), wait_ms (default 1000), viewport [w, h], allow_errors.
+Steps run back to back: click, input and key wait 50 ms after acting (after_ms changes it), so state can be
+asserted right after an action; add a wait step before checking something that takes time to show.
 JavaScript errors fail the test unless allow_errors is true.
 """
 from __future__ import annotations

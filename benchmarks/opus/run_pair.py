@@ -127,7 +127,7 @@ def run_arm(task_id: str, arm: str, pair: int, run_dir: Path, code_dir: Path) ->
     t0 = time.monotonic()
     timed_out = False
     try:
-        proc = subprocess.run(cmd, cwd=ws, env=env, capture_output=True, text=True, timeout=budget + 900,
+        proc = subprocess.run(cmd, cwd=ws, env=env, capture_output=True, text=True, timeout=max(3 * budget, budget + 3600),
                               stdin=subprocess.DEVNULL)
         stdout, stderr = proc.stdout or "", proc.stderr or ""
     except subprocess.TimeoutExpired as exc:
@@ -151,6 +151,8 @@ def run_arm(task_id: str, arm: str, pair: int, run_dir: Path, code_dir: Path) ->
         "model_usage": result.get("modelUsage"), "tool_uses": tool_uses(events),
         "result_text": str(result.get("result") or "")[:1500],
         "evaluation": ev, "success": bool(ev.get("passed")) and not (timed_out or wall > budget),
+        # killed by the outer timeout: claude -p printed no result, so the cloud cost of this attempt is unknown
+        "cost_missing": result.get("total_cost_usd") is None,
     }
     if arm == "tandem":
         rec["local"] = local_metrics(thome)
@@ -163,6 +165,7 @@ def main() -> int:
     ap.add_argument("--pairs", type=int, default=3)
     ap.add_argument("--first-pair", type=int, default=1)
     ap.add_argument("--tag", default="")
+    ap.add_argument("--arms", default="direct,tandem", help="arms to run, in the counterbalanced order of each pair")
     args = ap.parse_args()
     run_id = datetime.now().strftime("%Y%m%d-%H%M%S") + (f"_{args.tag}" if args.tag else "")
     run_dir = ROOT / "runs" / run_id
@@ -176,7 +179,7 @@ def main() -> int:
     for task_id in args.tasks.split(","):
         for pair in range(args.first_pair, args.first_pair + args.pairs):
             arms = ("direct", "tandem") if pair % 2 else ("tandem", "direct")
-            for arm in arms:
+            for arm in [a for a in arms if a in args.arms.split(",")]:
                 print(f"[{run_id}] {task_id} pair {pair} {arm} ...", flush=True)
                 rec = run_arm(task_id, arm, pair, run_dir, code_dir)
                 meta["records"].append(rec)

@@ -30,6 +30,9 @@ def main() -> int:
     for run_dir in map(Path, sys.argv[2:]):
         payload = json.loads((run_dir / "results.json").read_text(encoding="utf-8"))
         for r in payload["records"]:
+            if r.get("superseded"):
+                print(f"skip superseded {r['task']} p{r['pair']} {r['arm']}: {r['superseded']}")
+                continue
             ws = Path(r["workspace"])
             verdicts = [TASKS[r["task"]]["evaluate"](ws) for _ in range(REPEATS)]
             passed = all(v.get("passed") for v in verdicts)

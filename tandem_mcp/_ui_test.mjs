@@ -202,18 +202,18 @@ async function run(wsDir, chromePath, spec) {
         } else if ('click' in step) {
           const found = await evaluate(`(() => { const el = ${findExpr(step.click)}; if (!el) return false; el.click(); return true; })()`);
           rec.ok = found === true; rec.detail = rec.ok ? 'clicked' : `no element for ${step.click}`;
-          await sleep(Number(step.after_ms ?? 300));
+          await sleep(Number(step.after_ms ?? 50));
         } else if ('input' in step) {
           const found = await evaluate(`(() => { const el = ${findExpr(step.input)}; if (!el) return false;
             el.value = ${JSON.stringify(String(step.value))};
             el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true }));
             return true; })()`);
           rec.ok = found === true; rec.detail = rec.ok ? `set ${step.value}` : `no element for ${step.input}`;
-          await sleep(Number(step.after_ms ?? 300));
+          await sleep(Number(step.after_ms ?? 50));
         } else if ('key' in step) {
           await call('Input.dispatchKeyEvent', { type: 'keyDown', key: step.key, code: step.code || step.key });
           await call('Input.dispatchKeyEvent', { type: 'keyUp', key: step.key, code: step.code || step.key });
-          rec.ok = true; await sleep(Number(step.after_ms ?? 300));
+          rec.ok = true; await sleep(Number(step.after_ms ?? 50));
         } else if ('snapshot' in step) {
           snapshots[String(step.snapshot)] = await grab(step.region); rec.ok = true; rec.detail = `saved ${step.snapshot}`;
         } else if ('differs' in step) {
