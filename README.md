@@ -30,6 +30,21 @@ Tandem runs as a local MCP server over standard input and output (stdio). The in
 
 [Architecture in detail](docs/ARCHITECTURE.md) · [Workspace and sandbox permissions](docs/SECURITY_MODEL.md)
 
+## Why a server, and not just a prompt?
+
+You could tell your agent to call the local model itself, for example with `curl` against LM Studio. It works, but it saves little and checks nothing.
+
+| | Agent calls the local model directly | Through Tandem |
+| --- | --- | --- |
+| **Who writes the files** | The local model answers with text. The agent reads it and writes it to disk, paying output tokens, the most expensive kind, for code it did not write. | The local model edits the files itself through tools. The code never passes through the cloud model. |
+| **Who runs the repair loop** | The agent. Each failed test is one more cloud turn: read the error, write a new prompt, read the new answer. | Tandem, locally. It runs the checks and sends the failures back to the local model, with no cloud call. The agent gets one line at the end. |
+| **What gets checked** | Whatever the agent remembers to check, after it has read the output. | Every job: the checks run before the edit and must pass after it. Test files are read-only and restored if touched. Each constraint needs a quoted line that Tandem finds in the file. Web pages are also run in headless Chromium. |
+| **What the local model may touch** | Anything the agent's shell can reach. | Only the files in `write_globs` and the commands in `allow_run`, in a Bubblewrap jail on Linux. Outbound symlinks are refused and secrets are masked in tool output. |
+| **Undo** | By hand, or with git if the work was committed. | `job_rollback` restores the original bytes from the job journal. |
+| **Long jobs** | A shell call that runs for an hour hits the client timeout. | Progress notifications keep the call alive. Job state is stored on disk, and a failed job can go on with `job_continue`. |
+
+In short: without a server, the agent still reads and writes everything the local model produces, so most of the cloud cost stays. Tandem keeps that traffic on your machine and returns only the verdict.
+
 ## Does it save cloud tokens?
 
 Yes, on medium and large work. With **Opus 5.5** as the orchestrator in Claude Code and the autonomous profile, Opus writes a contract once. Tandem's local model then writes the code and repairs it against the checks, with no cloud call, and Opus gets back one line. Over five tasks, three pairs each, Tandem cut the total cloud bill by **61%** and the cost per successful result by **52%**. It used **72% fewer output tokens**, the most expensive kind.
