@@ -21,7 +21,7 @@ Tandem runs as a local MCP server over standard input and output (stdio). The in
 
 ## How a delegated edit works
 
-[![Delegation from the chat agent to Tandem and the local model. The four steps are described below.](assets/architecture.svg)](assets/architecture.svg)
+<p align="center"><a href="assets/architecture.svg"><img src="assets/architecture.svg" alt="Delegation from the chat agent to Tandem and the local model. The four steps are described below."></a></p>
 
 1. **Your agent sets the task.** Say you ask it to fix a discount calculation. The agent can call `delegate` with the goal, the file the worker may edit and the test to run.
 2. **Tandem asks the local model.** The server sends the task and relevant context to your model endpoint. The model can ask to read a file, propose an edit or request a command.
