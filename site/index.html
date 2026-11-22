@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b1020">
+  <title>Tandem MCP benchmarks: direct vs Tandem</title>
+  <meta name="description" content="Cloud cost, success rate and time of Opus 5.5 working directly or delegating to a local model through Tandem MCP.">
+  <link rel="icon" href="logo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="hero">
+    <div class="wrap">
+      <img class="logo" src="logo.svg" alt="Tandem MCP logo" width="160" height="68">
+      <h1>Direct vs Tandem</h1>
+      <p class="lead">Same request, same orchestrator (<b>Opus 5.5</b>). <span class="arm-d">Direct</span>: Opus writes the code. <span class="arm-t">Tandem</span>: Opus writes one contract, a local model (<code>qwen3.8-27b</code>) writes, tests and repairs the code with no cloud call, and Opus gets back a one-line receipt.</p>
+    </div>
+  </header>
+  <nav class="tabs wrap" aria-label="Sections">
+    <a href="#summary">Summary</a><a href="#tasks">Tasks</a><a href="#attempts">Attempts</a><a href="#visual">Visual</a><a href="#method">Method</a>
+  </nav>
+
+  <main class="wrap">
+    <section id="summary" aria-labelledby="h-summary">
+      <h2 id="h-summary">Summary</h2>
+      <div class="kpis" id="kpis"></div>
+      <p class="note" id="note-punctual"></p>
+    </section>
+
+    <section id="tasks" aria-labelledby="h-tasks">
+      <h2 id="h-tasks">Cost per success, by task</h2>
+      <p class="sub">Cloud cost of all attempts divided by the successful ones. Shorter bar is cheaper.</p>
+      <div class="legend"><span class="sw d"></span>Direct <span class="sw t"></span>Tandem</div>
+      <div class="tasks" id="task-cards"></div>
+    </section>
+
+    <section aria-labelledby="h-tokens">
+      <h2 id="h-tokens">Cloud tokens, all attempts</h2>
+      <div class="scroll"><table class="tbl" id="tokens"></table></div>
+      <p class="sub">Output tokens are the most expensive part of the cost; Tandem moves almost all of them to the local model.</p>
+    </section>
+
+    <section id="attempts" aria-labelledby="h-attempts">
+      <h2 id="h-attempts">Every attempt</h2>
+      <div class="filters" role="group" aria-label="Filter by task" id="filters"></div>
+      <div class="attempts" id="attempt-list"></div>
+    </section>
+
+    <section id="visual" aria-labelledby="h-visual">
+      <h2 id="h-visual">What the pages look like</h2>
+      <div class="pick" role="group" aria-label="Choose the demo">
+        <button type="button" data-demo="orbital" class="on">Orbital simulation</button>
+        <button type="button" data-demo="portal">3D neon portal</button>
+      </div>
+      <div class="gifs">
+        <figure><figcaption><span class="arm-d">Direct</span> <span id="cap-d"></span></figcaption><img id="gif-d" loading="lazy" alt=""></figure>
+        <figure><figcaption><span class="arm-t">Tandem</span> <span id="cap-t"></span></figcaption><img id="gif-t" loading="lazy" alt=""></figure>
+      </div>
+      <p class="sub" id="gif-note"></p>
+    </section>
+
+    <section id="method" aria-labelledby="h-method">
+      <h2 id="h-method">Method</h2>
+      <ul class="method">
+        <li><b>Counterbalanced pairs:</b> three pairs per task in fresh workspaces; the arm that runs first alternates from pair to pair.</li>
+        <li><b>Same isolated setup:</b> both arms run <code>claude -p</code> with no user settings, plugins or project instructions. The Tandem arm adds the MCP server in the autonomous profile and the suffix "Usa Tandem."</li>
+        <li><b>Cloud cost:</b> <code>total_cost_usd</code> reported by the run, at list prices. Failed attempts are counted in the cost.</li>
+        <li><b>Success:</b> <span id="rule"></span>. The evaluator is independent and neither arm sees it.</li>
+        <li><b>Not counted in the cloud cost:</b> local model time and power, shown as local tokens and wall time.</li>
+      </ul>
+      <p class="sub">Full report, raw data and scripts: <code>docs/BENCHMARKS.md</code> and <code>benchmarks/opus/</code> in the repository.</p>
+    </section>
+  </main>
+
+  <footer class="wrap foot">Tandem MCP 4.0.1 · re-evaluated <span id="when"></span></footer>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -19,6 +19,8 @@ An attempt **succeeds** when an independent evaluator, which neither arm sees, p
 
 Runner: [`run_pair.py`](../benchmarks/opus/run_pair.py) · Tasks and evaluators: [`tasks.py`](../benchmarks/opus/tasks.py) · Re-evaluation: [`reeval.py`](../benchmarks/opus/reeval.py) · Report: [`REEVAL_V3.json`](../benchmarks/opus/REEVAL_V3.json) · Run: [`runs/20261121-215741_v3`](../benchmarks/opus/runs/20261121-215741_v3)
 
+Interactive version, also on mobile: [alenoc.github.io/tandem-mcp](https://alenoc.github.io/tandem-mcp/) (built from [`site/`](../site) by `scripts/build_site.py`).
+
 ## Results
 
 | Task | Budget | Direct: cost per success | Tandem: cost per success | Change |

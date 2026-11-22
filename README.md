@@ -52,7 +52,7 @@ The trade-offs:
 - **Punctuality:** ignoring the time budget both arms deliver 11 correct results of 15, and Tandem is 61% cheaper. Inside the budget Tandem delivers 9 against 11, because two results came after the deadline.
 - **Finish:** the local model does what the contract says and little more. On the 3D portal its renderer runs at about 16 FPS against 60.
 
-[All results, method and earlier iterations](docs/BENCHMARKS.md)
+[All results, method and earlier iterations](docs/BENCHMARKS.md) · [Interactive comparison, also on mobile](https://alenoc.github.io/tandem-mcp/)
 
 ### 3D neon portal
 

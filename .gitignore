@@ -9,3 +9,4 @@ dist/
 benchmarks/opus/runs/*/_tandem_code/
 benchmarks/opus/runs/*/tandem_homes/
 benchmarks/opus/runs/*/mcp_*.json
+_site/
