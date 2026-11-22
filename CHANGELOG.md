@@ -1,5 +1,11 @@
 # Changelog
 
+## 4.0.1
+
+### Fixes
+- Chromium gets 30 seconds instead of 10 to start for `tandem:ui_test` and the built-in web check: on a slow or cold machine the check reported `not_evaluated` instead of running.
+- The browser tests skip their browser part when no browser can start, instead of failing.
+
 ## 4.0.0
 
 ### Autonomous profile for a minimal-cloud orchestrator

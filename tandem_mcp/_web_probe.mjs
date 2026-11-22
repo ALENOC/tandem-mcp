@@ -72,7 +72,7 @@ async function runProbe(wsDir, entryRel, chromePath, requireAnim, darkTheme, res
 
   try {
     const wsUrl = await new Promise((resolve, reject) => {
-      const t = setTimeout(() => reject(new Error('DevTools startup timeout')), 10000);
+      const t = setTimeout(() => reject(new Error('DevTools startup timeout')), 30000);
       let b = '';
       chrome.stderr.on('data', (c) => {
         b += c;

@@ -54,6 +54,9 @@ if web_check.find_chromium() is None:
     raise SystemExit(0)
 
 rc, out = run(page(reset_extra='running = true;'))
+if rc == 2:
+    print(f'test_web_controls: SKIP (browser not available: {out[:80]})')
+    raise SystemExit(0)
 ok(rc == 0 and 'reset=passed' in out and 'exposure=passed' in out, f'good page should pass: {rc} {out}')
 
 rc, out = run(page())
