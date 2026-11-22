@@ -112,14 +112,8 @@ For a first edit, pick a failing test and tell the worker which file it may chan
 
 For manual setup or a different model endpoint, see [Getting Started](docs/GETTING_STARTED.md) and [Configuration](docs/CONFIGURATION.md). The tools are listed in the [tool reference](docs/TOOLS.md).
 
-## License and attribution
+## License
 
-Tandem MCP is released under the [MIT license](LICENSE). Copyright (c) 2026 Alessandro Nocentini ([ALENOC](https://github.com/ALENOC)).
-
-Forks, modified versions and derivative works must keep the attribution to the original work, in their README or documentation and in the LICENSE file:
-
-> Based on Tandem MCP by Alessandro Nocentini (ALENOC), https://github.com/ALENOC/tandem-mcp
-
-See [NOTICE](NOTICE).
+[MIT](LICENSE). Copyright (c) 2026 Alessandro Nocentini ([ALENOC](https://github.com/ALENOC)). As the MIT license requires, forks and derivative works must keep this copyright notice and the license text.
 
 [Changelog](CHANGELOG.md) · [Security policy](SECURITY.md)
