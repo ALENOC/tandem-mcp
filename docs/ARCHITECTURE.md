@@ -6,6 +6,8 @@ Printable architecture overviews:
 - [Architecture PDF (English)](tandem-mcp-architecture.pdf)
 - [Architettura PDF (Italiano)](tandem-mcp-architettura.pdf)
 
+The PDFs are built from [`pdf-src/`](pdf-src) with `sh docs/pdf-src/build.sh`.
+
 ## System Flow
 
 <p align="center">
@@ -21,6 +23,10 @@ Printable architecture overviews:
 | `tandem_mcp/digest.py` | Chunked reading, wave-parallel map-reduce, lexical quote checking, numeric grounding, claim consistency, schema-validated extraction merge |
 | `tandem_mcp/agent.py` | Delegated task loop, internal executor tools (`replace_in_file` multi-edit, `rg --json` search), journal, snapshot, `restore_guard`, batches, rollback |
 | `tandem_mcp/sandbox.py` | Path/glob normalization, command parser (`split_command`), `allow_run`/`DENY`, outbound symlink refusal, SHA-256 `stamp()`, Bubblewrap allowlist jail |
+| `tandem_mcp/ui_test.py`, `_ui_test.mjs` | `tandem:ui_test` scenarios from the contract, run in headless Chromium (click, input, key, expect moving or static, text, color, snapshot, differs) |
+| `tandem_mcp/web_check.py`, `_web_probe.mjs` | Built-in runtime and animation check for web deliverables (JavaScript errors, controls, Pause and Reset, bright canvas) |
+| `tandem_mcp/router.py` | `auto_route`: chooses deterministic tools, a direct answer or local delegation, and estimates the local success rate per task family |
+| `tandem_mcp/host_runner.py` | Host-managed loop: a local process waits for the job with no cloud polling (`TANDEM_HOST_MANAGED=1`) |
 | `tandem_mcp/store.py` | Persistence under `TANDEM_HOME` (`jobs/`, `blobs/`, `ledger.jsonl`, `lessons.jsonl`, `models.json`, `cache/`), `flock` cross-process job locks, startup reconciliation |
 
 ## Delegation Lifecycle
@@ -47,6 +53,10 @@ sequenceDiagram
 3. **Executor tool loop:** The local model works inside `Workspace` using `list_files`, `read_file`, `search`, `replace_in_file`, `write_file`, `run`, and `finish`. Every file edit is journaled (`journal_bin.json` + `blobs/`) and every `run` is preceded by a workspace snapshot and `stamp()`.
 4. **Verification & repair:** On `finish`, Tandem restores guarded files, checks syntax on modified files, runs `verify_commands` in the sandbox, and verifies constraint quotes lexically. Failures are sent back to the executor up to `max_repairs`.
 5. **Review & rollback:** The orchestrator receives a compact receipt, inspects `job_evidence` or `job_diff`, and closes with `job_feedback` or undoes changes with `job_rollback` (which checks `post_state.json` to avoid overwriting later user edits).
+
+## Autonomous Profile
+
+With `TANDEM_PROFILE=autonomous` the server exposes four tools (`delegate`, `job_continue`, `job_status`, `job_rollback`). The orchestrator writes the contract once; `delegate` blocks while steps 3 and 4 above repeat locally until every check passes or `TANDEM_JOB_SECONDS`, `TANDEM_MAX_REPAIRS` or `TANDEM_MAX_STEPS` runs out. No cloud call happens meanwhile; an MCP progress notification every `TANDEM_PROGRESS_SECONDS` keeps the client from aborting the call. The orchestrator gets back one `ACCEPTED` line, or only the checks that still fail. See [Benchmarks](BENCHMARKS.md).
 
 ## Reading & Extraction Pipeline
 

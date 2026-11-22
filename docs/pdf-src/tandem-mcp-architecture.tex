@@ -1,0 +1,86 @@
+\documentclass[10pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage[english]{babel}
+\usepackage[margin=1.8cm]{geometry}
+\usepackage{graphicx,booktabs,tabularx,enumitem,microtype,xcolor}
+\usepackage[hidelinks]{hyperref}
+\setlist{nosep,leftmargin=1.2em}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{4pt}
+\newcommand{\code}[1]{\texttt{\detokenize{#1}}}
+
+\title{\vspace{-1.5em}Tandem MCP Architecture\\\large Version 4.0.1: cloud orchestrator, local executor}
+\author{Alessandro Nocentini (ALENOC)\\\small\url{https://github.com/ALENOC/tandem-mcp}}
+\date{November 2026}
+
+\begin{document}
+\maketitle
+\vspace{-1em}
+
+\section{Overview}
+Tandem MCP is a Model Context Protocol server that lets the model in your chat hand part of a coding
+task to a model running on your own machine. The cloud orchestrator (Claude Code, Codex, Antigravity,
+Gemini CLI or another MCP client) keeps design, contracts and review. The local model (LM Studio, Ollama,
+llama.cpp, vLLM or any OpenAI-compatible server) reads large files and writes code inside the limits of
+the contract, and Tandem checks every result before it reaches the orchestrator.
+
+\begin{center}
+\includegraphics[width=0.62\textwidth]{diagram.pdf}
+\end{center}
+
+\section{Core modules}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+Module & Responsibility\\
+\midrule
+\code{server.py} & 20 MCP tools (4 in the autonomous profile), strict contract validation, receipts, secret redaction\\
+\code{engine.py} & Server discovery, capability probe, role routing (digest and delegate), retry with backoff\\
+\code{digest.py} & Chunked map-reduce reading, lexical quote checks, ungrounded numbers, schema merge\\
+\code{agent.py} & Executor tool loop, multi-edit \code{replace_in_file}, journal, batches, rollback\\
+\code{sandbox.py} & Glob matching, command parser, outbound symlink refusal, SHA-256 stamp, Bubblewrap jail\\
+\code{ui_test.py} & \code{tandem:ui_test} scenarios from the contract, run in headless Chromium\\
+\code{web_check.py} & Built-in runtime and animation check for web deliverables\\
+\code{router.py} & \code{auto_route}: deterministic tools, direct answer or local delegation\\
+\code{host_runner.py} & Host-managed wait for a job, with no cloud polling\\
+\code{store.py} & Persistence under \code{TANDEM_HOME}, cross-process locks, startup reconciliation\\
+\bottomrule
+\end{tabularx}
+
+\section{Delegation and the autonomous profile}
+\begin{itemize}
+\item \textbf{Contract:} \code{delegate} needs a goal, \code{write_globs}, \code{verify_commands} that fail
+  until the work is done, and atomic constraints. Compound constraints are split by the server.
+\item \textbf{Baseline and protection:} checks run before any edit; test files are read-only and restored if touched.
+\item \textbf{Repair loop:} on \code{finish}, Tandem checks syntax, runs the checks in the sandbox (including
+  \code{tandem:ui_test} in Chromium) and verifies a cited line for every constraint. Failures go back to the
+  local model.
+\item \textbf{Autonomous profile} (\code{TANDEM_PROFILE=autonomous}): four tools. \code{delegate} blocks while
+  the loop runs locally, with no cloud call, bounded by \code{TANDEM_JOB_SECONDS} (3600),
+  \code{TANDEM_MAX_REPAIRS} (20) and \code{TANDEM_MAX_STEPS} (160). A progress notification every 30 seconds
+  keeps the client from aborting the call. The orchestrator gets one \code{ACCEPTED} line, or only the
+  checks that still fail.
+\end{itemize}
+
+\section{Security model and rollback}
+\begin{itemize}
+\item \textbf{Sandbox profiles} (\code{TANDEM_SANDBOX}): \code{secure} (fail-closed) by default on Linux,
+  \code{compatible} on macOS and Windows, \code{trusted} disables Bubblewrap.
+\item \textbf{Bubblewrap jail:} only system folders and the Python runtime are mounted read-only; host
+  \code{$HOME}, \code{/tmp} and \code{/run} are empty; network, PID and IPC namespaces are separate.
+\item \textbf{Command parser:} every part of a pipeline must match \code{allow_run} and not the deny list;
+  command substitution and heredocs are refused.
+\item \textbf{Backup and rollback:} original bytes are journaled per job (8 MiB per file, 256 MiB per job);
+  an incomplete rollback sets the state \code{partial_rollback}.
+\item \textbf{Secret redaction:} tool outputs mask private keys, tokens and secret environment assignments.
+\end{itemize}
+
+\section{Measured savings}
+With Opus 5.5 as the orchestrator and the autonomous profile, over five tasks and three counterbalanced
+pairs each, Tandem cut the total cloud cost by 61\% and the cost per successful result by 52\%, with 72\%
+fewer output tokens. A 5-line fix cost 10\% more; results take minutes to two hours instead of seconds.
+Local model: Qwen3.8 27B IQ3\_S on an AMD Radeon RX 6800 series GPU (16 GB). Details:
+\code{docs/BENCHMARKS.md} and \url{https://alenoc.github.io/tandem-mcp/}.
+
+\end{document}

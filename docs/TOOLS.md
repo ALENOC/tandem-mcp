@@ -1,6 +1,6 @@
 # MCP Tools Reference
 
-All 19 tools exposed by `tandem-mcp` over stdio MCP. Every tool output passes through `sandbox.redact_secrets()` (unless `TANDEM_REDACT=0`).
+All 20 tools exposed by `tandem-mcp` over stdio MCP. Every tool output passes through `sandbox.redact_secrets()` (unless `TANDEM_REDACT=0`).
 
 ## Autonomous profile (`TANDEM_PROFILE=autonomous`)
 

@@ -3,6 +3,8 @@
 ## Unreleased
 
 ### Documentation
+- Architecture PDFs (English and Italian) rebuilt for 4.0.1 from LaTeX sources now kept in `docs/pdf-src/`: 20 tools, the autonomous profile, `tandem:ui_test`, the measured savings. The old ones described 3.5.2.
+- Architecture diagram: the verification box lists UI tests. `docs/ARCHITECTURE.md` lists the `ui_test`, `web_check`, `router` and `host_runner` modules and the autonomous profile; `docs/TOOLS.md` counts 20 tools; `docs/CONFIGURATION.md` adds `TANDEM_DIGEST_TIMEOUT`, `TANDEM_CACHE_KEEP`, `TANDEM_CACHE_TTL_DAYS` and `TANDEM_HOST_TIMEOUT`.
 - Benchmarks state the test machine (CPU, GPU, RAM, OS), LM Studio version and runtime, and every local model setting used.
 - README section "License": MIT, copyright Alessandro Nocentini (ALENOC); forks keep the copyright notice as the MIT license requires.
 - GitHub Pages site with the interactive benchmark comparison (`site/`, built by `scripts/build_site.py`, deployed by `.github/workflows/pages.yml`). It works on phones: cards instead of wide tables, stacked GIFs, horizontal filters. The Orbital and 3D portal pages of both arms run live side by side (scaled iframes, GIF fallback).

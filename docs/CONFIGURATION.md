@@ -32,6 +32,9 @@ All settings are controlled via environment variables read by the `tandem-mcp` s
 | `TANDEM_DIGEST_WORKERS` | Concurrent map calls per wave in `digest_*` (`1` = sequential) | `1` |
 | `TANDEM_DIGEST_MIN_NOTES` | Early-stop map threshold in `digest_*` (`0` = full map) | `0` |
 | `TANDEM_USE_RG` | `1` accelerates executor `search` with `rg --json` | `0` |
+| `TANDEM_DIGEST_TIMEOUT` | Time budget of one `digest_*` answer (seconds) | `150` |
+| `TANDEM_CACHE_KEEP` | Most cached digest answers kept on disk | `400` |
+| `TANDEM_CACHE_TTL_DAYS` | Days a cached digest answer is kept | `14` |
 | `TANDEM_JOBS_KEEP` | Max persisted job folders kept on disk | `200` |
 | `TANDEM_JOBS_TTL_DAYS` | Days persisted job folders are kept before pruning | `30` |
 | `TANDEM_JOBS_PENDING_TTL_DAYS` | Days a job with changes and no verdict is kept | `120` |
@@ -43,6 +46,7 @@ All settings are controlled via environment variables read by the `tandem-mcp` s
 | `TANDEM_PROGRESS_SECONDS` | Interval of the MCP progress notifications sent while an autonomous job runs, so the client does not abort a silent tool | `30` |
 | `TANDEM_AUTO_POLICY` | `first_turn`: act directly in turn 1, `auto_route` optional. `mandatory_route`: call `auto_route` first | `first_turn` |
 | `TANDEM_HOST_MANAGED` | `1`: `delegate` returns the job ID at once and a local host process waits, with no cloud polling | off |
+| `TANDEM_HOST_TIMEOUT` | Local timeout of the host-managed runner (`host_runner.py --timeout`, seconds) | `1800` |
 | `TANDEM_WAIT_SECONDS` | Default wait of a lean `delegate` call (seconds, capped at `1500`) | `150` |
 | `TANDEM_COMPACT_WRITES` | `1`: older `write_file` bodies are replaced by a short stub in the executor context (the full history stays in `messages.json`) | `1` |
 | `TANDEM_COMPACT_RECEIPT` | `1`: host-managed receipts lead with `VERDICT:` and keep only the evidence needed for review | `1` |
