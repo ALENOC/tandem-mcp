@@ -70,7 +70,12 @@ h2 { font-size: clamp(20px, 4.5vw, 26px); margin: 0 0 10px; }
 .gifs { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap); margin-top: 10px; }
 .gifs figure { margin: 0; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
 .gifs figcaption { padding: 10px 14px; font-size: 14px; color: var(--muted); }
-.gifs img { display: block; width: 100%; height: auto; background: #000; aspect-ratio: 16 / 10; object-fit: contain; }
+.stage { position: relative; width: 100%; aspect-ratio: 16 / 10; background: #000; overflow: hidden; }
+.stage iframe { position: absolute; top: 0; left: 0; border: 0; transform-origin: 0 0; background: #000; }
+.stage img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.gifs figcaption { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.gifs .full { margin-left: auto; color: var(--t); font-size: 13px; text-decoration: none; }
+.pick .mode { margin-left: 0; } .pick .mode:first-of-type { margin-left: auto; }
 .method { padding-left: 20px; margin: 0; } .method li { margin: 6px 0; }
 .foot { color: var(--muted); font-size: 13px; padding-top: 40px; padding-bottom: max(28px, env(safe-area-inset-bottom)); }
 

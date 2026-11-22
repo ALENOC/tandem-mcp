@@ -2,7 +2,7 @@
 """Build the GitHub Pages site with the benchmark comparison.
 
 Copies site/ to the output directory, writes data.json from the re-evaluation report and copies the
-comparison GIFs next to it. The workflow in .github/workflows/pages.yml runs this on every push to main.
+comparison GIFs and the live demo pages next to it. The workflow in .github/workflows/pages.yml runs this on every push to main.
 
 Usage: python scripts/build_site.py [out_dir]   (default: _site)
 """
@@ -16,6 +16,10 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 BENCH = REPO / "benchmarks" / "opus"
 REPORT = BENCH / "REEVAL_V3.json"
+RUN = BENCH / "runs" / "20261121-215741_v3" / "workspaces"
+# the pages shown live on the site, the same attempts as the GIFs
+DEMOS = {"orbital/direct": "gen_orbital__p2__direct", "orbital/tandem": "gen_orbital__p2__tandem",
+         "portal/direct": "gen_portal__p3__direct", "portal/tandem": "gen_portal__p1__tandem"}
 BUDGETS = {"py_discount": 900, "py_cron": 2400, "web_boids": 2400, "gen_orbital": 2400, "gen_portal": 4200}
 
 
@@ -25,6 +29,8 @@ def main() -> int:
     shutil.copytree(REPO / "site", out)
     shutil.copytree(BENCH / "gifs", out / "gifs")
     shutil.copy(REPO / "assets" / "logo.svg", out / "logo.svg")
+    for dst, ws in DEMOS.items():
+        shutil.copytree(RUN / ws, out / "demos" / dst, ignore=shutil.ignore_patterns(".*", "__pycache__"))
     report = json.loads(REPORT.read_text(encoding="utf-8"))
     attempts = [{
         "task": a["task"], "arm": a["arm"], "pair": a["pair"], "success": a["success"],

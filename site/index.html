@@ -18,7 +18,7 @@
     </div>
   </header>
   <nav class="tabs wrap" aria-label="Sections">
-    <a href="#summary">Summary</a><a href="#tasks">Tasks</a><a href="#attempts">Attempts</a><a href="#visual">Visual</a><a href="#method">Method</a>
+    <a href="#summary">Summary</a><a href="#visual">Animations</a><a href="#tasks">Tasks</a><a href="#attempts">Attempts</a><a href="#method">Method</a>
   </nav>
 
   <main class="wrap">
@@ -26,6 +26,28 @@
       <h2 id="h-summary">Summary</h2>
       <div class="kpis" id="kpis"></div>
       <p class="note" id="note-punctual"></p>
+    </section>
+
+    <section id="visual" aria-labelledby="h-visual">
+      <h2 id="h-visual">The animations, side by side</h2>
+      <p class="sub">The real pages each arm delivered, running live in your browser. Click the controls inside them.</p>
+      <div class="pick" role="group" aria-label="Choose the demo">
+        <button type="button" data-demo="orbital" class="on">Orbital simulation</button>
+        <button type="button" data-demo="portal">3D neon portal</button>
+        <button type="button" data-mode="live" class="mode on">Live</button>
+        <button type="button" data-mode="gif" class="mode">GIF</button>
+      </div>
+      <div class="gifs">
+        <figure>
+          <figcaption><span class="arm-d">Direct</span> <span id="cap-d"></span><a class="full" id="full-d" target="_blank" rel="noopener">Full screen</a></figcaption>
+          <div class="stage" id="stage-d"></div>
+        </figure>
+        <figure>
+          <figcaption><span class="arm-t">Tandem</span> <span id="cap-t"></span><a class="full" id="full-t" target="_blank" rel="noopener">Full screen</a></figcaption>
+          <div class="stage" id="stage-t"></div>
+        </figure>
+      </div>
+      <p class="sub" id="gif-note"></p>
     </section>
 
     <section id="tasks" aria-labelledby="h-tasks">
@@ -47,18 +69,6 @@
       <div class="attempts" id="attempt-list"></div>
     </section>
 
-    <section id="visual" aria-labelledby="h-visual">
-      <h2 id="h-visual">What the pages look like</h2>
-      <div class="pick" role="group" aria-label="Choose the demo">
-        <button type="button" data-demo="orbital" class="on">Orbital simulation</button>
-        <button type="button" data-demo="portal">3D neon portal</button>
-      </div>
-      <div class="gifs">
-        <figure><figcaption><span class="arm-d">Direct</span> <span id="cap-d"></span></figcaption><img id="gif-d" loading="lazy" alt=""></figure>
-        <figure><figcaption><span class="arm-t">Tandem</span> <span id="cap-t"></span></figcaption><img id="gif-t" loading="lazy" alt=""></figure>
-      </div>
-      <p class="sub" id="gif-note"></p>
-    </section>
 
     <section id="method" aria-labelledby="h-method">
       <h2 id="h-method">Method</h2>

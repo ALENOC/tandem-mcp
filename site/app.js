@@ -13,12 +13,15 @@ const TASKS = {
     why: "No page passes the strict evaluator, on either arm. Tandem costs 75% less per attempt; its renderer runs at about 16 FPS against 60." },
 };
 const ORDER = ["py_discount", "py_cron", "web_boids", "gen_orbital", "gen_portal"];
-const GIFS = {
-  orbital: { d: "gifs/orbital_direct.gif", t: "gifs/orbital_tandem.gif", cd: "pair 2", ct: "pair 2",
+const DEMOS = {
+  orbital: { d: "orbital/direct", t: "orbital/tandem", cd: "pair 2 · passed", ct: "pair 2 · passed",
     note: "Both pass the evaluator. The Tandem orbit trails are fainter." },
-  portal: { d: "gifs/portal_direct.gif", t: "gifs/portal_tandem.gif", cd: "pair 3", ct: "pair 1",
-    note: "Neither passes all checks. The Tandem page has the neon palette and colored crystals the contract asked for, at about 16 FPS." },
+  portal: { d: "portal/direct", t: "portal/tandem", cd: "pair 3 · failed (interactions)", ct: "pair 1 · failed (interactions)",
+    note: "Neither passes every check. The Tandem page has the neon palette and colored crystals the contract asked for; its software renderer runs at about 16 FPS against 60." },
 };
+// pages render at a desktop size and are scaled down; a phone gets a smaller virtual size so the controls stay legible
+const viewW = (stage) => (stage.clientWidth < 560 ? 760 : 1280);
+let demo = "orbital", mode = "live";
 
 const $ = (s) => document.querySelector(s);
 const usd = (v) => v == null ? "n/a" : "$" + v.toFixed(v < 0.1 ? 4 : 3);
@@ -125,12 +128,37 @@ function renderFilters(data) {
   renderAttempts(data, "all");
 }
 
-function showGif(name) {
-  const g = GIFS[name];
-  $("#gif-d").src = g.d; $("#gif-d").alt = `${name} page written directly by Opus`;
-  $("#gif-t").src = g.t; $("#gif-t").alt = `${name} page written by the local model through Tandem`;
+function fit(stage) {
+  const f = stage.querySelector("iframe");
+  if (!f) return;
+  const w = viewW(stage);
+  f.width = w; f.height = Math.round(w * 10 / 16);
+  f.style.transform = `scale(${stage.clientWidth / w})`;
+}
+
+function fill(stage, arm, g) {
+  stage.textContent = "";
+  const who = arm === "d" ? "written directly by Opus" : "written by the local model through Tandem";
+  if (mode === "gif") {
+    const img = el("img"); img.src = `gifs/${g[arm].replace("/", "_")}.gif`; img.alt = `${demo} page ${who}`; img.loading = "lazy";
+    stage.append(img);
+    return;
+  }
+  const f = el("iframe");
+  f.src = `demos/${g[arm]}/index.html`; f.title = `${demo} page ${who}`; f.loading = "lazy";
+  f.setAttribute("sandbox", "allow-scripts allow-same-origin");
+  stage.append(f); fit(stage);
+}
+
+function showDemo() {
+  const g = DEMOS[demo];
+  fill($("#stage-d"), "d", g); fill($("#stage-t"), "t", g);
+  $("#full-d").href = `demos/${g.d}/index.html`; $("#full-t").href = `demos/${g.t}/index.html`;
   $("#cap-d").textContent = g.cd; $("#cap-t").textContent = g.ct; $("#gif-note").textContent = g.note;
-  document.querySelectorAll(".pick button").forEach((b) => b.classList.toggle("on", b.dataset.demo === name));
+  document.querySelectorAll(".pick button").forEach((b) => {
+    const on = b.dataset.demo ? b.dataset.demo === demo : b.dataset.mode === mode;
+    b.classList.toggle("on", on); b.setAttribute("aria-pressed", on);
+  });
 }
 
 fetch("data.json").then((r) => r.json()).then((data) => {
@@ -138,5 +166,9 @@ fetch("data.json").then((r) => r.json()).then((data) => {
   $("#rule").textContent = data.rule.replace("every repetition", `all ${data.repeats} repeated evaluations`);
   $("#when").textContent = data.reevaluated_at.slice(0, 10);
 }).catch((e) => { $("#kpis").textContent = "Could not load data.json: " + e; });
-document.querySelectorAll(".pick button").forEach((b) => (b.onclick = () => showGif(b.dataset.demo)));
-showGif("orbital");
+document.querySelectorAll(".pick button").forEach((b) => (b.onclick = () => {
+  if (b.dataset.demo) demo = b.dataset.demo; else mode = b.dataset.mode;
+  showDemo();
+}));
+window.addEventListener("resize", () => document.querySelectorAll(".stage").forEach(fit));
+showDemo();

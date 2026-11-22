@@ -3,7 +3,7 @@
 ## Unreleased
 
 ### Documentation
-- GitHub Pages site with the interactive benchmark comparison (`site/`, built by `scripts/build_site.py`, deployed by `.github/workflows/pages.yml`). It works on phones: cards instead of wide tables, stacked GIFs, horizontal filters.
+- GitHub Pages site with the interactive benchmark comparison (`site/`, built by `scripts/build_site.py`, deployed by `.github/workflows/pages.yml`). It works on phones: cards instead of wide tables, stacked GIFs, horizontal filters. The Orbital and 3D portal pages of both arms run live side by side (scaled iframes, GIF fallback).
 - README and docs reviewed before the repository goes public: stale reference to the removed decision report, time range of a Tandem result, `TANDEM_PROGRESS_SECONDS`, security policy link.
 
 ## 4.0.1
