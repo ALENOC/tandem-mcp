@@ -6,6 +6,7 @@
 \usepackage[margin=1.8cm]{geometry}
 \usepackage{graphicx,booktabs,tabularx,enumitem,microtype,xcolor}
 \usepackage[hidelinks]{hyperref}
+\hypersetup{pdftitle={Architettura di Tandem MCP 4.0.1},pdfauthor={Alessandro Nocentini (ALENOC)},pdflang={it}}
 \setlist{nosep,leftmargin=1.2em}
 \setlength{\parindent}{0pt}
 \setlength{\parskip}{4pt}
@@ -27,7 +28,7 @@ locale (LM Studio, Ollama, llama.cpp, vLLM o un server compatibile OpenAI) legge
 codice entro i limiti del contratto, e Tandem controlla ogni risultato prima che arrivi all'orchestratore.
 
 \begin{center}
-\includegraphics[width=0.62\textwidth]{diagram.pdf}
+\includegraphics[width=0.62\textwidth]{diagram-it.pdf}
 \end{center}
 
 \section{Moduli principali}
@@ -51,11 +52,12 @@ Modulo & Compito\\
 \section{Delega e profilo autonomo}
 \begin{itemize}
 \item \textbf{Contratto:} \code{delegate} richiede un obiettivo, \code{write_globs}, \code{verify_commands} che
-  falliscono finché il lavoro non è fatto e vincoli atomici. I vincoli composti vengono divisi dal server.
-\item \textbf{Base e protezione:} i controlli girano prima di ogni modifica; i file di test sono in sola
+  falliscono finché il lavoro non è fatto e vincoli atomici, un requisito ciascuno. Nel profilo autonomo il
+  server divide i vincoli composti invece di rifiutare il contratto.
+\item \textbf{Controllo iniziale e protezione:} i controlli girano prima di ogni modifica; i file di test sono in sola
   lettura e vengono ripristinati se toccati.
-\item \textbf{Ciclo di riparazione:} a \code{finish} Tandem controlla la sintassi, esegue i controlli nella
-  sandbox (compreso \code{tandem:ui_test} in Chromium) e verifica una riga citata per ogni vincolo. Gli
+\item \textbf{Ciclo di riparazione:} a \code{finish} Tandem controlla la sintassi, esegue i controlli da shell nella
+  sandbox e ogni \code{tandem:ui_test} in Chromium headless, e verifica una riga citata per ogni vincolo. Gli
   errori tornano al modello locale.
 \item \textbf{Profilo autonomo} (\code{TANDEM_PROFILE=autonomous}): quattro tool. \code{delegate} resta in
   attesa mentre il ciclo gira in locale, senza chiamate cloud, entro \code{TANDEM_JOB_SECONDS} (3600),
@@ -68,8 +70,9 @@ Modulo & Compito\\
 \begin{itemize}
 \item \textbf{Profili della sandbox} (\code{TANDEM_SANDBOX}): \code{secure} (si blocca se manca l'isolamento)
   di default su Linux, \code{compatible} su macOS e Windows, \code{trusted} disattiva Bubblewrap.
-\item \textbf{Jail Bubblewrap:} sono montate in sola lettura solo le cartelle di sistema e il runtime Python;
-  \code{$HOME}, \code{/tmp} e \code{/run} dell'host sono vuoti; rete, PID e IPC sono separati.
+\item \textbf{Jail Bubblewrap:} cartelle di sistema e runtime Python sono montati in sola lettura e il workspace
+  è l'unica cartella scrivibile; \code{$HOME}, \code{/tmp} e \code{/run} dell'host sono vuoti; PID e IPC sono
+  separati, e anche la rete salvo che il compito la consenta.
 \item \textbf{Parser dei comandi:} ogni parte di una pipeline deve corrispondere ad \code{allow_run} e non
   alla lista dei divieti; sostituzione di comandi e heredoc sono rifiutati.
 \item \textbf{Backup e rollback:} i byte originali sono registrati per ogni lavoro (8 MiB per file, 256 MiB
@@ -80,8 +83,8 @@ Modulo & Compito\\
 \section{Risparmio misurato}
 Con Opus 5.5 come orchestratore e il profilo autonomo, su cinque compiti e tre coppie bilanciate per
 compito, Tandem ha ridotto la spesa cloud totale del 61\% e il costo per risultato riuscito del 52\%, con il
-72\% di token di output in meno. Una correzione di 5 righe è costata il 10\% in più; i risultati arrivano in
-minuti o fino a due ore invece che in secondi. Modello locale: Qwen3.8 27B IQ3\_S su una GPU AMD Radeon
+72\% di token di output in meno. Una correzione di 5 righe è costata il 10\% in più; un risultato Tandem
+richiede da 2 minuti a 2 ore, uno diretto da 12 secondi a 3 minuti. Modello locale: Qwen3.8 27B IQ3\_S su una GPU AMD Radeon
 RX 6800 serie (16 GB). Dettagli: \code{docs/BENCHMARKS.md} e \url{https://alenoc.github.io/tandem-mcp/}.
 
 \end{document}

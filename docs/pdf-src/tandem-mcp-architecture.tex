@@ -6,6 +6,7 @@
 \usepackage[margin=1.8cm]{geometry}
 \usepackage{graphicx,booktabs,tabularx,enumitem,microtype,xcolor}
 \usepackage[hidelinks]{hyperref}
+\hypersetup{pdftitle={Tandem MCP Architecture 4.0.1},pdfauthor={Alessandro Nocentini (ALENOC)}}
 \setlist{nosep,leftmargin=1.2em}
 \setlength{\parindent}{0pt}
 \setlength{\parskip}{4pt}
@@ -27,7 +28,7 @@ llama.cpp, vLLM or any OpenAI-compatible server) reads large files and writes co
 the contract, and Tandem checks every result before it reaches the orchestrator.
 
 \begin{center}
-\includegraphics[width=0.62\textwidth]{diagram.pdf}
+\includegraphics[width=0.62\textwidth]{diagram-en.pdf}
 \end{center}
 
 \section{Core modules}
@@ -51,10 +52,11 @@ Module & Responsibility\\
 \section{Delegation and the autonomous profile}
 \begin{itemize}
 \item \textbf{Contract:} \code{delegate} needs a goal, \code{write_globs}, \code{verify_commands} that fail
-  until the work is done, and atomic constraints. Compound constraints are split by the server.
+  until the work is done, and atomic constraints, one requirement each. In the autonomous profile the
+  server splits compound constraints instead of refusing the contract.
 \item \textbf{Baseline and protection:} checks run before any edit; test files are read-only and restored if touched.
-\item \textbf{Repair loop:} on \code{finish}, Tandem checks syntax, runs the checks in the sandbox (including
-  \code{tandem:ui_test} in Chromium) and verifies a cited line for every constraint. Failures go back to the
+\item \textbf{Repair loop:} on \code{finish}, Tandem checks syntax, runs the shell checks in the sandbox and
+  each \code{tandem:ui_test} in headless Chromium, and verifies a cited line for every constraint. Failures go back to the
   local model.
 \item \textbf{Autonomous profile} (\code{TANDEM_PROFILE=autonomous}): four tools. \code{delegate} blocks while
   the loop runs locally, with no cloud call, bounded by \code{TANDEM_JOB_SECONDS} (3600),
@@ -67,8 +69,9 @@ Module & Responsibility\\
 \begin{itemize}
 \item \textbf{Sandbox profiles} (\code{TANDEM_SANDBOX}): \code{secure} (fail-closed) by default on Linux,
   \code{compatible} on macOS and Windows, \code{trusted} disables Bubblewrap.
-\item \textbf{Bubblewrap jail:} only system folders and the Python runtime are mounted read-only; host
-  \code{$HOME}, \code{/tmp} and \code{/run} are empty; network, PID and IPC namespaces are separate.
+\item \textbf{Bubblewrap jail:} system folders and the Python runtime are mounted read-only and the
+  workspace is the only writable folder; host \code{$HOME}, \code{/tmp} and \code{/run} are empty; PID and IPC
+  namespaces are separate, and so is the network unless the task allows it.
 \item \textbf{Command parser:} every part of a pipeline must match \code{allow_run} and not the deny list;
   command substitution and heredocs are refused.
 \item \textbf{Backup and rollback:} original bytes are journaled per job (8 MiB per file, 256 MiB per job);
@@ -79,7 +82,7 @@ Module & Responsibility\\
 \section{Measured savings}
 With Opus 5.5 as the orchestrator and the autonomous profile, over five tasks and three counterbalanced
 pairs each, Tandem cut the total cloud cost by 61\% and the cost per successful result by 52\%, with 72\%
-fewer output tokens. A 5-line fix cost 10\% more; results take minutes to two hours instead of seconds.
+fewer output tokens. A 5-line fix cost 10\% more; a Tandem result takes from 2 minutes to 2 hours, a direct one from 12 seconds to 3 minutes.
 Local model: Qwen3.8 27B IQ3\_S on an AMD Radeon RX 6800 series GPU (16 GB). Details:
 \code{docs/BENCHMARKS.md} and \url{https://alenoc.github.io/tandem-mcp/}.
 
