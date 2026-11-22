@@ -23,7 +23,7 @@ function serveDir(dir) {
   });
 }
 
-async function captureGif(workspaceDir, outGif, frames = 45) {
+async function captureGif(workspaceDir, outGif, seconds = 6) {
   const srv = await serveDir(workspaceDir);
   const port = srv.address().port;
   const userDir = fs.mkdtempSync(path.join(os.tmpdir(), 'chrome-gif-'));
@@ -35,7 +35,7 @@ async function captureGif(workspaceDir, outGif, frames = 45) {
 
   try {
     const wsUrl = await new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('DevTools timeout')), 10000);
+      const timer = setTimeout(() => reject(new Error('DevTools timeout')), 30000);
       let buf = '';
       chrome.stderr.on('data', (chunk) => {
         buf += chunk.toString();
@@ -66,19 +66,34 @@ async function captureGif(workspaceDir, outGif, frames = 45) {
     });
 
     await new Promise((r) => setTimeout(r, 900));
-    for (let i = 0; i < frames; i++) {
-      const { data } = await call('Page.captureScreenshot', { format: 'png' });
-      fs.writeFileSync(path.join(framesDir, `frame_${String(i).padStart(3, '0')}.png`), Buffer.from(data, 'base64'));
-      await new Promise((r) => setTimeout(r, 65));
+    // Each frame keeps the real time it covers, so the GIF plays at the speed of the page. A fixed
+    // playback rate would speed up a page that is slower to screenshot more than a fast one.
+    const stamps = [];
+    const t0 = Date.now();
+    for (let i = 0; Date.now() - t0 < seconds * 1000; i++) {
+      const begin = Date.now();
+      const { data } = await call('Page.captureScreenshot', { format: 'jpeg', quality: 92, optimizeForSpeed: true });
+      stamps.push(Date.now());
+      fs.writeFileSync(path.join(framesDir, `frame_${String(i).padStart(3, '0')}.jpg`), Buffer.from(data, 'base64'));
+      // at most about 9 frames per second keeps the GIF small; slower pages give fewer frames
+      await new Promise((r) => setTimeout(r, Math.max(0, 110 - (Date.now() - begin))));
     }
     ws.close();
 
+    const list = stamps.map((t, i) => {
+      const next = stamps[i + 1] ?? t + (t - (stamps[i - 1] ?? t - 100));
+      return `file '${path.join(framesDir, `frame_${String(i).padStart(3, '0')}.jpg`)}'\nduration ${((next - t) / 1000).toFixed(3)}`;
+    });
+    list.push(`file '${path.join(framesDir, `frame_${String(stamps.length - 1).padStart(3, '0')}.jpg`)}'`);
+    fs.writeFileSync(path.join(framesDir, 'list.txt'), list.join('\n') + '\n');
     fs.mkdirSync(path.dirname(outGif), { recursive: true });
     execFileSync('ffmpeg', [
-      '-y', '-framerate', '15', '-i', path.join(framesDir, 'frame_%03d.png'),
-      '-vf', 'fps=15,scale=600:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse',
+      '-y', '-f', 'concat', '-safe', '0', '-i', path.join(framesDir, 'list.txt'),
+      '-vf', 'scale=600:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse', '-fps_mode', 'vfr',
       outGif,
     ], { stdio: 'ignore' });
+    const avg = (stamps[stamps.length - 1] - stamps[0]) / Math.max(1, stamps.length - 1);
+    console.log(`${stamps.length} frames over ${((stamps[stamps.length - 1] - stamps[0]) / 1000).toFixed(1)} s, ${avg.toFixed(0)} ms per frame`);
     console.log(`Rendered ${outGif} (${fs.statSync(outGif).size} bytes)`);
   } finally {
     chrome.kill('SIGKILL');

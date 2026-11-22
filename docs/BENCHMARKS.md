@@ -89,7 +89,7 @@ The evaluator verdicts above are the functional comparison. On the look:
 
 - **Boids and Cron:** equivalent. The Tandem cron modules come with more tests (37-39 against 22-26).
 - **Orbital:** both are clean. The Tandem orbit trails are fainter.
-- **3D portal:** the Tandem page has the neon palette and colored crystals the contract asked for. Its software renderer runs at about 16 FPS where the direct one runs at 60.
+- **3D portal:** the Tandem page has the neon palette and colored crystals the contract asked for. Its software renderer runs at about 16 FPS where the direct one runs at 60, and its camera orbits four times faster (1 rad/s against 0.25 rad/s), because the request did not fix the orbit speed.
 
 The local model does only what the contract says. The guide therefore asks Opus to write the contract in the user's language and to state palette, layout and finish for UI work. Before that rule, a request in Italian produced an English interface.
 
@@ -136,5 +136,7 @@ The repository keeps the earlier iterations in `benchmarks/opus/runs/`; only the
     python run_pair.py --tasks py_discount,py_cron,web_boids,gen_orbital,gen_portal --pairs 3 --tag my_run
     python reeval.py out.json runs/<run_dir>
     node render_gifs.mjs <workspace_dir> <out.gif>
+
+The GIFs play in real time: each frame keeps the time it covered on the page, so a page that renders slowly shows fewer frames, not faster motion.
 
 `run_pair.py` needs the `claude` CLI logged in, LM Studio with the executor model at `http://127.0.0.1:1234/v1`, Node and a Chromium build. A full run takes about nine hours, mostly spent waiting for the local model.

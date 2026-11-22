@@ -17,7 +17,7 @@ const DEMOS = {
   orbital: { d: "orbital/direct", t: "orbital/tandem", cd: "pair 2 · passed", ct: "pair 2 · passed",
     note: "Both pass the evaluator. The Tandem orbit trails are fainter." },
   portal: { d: "portal/direct", t: "portal/tandem", cd: "pair 3 · failed (interactions)", ct: "pair 1 · failed (interactions)",
-    note: "Neither passes every check. The Tandem page has the neon palette and colored crystals the contract asked for; its software renderer runs at about 16 FPS against 60." },
+    note: "Neither passes every check. The Tandem page has the neon palette and colored crystals the contract asked for; its software renderer runs at about 16 FPS against 60, and its camera orbits four times faster (1 rad/s against 0.25 rad/s) because the request did not fix the orbit speed." },
 };
 // pages render at a desktop size and are scaled down; a phone gets a smaller virtual size so the controls stay legible
 const viewW = (stage) => (stage.clientWidth < 560 ? 760 : 1280);
