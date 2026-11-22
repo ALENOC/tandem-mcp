@@ -21,6 +21,35 @@ Runner: [`run_pair.py`](../benchmarks/opus/run_pair.py) · Tasks and evaluators:
 
 Interactive version, also on mobile: [alenoc.github.io/tandem-mcp](https://alenoc.github.io/tandem-mcp/) (built from [`site/`](../site) by `scripts/build_site.py`).
 
+## Test machine and local model
+
+All local work ran on one desktop PC; the local model ran entirely on the GPU.
+
+| Part | Value |
+| --- | --- |
+| CPU | Intel Core i9-9900K, 8 cores, 16 threads, 3.6 GHz |
+| GPU | AMD Radeon RX 6800 series (Navi 21), 16 GB VRAM |
+| RAM | 22 GiB available to the system |
+| OS | Ubuntu 26.04.1 LTS, Linux 7.0 |
+| Model server | LM Studio 0.4.28, llama.cpp Vulkan runtime 2.73.0 |
+
+| Local model setting | Value |
+| --- | --- |
+| Model | Qwen3.8 27B, unsloth GGUF `Qwen3.8-27B-UD-IQ3_S.gguf` (LM Studio id `qwen3.8-27b@iq3_s`) |
+| Quantization | IQ3_S (about 3 bits per weight), 12.0 GB on disk |
+| Context length | 65,536 tokens (the model supports 262,144) |
+| GPU offload | all layers |
+| KV cache | K in `q8_0`, V in `q4_0` |
+| Parallel sessions | 1 |
+| CPU threads | 8 |
+| Evaluation batch | 1,024 |
+| Reasoning | on, budget 1,024 tokens (LM Studio model defaults) |
+| Sampling sent by Tandem | temperature 0.1, at most 4,000 tokens per executor step, native tool calls |
+| Other LM Studio sampling defaults | top-k 20, repeat penalty 1.0 |
+| Tandem limits per job | `TANDEM_JOB_SECONDS` = task budget minus 5 minutes, `TANDEM_MAX_REPAIRS` 20, `TANDEM_MAX_STEPS` 160 |
+
+The cloud side was Opus 5.5 (`claude-opus-5-5`) in Claude Code 2.1.330. The Tandem code of the v3 run is the one at commit `943335e` (snapshot SHA-256 `4b952d947ebe...` in `results.json`).
+
 ## Results
 
 | Task | Budget | Direct: cost per success | Tandem: cost per success | Change |

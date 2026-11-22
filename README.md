@@ -52,6 +52,8 @@ The trade-offs:
 - **Punctuality:** ignoring the time budget both arms deliver 11 correct results of 15, and Tandem is 61% cheaper. Inside the budget Tandem delivers 9 against 11, because two results came after the deadline.
 - **Finish:** the local model does what the contract says and little more. On the 3D portal its renderer runs at about 16 FPS against 60.
 
+Test machine: Intel Core i9-9900K, AMD Radeon RX 6800 series GPU with 16 GB VRAM, LM Studio 0.4.28 (Vulkan) running `Qwen3.8-27B-UD-IQ3_S` fully on the GPU with a 65,536-token context. [Full hardware and model settings](docs/BENCHMARKS.md#test-machine-and-local-model)
+
 [All results, method and earlier iterations](docs/BENCHMARKS.md) · [Interactive comparison, also on mobile](https://alenoc.github.io/tandem-mcp/)
 
 ### 3D neon portal
@@ -110,4 +112,14 @@ For a first edit, pick a failing test and tell the worker which file it may chan
 
 For manual setup or a different model endpoint, see [Getting Started](docs/GETTING_STARTED.md) and [Configuration](docs/CONFIGURATION.md). The tools are listed in the [tool reference](docs/TOOLS.md).
 
-[Changelog](CHANGELOG.md) · [Security policy](SECURITY.md) · [MIT license](LICENSE) · Copyright (c) 2026 [Alessandro Nocentini](https://github.com/ALENOC)
+## License and attribution
+
+Tandem MCP is released under the [MIT license](LICENSE). Copyright (c) 2026 Alessandro Nocentini ([ALENOC](https://github.com/ALENOC)).
+
+Forks, modified versions and derivative works must keep the attribution to the original work, in their README or documentation and in the LICENSE file:
+
+> Based on Tandem MCP by Alessandro Nocentini (ALENOC), https://github.com/ALENOC/tandem-mcp
+
+See [NOTICE](NOTICE).
+
+[Changelog](CHANGELOG.md) · [Security policy](SECURITY.md)

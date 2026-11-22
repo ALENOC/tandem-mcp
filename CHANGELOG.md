@@ -3,6 +3,8 @@
 ## Unreleased
 
 ### Documentation
+- Benchmarks state the test machine (CPU, GPU, RAM, OS), LM Studio version and runtime, and every local model setting used.
+- README section "License and attribution" and a NOTICE file: forks and derivative works must keep the attribution to the original work by Alessandro Nocentini (ALENOC).
 - GitHub Pages site with the interactive benchmark comparison (`site/`, built by `scripts/build_site.py`, deployed by `.github/workflows/pages.yml`). It works on phones: cards instead of wide tables, stacked GIFs, horizontal filters. The Orbital and 3D portal pages of both arms run live side by side (scaled iframes, GIF fallback).
 - README and docs reviewed before the repository goes public: stale reference to the removed decision report, time range of a Tandem result, `TANDEM_PROGRESS_SECONDS`, security policy link.
 

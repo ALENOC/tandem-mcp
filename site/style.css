@@ -77,6 +77,7 @@ h2 { font-size: clamp(20px, 4.5vw, 26px); margin: 0 0 10px; }
 .gifs .full { margin-left: auto; color: var(--t); font-size: 13px; text-decoration: none; }
 .pick .mode { margin-left: 0; } .pick .mode:first-of-type { margin-left: auto; }
 .method { padding-left: 20px; margin: 0; } .method li { margin: 6px 0; }
+.foot a { color: var(--t); }
 .foot { color: var(--muted); font-size: 13px; padding-top: 40px; padding-bottom: max(28px, env(safe-area-inset-bottom)); }
 
 @media (max-width: 640px) {

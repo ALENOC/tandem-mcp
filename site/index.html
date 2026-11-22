@@ -77,13 +77,15 @@
         <li><b>Same isolated setup:</b> both arms run <code>claude -p</code> with no user settings, plugins or project instructions. The Tandem arm adds the MCP server in the autonomous profile and the suffix "Usa Tandem."</li>
         <li><b>Cloud cost:</b> <code>total_cost_usd</code> reported by the run, at list prices. Failed attempts are counted in the cost.</li>
         <li><b>Success:</b> <span id="rule"></span>. The evaluator is independent and neither arm sees it.</li>
+        <li><b>Test machine:</b> Intel Core i9-9900K, AMD Radeon RX 6800 series (16 GB VRAM), Ubuntu 26.04. LM Studio 0.4.28 with the llama.cpp Vulkan runtime.</li>
+        <li><b>Local model:</b> <code>Qwen3.8-27B-UD-IQ3_S</code> (unsloth GGUF, about 3 bits per weight, 12 GB), all layers on the GPU, 65,536-token context, KV cache K <code>q8_0</code> / V <code>q4_0</code>, one session, reasoning on (1,024-token budget), temperature 0.1, up to 4,000 tokens per step.</li>
         <li><b>Not counted in the cloud cost:</b> local model time and power, shown as local tokens and wall time.</li>
       </ul>
       <p class="sub">Full report, raw data and scripts: <code>docs/BENCHMARKS.md</code> and <code>benchmarks/opus/</code> in the repository.</p>
     </section>
   </main>
 
-  <footer class="wrap foot">Tandem MCP 4.0.1 · re-evaluated <span id="when"></span></footer>
+  <footer class="wrap foot">Tandem MCP 4.0.1 · re-evaluated <span id="when"></span><br>MIT license · original work by Alessandro Nocentini (<a href="https://github.com/ALENOC">ALENOC</a>) · <a href="https://github.com/ALENOC/tandem-mcp">github.com/ALENOC/tandem-mcp</a></footer>
   <script src="app.js"></script>
 </body>
 </html>
