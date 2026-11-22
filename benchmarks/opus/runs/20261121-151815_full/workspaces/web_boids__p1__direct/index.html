@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Boids – Simulazione di stormo</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #070b14; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #e6edf7; }
+  canvas { display: block; position: fixed; inset: 0; width: 100vw; height: 100vh; cursor: crosshair; background: #070b14; }
+  .glass {
+    background: rgba(255, 255, 255, 0.07);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 14px;
+    backdrop-filter: blur(12px) saturate(140%);
+    -webkit-backdrop-filter: blur(12px) saturate(140%);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+  }
+  #hud { position: fixed; top: 16px; left: 16px; padding: 14px 18px; min-width: 190px; font-size: 14px; user-select: none; }
+  #hud h1 { font-size: 15px; font-weight: 600; letter-spacing: .04em; margin-bottom: 8px; color: #9fd3ff; }
+  #hud .row { display: flex; justify-content: space-between; gap: 16px; padding: 2px 0; }
+  #hud .row span:last-child { font-variant-numeric: tabular-nums; font-weight: 600; }
+  #controls { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); padding: 12px 16px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+  button {
+    font: inherit; font-size: 14px; color: #e6edf7; cursor: pointer;
+    background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 10px; padding: 8px 14px; min-width: 76px; transition: background .15s;
+  }
+  button:hover { background: rgba(255, 255, 255, 0.2); }
+  button:focus-visible { outline: 2px solid #9fd3ff; outline-offset: 2px; }
+  label { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+  input[type=range] { width: 140px; accent-color: #6cc4ff; }
+  #speedVal { min-width: 36px; font-variant-numeric: tabular-nums; }
+  #hint { position: fixed; top: 16px; right: 16px; padding: 10px 14px; font-size: 13px; opacity: .85; user-select: none; }
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+
+<div id="hud" class="glass" aria-live="polite">
+  <h1>BOIDS</h1>
+  <div class="row"><span>FPS</span><span id="fps">0</span></div>
+  <div class="row"><span>Boids</span><span id="count">0</span></div>
+  <div class="row"><span>Velocità</span><span id="speedHud">1.0×</span></div>
+  <div class="row"><span>Stato</span><span id="state">In pausa</span></div>
+</div>
+
+<div id="hint" class="glass">Clicca sul canvas per aggiungere un boid</div>
+
+<div id="controls" class="glass">
+  <button id="playBtn" type="button">Play</button>
+  <button id="stepBtn" type="button">Step</button>
+  <button id="resetBtn" type="button">Reset</button>
+  <label for="speed">Velocità
+    <input id="speed" type="range" min="0.5" max="3.0" step="0.1" value="1.0">
+    <span id="speedVal">1.0×</span>
+  </label>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var INITIAL_COUNT = 60;
+  var MAX_SPEED = 3.2;
+  var MIN_SPEED = 1.2;
+  var MAX_FORCE = 0.06;
+  var PERCEPTION = 60;
+  var SEP_DIST = 24;
+  var W_SEP = 1.6, W_ALI = 1.0, W_COH = 0.9;
+
+  var canvas = document.getElementById('canvas');
+  var ctx = canvas.getContext('2d');
+  var playBtn = document.getElementById('playBtn');
+  var stepBtn = document.getElementById('stepBtn');
+  var resetBtn = document.getElementById('resetBtn');
+  var speedInput = document.getElementById('speed');
+  var speedVal = document.getElementById('speedVal');
+  var fpsEl = document.getElementById('fps');
+  var countEl = document.getElementById('count');
+  var speedHud = document.getElementById('speedHud');
+  var stateEl = document.getElementById('state');
+
+  var width = 0, height = 0, dpr = 1;
+  var boids = [];
+  var running = false;
+  var speed = 1.0;
+
+  function resize() {
+    dpr = window.devicePixelRatio || 1;
+    width = window.innerWidth;
+    height = window.innerHeight;
+    canvas.width = Math.floor(width * dpr);
+    canvas.height = Math.floor(height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function createBoid(x, y) {
+    var a = Math.random() * Math.PI * 2;
+    var s = MIN_SPEED + Math.random() * (MAX_SPEED - MIN_SPEED);
+    return { x: x, y: y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, hue: 190 + Math.random() * 60 };
+  }
+
+  function reset() {
+    boids = [];
+    for (var i = 0; i < INITIAL_COUNT; i++) {
+      boids.push(createBoid(Math.random() * width, Math.random() * height));
+    }
+    updateHud();
+    draw();
+  }
+
+  function limit(vx, vy, max) {
+    var m = Math.sqrt(vx * vx + vy * vy);
+    if (m > max && m > 0) { return [vx / m * max, vy / m * max]; }
+    return [vx, vy];
+  }
+
+  function steer(tx, ty, b) {
+    // desired velocity toward (tx,ty) at max speed, minus current velocity
+    var m = Math.sqrt(tx * tx + ty * ty);
+    if (m === 0) return [0, 0];
+    var dx = tx / m * MAX_SPEED - b.vx;
+    var dy = ty / m * MAX_SPEED - b.vy;
+    return limit(dx, dy, MAX_FORCE);
+  }
+
+  function wrapDelta(d, size) {
+    if (d > size / 2) return d - size;
+    if (d < -size / 2) return d + size;
+    return d;
+  }
+
+  function update(dt) {
+    var n = boids.length;
+    var acc = new Array(n);
+    var p2 = PERCEPTION * PERCEPTION, s2 = SEP_DIST * SEP_DIST;
+    for (var i = 0; i < n; i++) {
+      var b = boids[i];
+      var sx = 0, sy = 0, ax = 0, ay = 0, cx = 0, cy = 0, cnt = 0, scnt = 0;
+      for (var j = 0; j < n; j++) {
+        if (i === j) continue;
+        var o = boids[j];
+        var dx = wrapDelta(o.x - b.x, width);
+        var dy = wrapDelta(o.y - b.y, height);
+        var d2 = dx * dx + dy * dy;
+        if (d2 < p2) {
+          ax += o.vx; ay += o.vy;
+          cx += dx; cy += dy;
+          cnt++;
+          if (d2 < s2 && d2 > 0) {
+            sx -= dx / d2; sy -= dy / d2;
+            scnt++;
+          }
+        }
+      }
+      var fx = 0, fy = 0, f;
+      if (cnt > 0) {
+        f = steer(ax / cnt, ay / cnt, b); fx += f[0] * W_ALI; fy += f[1] * W_ALI;
+        f = steer(cx / cnt, cy / cnt, b); fx += f[0] * W_COH; fy += f[1] * W_COH;
+      }
+      if (scnt > 0) {
+        f = steer(sx, sy, b); fx += f[0] * W_SEP; fy += f[1] * W_SEP;
+      }
+      acc[i] = [fx, fy];
+    }
+    for (var k = 0; k < n; k++) {
+      var bk = boids[k];
+      bk.vx += acc[k][0] * dt;
+      bk.vy += acc[k][1] * dt;
+      var v = limit(bk.vx, bk.vy, MAX_SPEED);
+      bk.vx = v[0]; bk.vy = v[1];
+      var m = Math.sqrt(bk.vx * bk.vx + bk.vy * bk.vy);
+      if (m < MIN_SPEED) {
+        if (m === 0) { bk.vx = MIN_SPEED; bk.vy = 0; }
+        else { bk.vx = bk.vx / m * MIN_SPEED; bk.vy = bk.vy / m * MIN_SPEED; }
+      }
+      bk.x += bk.vx * dt;
+      bk.y += bk.vy * dt;
+      if (bk.x < 0) bk.x += width; else if (bk.x >= width) bk.x -= width;
+      if (bk.y < 0) bk.y += height; else if (bk.y >= height) bk.y -= height;
+    }
+  }
+
+  function draw() {
+    ctx.fillStyle = '#070b14';
+    ctx.fillRect(0, 0, width, height);
+    for (var i = 0; i < boids.length; i++) {
+      var b = boids[i];
+      var ang = Math.atan2(b.vy, b.vx);
+      ctx.save();
+      ctx.translate(b.x, b.y);
+      ctx.rotate(ang);
+      ctx.beginPath();
+      ctx.moveTo(9, 0);
+      ctx.lineTo(-6, 4.5);
+      ctx.lineTo(-3, 0);
+      ctx.lineTo(-6, -4.5);
+      ctx.closePath();
+      ctx.fillStyle = 'hsl(' + b.hue.toFixed(0) + ', 85%, 65%)';
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  function updateHud() {
+    countEl.textContent = String(boids.length);
+    var s = speed.toFixed(1) + '×';
+    speedHud.textContent = s;
+    speedVal.textContent = s;
+    stateEl.textContent = running ? 'In esecuzione' : 'In pausa';
+    playBtn.textContent = running ? 'Pause' : 'Play';
+    playBtn.setAttribute('aria-pressed', running ? 'true' : 'false');
+  }
+
+  // FPS measurement
+  var frames = 0, fpsTime = performance.now(), lastTime = performance.now();
+
+  function loop(now) {
+    var elapsed = now - lastTime;
+    lastTime = now;
+    frames++;
+    if (now - fpsTime >= 500) {
+      fpsEl.textContent = String(Math.round(frames * 1000 / (now - fpsTime)));
+      frames = 0;
+      fpsTime = now;
+    }
+    if (running) {
+      // normalize to 60fps frames, clamp to avoid huge jumps
+      var frameScale = Math.min(elapsed / (1000 / 60), 3);
+      var total = frameScale * speed;
+      var steps = Math.max(1, Math.ceil(total));
+      var dt = total / steps;
+      for (var s = 0; s < steps; s++) update(dt);
+    }
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  playBtn.addEventListener('click', function () {
+    running = !running;
+    updateHud();
+  });
+
+  stepBtn.addEventListener('click', function () {
+    if (running) { running = false; }
+    update(speed);
+    draw();
+    updateHud();
+  });
+
+  resetBtn.addEventListener('click', function () {
+    running = false;
+    reset();
+  });
+
+  speedInput.addEventListener('input', function () {
+    var v = parseFloat(speedInput.value);
+    if (!isNaN(v)) speed = Math.min(3, Math.max(0.5, v));
+    updateHud();
+  });
+
+  canvas.addEventListener('click', function (e) {
+    var rect = canvas.getBoundingClientRect();
+    boids.push(createBoid(e.clientX - rect.left, e.clientY - rect.top));
+    updateHud();
+    draw();
+  });
+
+  window.addEventListener('resize', function () {
+    resize();
+    for (var i = 0; i < boids.length; i++) {
+      boids[i].x = Math.min(boids[i].x, width - 1);
+      boids[i].y = Math.min(boids[i].y, height - 1);
+    }
+    draw();
+  });
+
+  resize();
+  speed = parseFloat(speedInput.value) || 1.0;
+  reset();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

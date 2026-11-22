@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Boids Flocking Simulation</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #070b14;
+  }
+  body {
+    background: #070b14;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #e6ecf5;
+  }
+  #sim {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: #070b14;
+    cursor: crosshair;
+  }
+  #hud {
+    position: fixed;
+    top: 16px;
+    left: 16px;
+    z-index: 10;
+    min-width: 210px;
+    padding: 14px 16px;
+    background: rgba(255, 255, 255, 0.08);
+    -webkit-backdrop-filter: blur(14px);
+    backdrop-filter: blur(14px);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+    user-select: none;
+  }
+  #hud h1 {
+    margin: 0 0 10px 0;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.85);
+  }
+  .row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin: 8px 0;
+    font-size: 13px;
+  }
+  .stat {
+    display: flex;
+    gap: 6px;
+    align-items: baseline;
+  }
+  .stat .label { color: rgba(255, 255, 255, 0.55); }
+  .stat .value { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .controls {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  button {
+    flex: 1;
+    padding: 8px 10px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #e6ecf5;
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background 0.15s ease, transform 0.05s ease;
+  }
+  button:hover { background: rgba(255, 255, 255, 0.2); }
+  button:active { transform: translateY(1px); }
+  .slider-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+    font-size: 13px;
+  }
+  .slider-row label { color: rgba(255, 255, 255, 0.6); white-space: nowrap; }
+  #speed {
+    flex: 1;
+    accent-color: #6ea8ff;
+    cursor: pointer;
+  }
+  #speedVal {
+    min-width: 34px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+  }
+  .hint {
+    margin-top: 10px;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.4);
+  }
+</style>
+</head>
+<body>
+  <canvas id="sim"></canvas>
+  <div id="hud">
+    <h1>Boids</h1>
+    <div class="row">
+      <span class="stat"><span class="label">FPS</span><span class="value" id="fps">0</span></span>
+      <span class="stat"><span class="label">Boids</span><span class="value" id="count">0</span></span>
+    </div>
+    <div class="slider-row">
+      <label for="speed">Speed</label>
+      <input type="range" id="speed" min="0.5" max="3.0" step="0.1" value="1">
+      <span id="speedVal">1.0</span>
+    </div>
+    <div class="controls">
+      <button id="playBtn">Play</button>
+      <button id="stepBtn">Step</button>
+      <button id="resetBtn">Reset</button>
+    </div>
+    <div class="hint">Click the canvas to add a boid</div>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+
+  var canvas = document.getElementById("sim");
+  var ctx = canvas.getContext("2d");
+
+  var fpsEl = document.getElementById("fps");
+  var countEl = document.getElementById("count");
+  var speedValEl = document.getElementById("speedVal");
+  var playBtn = document.getElementById("playBtn");
+  var stepBtn = document.getElementById("stepBtn");
+  var resetBtn = document.getElementById("resetBtn");
+  var speedInput = document.getElementById("speed");
+
+  var BG = "#070b14";
+  var BOID_COUNT = 60;
+  var MAX_SPEED = 3;
+  var PERCEPTION = 60;
+  var SEP_DIST = 24;
+  var SEP_W = 0.05;
+  var ALI_W = 0.05;
+  var COH_W = 0.005;
+
+  var app = {
+    boids: [],
+    running: false,
+    speed: 1,
+    frame: 0,
+    fps: 0,
+    play: play,
+    pause: pause,
+    toggle: toggle,
+    step: step,
+    reset: reset,
+    addBoid: addBoid
+  };
+  window.app = app;
+
+  var W = 0;
+  var H = 0;
+  var dpr = 1;
+
+  function rand(a, b) {
+    return a + Math.random() * (b - a);
+  }
+
+  function makeBoid(x, y) {
+    var ang = rand(0, Math.PI * 2);
+    var sp = rand(1, MAX_SPEED);
+    return {
+      x: x,
+      y: y,
+      vx: Math.cos(ang) * sp,
+      vy: Math.sin(ang) * sp
+    };
+  }
+
+  function addBoid(x, y) {
+    if (x === undefined || y === undefined) {
+      x = rand(0, W);
+      y = rand(0, H);
+    }
+    app.boids.push(makeBoid(x, y));
+    updateCount();
+    draw();
+    return app.boids[app.boids.length - 1];
+  }
+
+  function reset() {
+    app.boids.length = 0;
+    for (var i = 0; i < BOID_COUNT; i++) {
+      app.boids.push(makeBoid(rand(0, W), rand(0, H)));
+    }
+    app.frame = 0;
+    app.running = false;
+    playBtn.textContent = "Play";
+    updateCount();
+    draw();
+  }
+
+  function play() {
+    app.running = true;
+    playBtn.textContent = "Pause";
+  }
+
+  function pause() {
+    app.running = false;
+    playBtn.textContent = "Play";
+  }
+
+  function toggle() {
+    if (app.running) {
+      pause();
+    } else {
+      play();
+    }
+  }
+
+  function step() {
+    if (!app.running) {
+      update();
+      app.frame++;
+      draw();
+    }
+  }
+
+  function updateCount() {
+    countEl.textContent = String(app.boids.length);
+  }
+
+  function updateSpeedVal() {
+    speedValEl.textContent = app.speed.toFixed(1);
+  }
+
+  function update() {
+    var boids = app.boids;
+    var n = boids.length;
+    var i, j, b, o;
+    var dx, dy, d2, d;
+    var sepX, sepY, aliX, aliY, cohX, cohY, cnt;
+
+    for (i = 0; i < n; i++) {
+      b = boids[i];
+      sepX = 0; sepY = 0;
+      aliX = 0; aliY = 0;
+      cohX = 0; cohY = 0;
+      cnt = 0;
+
+      for (j = 0; j < n; j++) {
+        if (j === i) continue;
+        o = boids[j];
+        dx = o.x - b.x;
+        dy = o.y - b.y;
+        d2 = dx * dx + dy * dy;
+        if (d2 > PERCEPTION * PERCEPTION) continue;
+        d = Math.sqrt(d2) || 0.0001;
+        cnt++;
+        aliX += o.vx;
+        aliY += o.vy;
+        cohX += o.x;
+        cohY += o.y;
+        if (d < SEP_DIST) {
+          sepX -= dx / d;
+          sepY -= dy / d;
+        }
+      }
+
+      if (cnt > 0) {
+        b.vx += sepX * SEP_W;
+        b.vy += sepY * SEP_W;
+        b.vx += (aliX / cnt - b.vx) * ALI_W;
+        b.vy += (aliY / cnt - b.vy) * ALI_W;
+        b.vx += (cohX / cnt - b.x) * COH_W;
+        b.vy += (cohY / cnt - b.y) * COH_W;
+      }
+
+      var sp = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
+      if (sp > MAX_SPEED) {
+        b.vx = (b.vx / sp) * MAX_SPEED;
+        b.vy = (b.vy / sp) * MAX_SPEED;
+      } else if (sp < 0.5 && sp > 0) {
+        b.vx = (b.vx / sp) * 0.5;
+        b.vy = (b.vy / sp) * 0.5;
+      }
+    }
+
+    var s = app.speed;
+    for (i = 0; i < n; i++) {
+      b = boids[i];
+      b.x += b.vx * s;
+      b.y += b.vy * s;
+      if (b.x < 0) b.x += W;
+      else if (b.x >= W) b.x -= W;
+      if (b.y < 0) b.y += H;
+      else if (b.y >= H) b.y -= H;
+    }
+  }
+
+  function drawBoid(b) {
+    var ang = Math.atan2(b.vy, b.vx);
+    var size = 7;
+    ctx.save();
+    ctx.translate(b.x, b.y);
+    ctx.rotate(ang);
+    ctx.beginPath();
+    ctx.moveTo(size * 1.6, 0);
+    ctx.lineTo(-size, size * 0.7);
+    ctx.lineTo(-size * 0.4, 0);
+    ctx.lineTo(-size, -size * 0.7);
+    ctx.closePath();
+    ctx.fillStyle = "rgba(120, 180, 255, 0.95)";
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function draw() {
+    ctx.fillStyle = BG;
+    ctx.fillRect(0, 0, W, H);
+    var boids = app.boids;
+    for (var i = 0; i < boids.length; i++) {
+      drawBoid(boids[i]);
+    }
+  }
+
+  function resize() {
+    dpr = window.devicePixelRatio || 1;
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = Math.round(W * dpr);
+    canvas.height = Math.round(H * dpr);
+    canvas.style.width = W + "px";
+    canvas.style.height = H + "px";
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    draw();
+  }
+
+  var lastT = performance.now();
+  var fpsAccum = 0;
+  var fpsFrames = 0;
+
+  function loop(t) {
+    var dt = t - lastT;
+    lastT = t;
+    if (dt > 0) {
+      fpsAccum += dt;
+      fpsFrames++;
+      if (fpsAccum >= 250) {
+        app.fps = Math.round(1000 / (fpsAccum / fpsFrames));
+        fpsEl.textContent = String(app.fps);
+        fpsAccum = 0;
+        fpsFrames = 0;
+      }
+    }
+    if (app.running) {
+      update();
+      app.frame++;
+    }
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  // Wire up controls
+  playBtn.addEventListener("click", function (e) {
+    e.stopPropagation();
+    toggle();
+  });
+  stepBtn.addEventListener("click", function (e) {
+    e.stopPropagation();
+    step();
+  });
+  resetBtn.addEventListener("click", function (e) {
+    e.stopPropagation();
+    reset();
+  });
+  speedInput.addEventListener("input", function (e) {
+    e.stopPropagation();
+    app.speed = parseFloat(speedInput.value);
+    updateSpeedVal();
+  });
+
+  canvas.addEventListener("click", function (e) {
+    var rect = canvas.getBoundingClientRect();
+    addBoid(e.clientX - rect.left, e.clientY - rect.top);
+  });
+
+  window.addEventListener("resize", resize);
+
+  // Init
+  resize();
+  reset();
+  updateSpeedVal();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

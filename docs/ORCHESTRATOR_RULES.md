@@ -1,8 +1,11 @@
 # Tandem MCP: orchestrator rules (cloud-token saving)
 
-Copy this block into your client's rules file (`GEMINI.md` / `AGENTS.md` for Antigravity and Gemini CLI,
-`CLAUDE.md` for Claude Code, `AGENTS.md` for Codex) and run Tandem with `TANDEM_PROFILE=lean`.
-Every rule removes a step that was measured to cost cloud tokens in the Hydrogen benchmark.
+With Claude Code, use `TANDEM_PROFILE=autonomous`: its rules are built into the server's instructions and
+`delegate` blocks until the local work is done, so no rules file is needed. See [Benchmarks](BENCHMARKS.md).
+
+For other clients, copy this block into the client's rules file (`AGENTS.md` for Codex, `GEMINI.md` for
+Gemini CLI and Antigravity) and run Tandem with `TANDEM_PROFILE=lean`. Every rule removes a step that costs
+cloud tokens.
 
 ```markdown
 ## Using Tandem MCP
@@ -30,13 +33,14 @@ Tandem's local model is free; your context is not. Keep your own reading and tur
 
 ## Why each rule exists
 
-Measured in run `20261117-190714` (Gemini 4 Hydrogen + qwen3.8-27b, default profile):
+Each rule removes a step that was seen to cost cloud tokens without changing the result:
 
-| Wasted step | Where it happened | Rule |
-| --- | --- | --- |
-| Read all 5 source files before `delegate` | multi-file bugfix | 1, 3 |
-| Read 7 tool-schema files (`delegate.json` alone is 5 KB) | every tandem run | `TANDEM_PROFILE=lean` |
-| `executor_status`, `ledger_report` x2, `ps aux`, listing job folders | multi-file bugfix | 7 |
-| Re-read `parser.py`/`validator.py` and re-ran tests after VERIFIED | multi-file bugfix | 4 |
-| Deleted the output and delegated a second time | rate limiter | 5 |
-| 3 x `job_status`, then `job_evidence`, then `job_feedback` | rate limiter | 4, 5 + auto-accept |
+| Wasted step | Rule |
+| --- | --- |
+| Reading every source file before `delegate` | 1, 3 |
+| Reading large tool schemas on every run | `TANDEM_PROFILE=lean` or `autonomous` |
+| Checking processes, job folders and ledgers | 7 |
+| Re-reading files and re-running tests after a verified job | 4 |
+| Deleting the output and delegating a second time | 5 |
+| Polling `job_status`, then opening evidence and feedback tools | 4, 5 + auto-accept |
+| Editing files blind after a failed job, which broke a working page | 6 |

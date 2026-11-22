@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Boids</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{margin:0;overflow:hidden;background:#070b14;font-family:system-ui,-apple-system,sans-serif}
+#sim{position:fixed;top:0;left:0;width:100vw;height:100vh;display:block}
+#hud{position:fixed;top:16px;left:16px;background:rgba(255,255,255,0.08);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.18);border-radius:14px;padding:14px 18px;color:#e2e8f0;font-family:system-ui,-apple-system,sans-serif;box-shadow:0 8px 32px rgba(0,0,0,0.35);user-select:none;z-index:10}
+.hud-row{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:6px;font-size:14px}
+.hud-row:last-child{margin-bottom:0}
+.hud-label{opacity:0.7}
+.hud-value{font-weight:600;font-variant-numeric:tabular-nums}
+.controls{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;align-items:center}
+button{background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);border-radius:8px;color:#e2e8f0;padding:6px 14px;font-size:13px;font-family:inherit;cursor:pointer;transition:background 0.15s}
+button:hover{background:rgba(94,234,212,0.25)}
+input[type=range]{width:100px;accent-color:#5eead4;cursor:pointer}
+</style>
+</head>
+<body>
+<canvas id="sim"></canvas>
+<div id="hud">
+  <div class="hud-row"><span class="hud-label">FPS</span><span class="hud-value" id="fps">0</span></div>
+  <div class="hud-row"><span class="hud-label">Boids</span><span class="hud-value" id="count">0</span></div>
+  <div class="hud-row"><span class="hud-label">Velocità</span><span class="hud-value" id="speedValue">1.0x</span></div>
+  <div class="controls">
+    <button id="playPause">Play</button>
+    <button id="step">Step</button>
+    <button id="reset">Reset</button>
+    <input type="range" id="speed" min="0.5" max="3.0" step="0.1" value="1.0">
+  </div>
+</div>
+<script>
+(function(){
+"use strict";
+var canvas=document.getElementById('sim');
+var ctx=canvas.getContext('2d');
+var fpsEl=document.getElementById('fps');
+var countEl=document.getElementById('count');
+var speedValueEl=document.getElementById('speedValue');
+var playPauseBtn=document.getElementById('playPause');
+var stepBtn=document.getElementById('step');
+var resetBtn=document.getElementById('reset');
+var speedInput=document.getElementById('speed');
+
+var MAX_SPEED=3;
+var MAX_FORCE=0.05;
+var SEP_RADIUS=25;
+var SEP_WEIGHT=1.5;
+var ALI_RADIUS=50;
+var ALI_WEIGHT=1.0;
+var COH_RADIUS=50;
+var COH_WEIGHT=1.0;
+var BOID_COUNT=60;
+
+var boids=[];
+var running=false;
+var speed=1.0;
+var fps=0;
+var frameCount=0;
+var lastFpsTime=performance.now();
+
+function resize(){
+  var dpr=window.devicePixelRatio||1;
+  canvas.width=window.innerWidth*dpr;
+  canvas.height=window.innerHeight*dpr;
+  canvas.style.width=window.innerWidth+'px';
+  canvas.style.height=window.innerHeight+'px';
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+
+function rand(min,max){return min+Math.random()*(max-min)}
+
+function createBoid(x,y){
+  var angle=Math.random()*Math.PI*2;
+  var spd=rand(1,MAX_SPEED);
+  return{x:x,y:y,vx:Math.cos(angle)*spd,vy:Math.sin(angle)*spd};
+}
+
+function initBoids(){
+  boids=[];
+  var w=window.innerWidth;
+  var h=window.innerHeight;
+  for(var i=0;i<BOID_COUNT;i++){
+    boids.push(createBoid(rand(0,w),rand(0,h)));
+  }
+  updateCount();
+}
+
+function updateCount(){
+  countEl.textContent=String(boids.length);
+}
+
+function updatePlayPause(){
+  playPauseBtn.textContent=running?'Pause':'Play';
+}
+
+function updateSpeedValue(){
+  speedValueEl.textContent=speed.toFixed(1)+'x';
+}
+
+function limitVec(vx,vy,max){
+  var mag=Math.sqrt(vx*vx+vy*vy);
+  if(mag>max&&mag>0){
+    return[vx/mag*max,vy/mag*max];
+  }
+  return[vx,vy];
+}
+
+function updatePhysics(){
+  var w=window.innerWidth;
+  var h=window.innerHeight;
+  var n=boids.length;
+  var i,j;
+  var sepX,sepY,aliX,aliY,cohX,cohX2,cohY,cohY2;
+  var dx,dy,dist,dist2;
+  var sepCount,aliCount,cohCount;
+  var sx,sy,ax,ay,cx,cy;
+  var fx,fy;
+  var newVx,newVy;
+  var limited;
+
+  for(i=0;i<n;i++){
+    var b=boids[i];
+    sepX=0;sepY=0;aliX=0;aliY=0;cohX=0;cohY=0;
+    sepCount=0;aliCount=0;cohCount=0;
+
+    for(j=0;j<n;j++){
+      if(i===j)continue;
+      var other=boids[j];
+      dx=other.x-b.x;
+      dy=other.y-b.y;
+      dist2=dx*dx+dy*dy;
+
+      if(dist2<SEP_RADIUS*SEP_RADIUS&&dist2>0){
+        dist=Math.sqrt(dist2);
+        sepX-=dx/dist;
+        sepY-=dy/dist;
+        sepCount++;
+      }
+      if(dist2<ALI_RADIUS*ALI_RADIUS){
+        aliX+=other.vx;
+        aliY+=other.vy;
+        aliCount++;
+      }
+      if(dist2<COH_RADIUS*COH_RADIUS){
+        cohX+=other.x;
+        cohY+=other.y;
+        cohCount++;
+      }
+    }
+
+    fx=0;fy=0;
+
+    if(sepCount>0){
+      sx=sepX/sepCount;
+      sy=sepY/sepCount;
+      var sepMag=Math.sqrt(sx*sx+sy*sy);
+      if(sepMag>0){
+        sx=sx/sepMag*MAX_SPEED-b.vx;
+        sy=sy/sepMag*MAX_SPEED-b.vy;
+        limited=limitVec(sx,sy,MAX_FORCE);
+        fx+=limited[0]*SEP_WEIGHT;
+        fy+=limited[1]*SEP_WEIGHT;
+      }
+    }
+
+    if(aliCount>0){
+      ax=aliX/aliCount;
+      ay=aliY/aliCount;
+      var aliMag=Math.sqrt(ax*ax+ay*ay);
+      if(aliMag>0){
+        ax=ax/aliMag*MAX_SPEED-b.vx;
+        ay=ay/aliMag*MAX_SPEED-b.vy;
+        limited=limitVec(ax,ay,MAX_FORCE);
+        fx+=limited[0]*ALI_WEIGHT;
+        fy+=limited[1]*ALI_WEIGHT;
+      }
+    }
+
+    if(cohCount>0){
+      cx=cohX/cohCount-b.x;
+      cy=cohY/cohCount-b.y;
+      var cohMag=Math.sqrt(cx*cx+cy*cy);
+      if(cohMag>0){
+        cx=cx/cohMag*MAX_SPEED-b.vx;
+        cy=cy/cohMag*MAX_SPEED-b.vy;
+        limited=limitVec(cx,cy,MAX_FORCE);
+        fx+=limited[0]*COH_WEIGHT;
+        fy+=limited[1]*COH_WEIGHT;
+      }
+    }
+
+    b.vx+=fx;
+    b.vy+=fy;
+    limited=limitVec(b.vx,b.vy,MAX_SPEED);
+    b.vx=limited[0];
+    b.vy=limited[1];
+
+    b.x+=b.vx*speed;
+    b.y+=b.vy*speed;
+
+    if(b.x<0)b.x+=w;
+    if(b.x>w)b.x-=w;
+    if(b.y<0)b.y+=h;
+    if(b.y>h)b.y-=h;
+  }
+}
+
+function drawBoid(b){
+  var angle=Math.atan2(b.vy,b.vx);
+  ctx.save();
+  ctx.translate(b.x,b.y);
+  ctx.rotate(angle);
+  ctx.shadowBlur=6;
+  ctx.shadowColor='#5eead4';
+  ctx.fillStyle='#5eead4';
+  ctx.beginPath();
+  ctx.moveTo(8,0);
+  ctx.lineTo(-5,-4);
+  ctx.lineTo(-5,4);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function draw(){
+  ctx.shadowBlur=0;
+  ctx.shadowColor='transparent';
+  ctx.fillStyle='#070b14';
+  ctx.fillRect(0,0,window.innerWidth,window.innerHeight);
+  for(var i=0;i<boids.length;i++){
+    drawBoid(boids[i]);
+  }
+}
+
+function step(){
+  updatePhysics();
+  draw();
+}
+
+function reset(){
+  running=false;
+  speed=1.0;
+  speedInput.value='1.0';
+  updateSpeedValue();
+  initBoids();
+  updatePlayPause();
+  draw();
+}
+
+function addBoid(x,y){
+  boids.push(createBoid(x,y));
+  updateCount();
+}
+
+function loop(){
+  frameCount++;
+  var now=performance.now();
+  if(now-lastFpsTime>=500){
+    fps=Math.round(frameCount*1000/(now-lastFpsTime));
+    fpsEl.textContent=String(fps);
+    frameCount=0;
+    lastFpsTime=now;
+  }
+  if(running){
+    updatePhysics();
+  }
+  draw();
+  requestAnimationFrame(loop);
+}
+
+// Event listeners
+playPauseBtn.addEventListener('click',function(){
+  running=!running;
+  updatePlayPause();
+});
+
+stepBtn.addEventListener('click',function(){
+  step();
+});
+
+resetBtn.addEventListener('click',function(){
+  reset();
+});
+
+speedInput.addEventListener('input',function(){
+  speed=parseFloat(speedInput.value);
+  updateSpeedValue();
+});
+
+canvas.addEventListener('click',function(e){
+  addBoid(e.clientX,e.clientY);
+});
+
+window.addEventListener('resize',function(){
+  resize();
+  draw();
+});
+
+// Init
+resize();
+initBoids();
+updatePlayPause();
+updateSpeedValue();
+draw();
+requestAnimationFrame(loop);
+
+window.app={
+  get boids(){return boids},
+  get running(){return running},
+  set running(v){running=v;updatePlayPause()},
+  get speed(){return speed},
+  set speed(v){speed=v;updateSpeedValue()},
+  get fps(){return fps},
+  set fps(v){fps=v},
+  step:step,
+  reset:reset,
+  addBoid:addBoid
+};
+})();
+</script>
+</body>
+</html>

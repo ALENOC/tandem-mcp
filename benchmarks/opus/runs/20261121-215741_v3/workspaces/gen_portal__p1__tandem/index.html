@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NEON PORTAL 3D</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: #05010f;
+  }
+  #c {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+  }
+  #hud {
+    position: fixed;
+    top: 16px;
+    left: 16px;
+    z-index: 10;
+    min-width: 210px;
+    padding: 14px 16px;
+    background: rgba(20, 10, 50, 0.35);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(0, 240, 255, 0.4);
+    border-radius: 14px;
+    color: #e8f6ff;
+    font-family: "Courier New", ui-monospace, monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    user-select: none;
+  }
+  #title {
+    font-size: 18px;
+    font-weight: bold;
+    letter-spacing: 2px;
+    color: #e8f6ff;
+    text-shadow: 0 0 8px #00f0ff, 0 0 16px #00f0ff;
+    margin-bottom: 8px;
+  }
+  .stat {
+    display: block;
+    margin: 2px 0;
+  }
+  .row {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  button {
+    flex: 1;
+    padding: 6px 8px;
+    background: rgba(0, 240, 255, 0.12);
+    color: #e8f6ff;
+    border: 1px solid rgba(0, 240, 255, 0.5);
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  button:hover {
+    background: rgba(0, 240, 255, 0.25);
+  }
+  .slider {
+    margin-top: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .slider label {
+    font-size: 12px;
+  }
+  input[type=range] {
+    flex: 1;
+    accent-color: #00f0ff;
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">
+  <div id="title">NEON PORTAL 3D</div>
+  <span id="fps" class="stat">FPS: 0</span>
+  <span id="polys" class="stat">POLYS: 0</span>
+  <span id="parts" class="stat">PARTS: 110</span>
+  <div class="row">
+    <button id="pause">Pause</button>
+    <button id="orbit">Orbit ON</button>
+    <button id="reset">Reset</button>
+  </div>
+  <div class="slider">
+    <label for="speed">Speed</label>
+    <input type="range" id="speed" min="0" max="3" step="0.1" value="1">
+  </div>
+</div>
+<script src="engine3d.js"></script>
+<script src="scene.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

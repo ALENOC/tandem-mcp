@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Neon Portal 3D</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #03020a; font-family: "Segoe UI", system-ui, sans-serif; }
+  #c { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+  .hud {
+    position: fixed; top: 18px; left: 18px; min-width: 250px; padding: 16px 18px;
+    color: #e8f6ff; border-radius: 16px;
+    background: rgba(20, 16, 48, 0.32);
+    border: 1px solid rgba(140, 200, 255, 0.25);
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.12);
+    user-select: none;
+  }
+  .hud h1 {
+    font-size: 17px; letter-spacing: 4px; font-weight: 800; margin-bottom: 10px;
+    background: linear-gradient(90deg, #00f0ff, #ff3df2);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    text-shadow: 0 0 18px rgba(0, 240, 255, 0.35);
+  }
+  .stats { display: flex; gap: 14px; font-size: 12px; margin-bottom: 12px; font-variant-numeric: tabular-nums; }
+  .stats span b { color: #7df9ff; font-weight: 700; }
+  .btns { display: flex; gap: 6px; margin-bottom: 12px; }
+  .btns button {
+    flex: 1; padding: 7px 8px; font-size: 12px; cursor: pointer; color: #e8f6ff;
+    border-radius: 9px; border: 1px solid rgba(125, 249, 255, 0.35);
+    background: rgba(125, 249, 255, 0.08); transition: background .2s, box-shadow .2s;
+  }
+  .btns button:hover { background: rgba(125, 249, 255, 0.2); box-shadow: 0 0 12px rgba(0, 240, 255, 0.4); }
+  .btns button.off { border-color: rgba(255, 61, 242, 0.45); background: rgba(255, 61, 242, 0.12); }
+  label { display: flex; align-items: center; gap: 10px; font-size: 12px; }
+  input[type=range] { flex: 1; accent-color: #ff3df2; }
+  #spdVal { width: 34px; text-align: right; font-variant-numeric: tabular-nums; color: #ff9cf7; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="hud">
+  <h1>NEON PORTAL 3D</h1>
+  <div class="stats">
+    <span>FPS <b id="fps">0</b></span>
+    <span>POLYS <b id="polys">0</b></span>
+    <span>PARTS <b id="parts">0</b></span>
+  </div>
+  <div class="btns">
+    <button id="pauseBtn">Pause</button>
+    <button id="orbitBtn">Orbit ON</button>
+    <button id="resetBtn">Reset</button>
+  </div>
+  <label>Speed <input id="speed" type="range" min="0" max="3" step="0.05" value="1"><span id="spdVal">1.00</span></label>
+</div>
+<script>
+(() => {
+'use strict';
+// ---------- Canvas ----------
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  cv.width = Math.floor(W * DPR); cv.height = Math.floor(H * DPR);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener('resize', resize); resize();
+
+// ---------- Math ----------
+const sub = (a, b) => [a[0]-b[0], a[1]-b[1], a[2]-b[2]];
+const cross = (a, b) => [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
+const dot = (a, b) => a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
+const norm = a => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0]/l, a[1]/l, a[2]/l]; };
+const rotY = (p, a) => { const c = Math.cos(a), s = Math.sin(a); return [p[0]*c + p[2]*s, p[1], -p[0]*s + p[2]*c]; };
+const rotX = (p, a) => { const c = Math.cos(a), s = Math.sin(a); return [p[0], p[1]*c - p[2]*s, p[1]*s + p[2]*c]; };
+const rotZ = (p, a) => { const c = Math.cos(a), s = Math.sin(a); return [p[0]*c - p[1]*s, p[0]*s + p[1]*c, p[2]]; };
+const rgba = (c, a) => `rgba(${c[0]|0},${c[1]|0},${c[2]|0},${a})`;
+
+// ---------- Camera ----------
+const cam = { pos: [0, 0, 0], right: [1,0,0], up: [0,1,0], fwd: [0,0,1], f: 1 };
+function setCamera(eye, target) {
+  cam.pos = eye;
+  cam.fwd = norm(sub(target, eye));
+  cam.right = norm(cross([0,1,0], cam.fwd));
+  cam.up = cross(cam.fwd, cam.right);
+  cam.f = Math.min(W, H) * 1.05;
+}
+const NEAR = 0.1;
+function toView(p) {
+  const d = sub(p, cam.pos);
+  return [dot(d, cam.right), dot(d, cam.up), dot(d, cam.fwd)];
+}
+function project(v) { // view-space -> screen
+  return [W/2 + v[0] / v[2] * cam.f, H/2 - v[1] / v[2] * cam.f, v[2]];
+}
+
+// ---------- Scene geometry ----------
+const LIGHT = norm([0.4, 0.9, -0.5]);
+const faces = []; // static box faces: {v:[4 pts], n, base, edge}
+
+function addBox(cx, cy, cz, sx, sy, sz, base, edge) {
+  const x0 = cx - sx/2, x1 = cx + sx/2, y0 = cy - sy/2, y1 = cy + sy/2, z0 = cz - sz/2, z1 = cz + sz/2;
+  const q = [
+    [[x0,y0,z1],[x1,y0,z1],[x1,y1,z1],[x0,y1,z1]], // front +z
+    [[x1,y0,z0],[x0,y0,z0],[x0,y1,z0],[x1,y1,z0]], // back -z
+    [[x1,y0,z1],[x1,y0,z0],[x1,y1,z0],[x1,y1,z1]], // right +x
+    [[x0,y0,z0],[x0,y0,z1],[x0,y1,z1],[x0,y1,z0]], // left -x
+    [[x0,y1,z1],[x1,y1,z1],[x1,y1,z0],[x0,y1,z0]], // top +y
+    [[x0,y0,z0],[x1,y0,z0],[x1,y0,z1],[x0,y0,z1]], // bottom -y
+  ];
+  for (const v of q) {
+    const n = norm(cross(sub(v[1], v[0]), sub(v[3], v[0])));
+    faces.push({ v, n, base, edge });
+  }
+}
+const CYAN = [0, 240, 255], MAG = [255, 61, 242], VIO = [140, 90, 255], GOLD = [255, 200, 90];
+// Two-tier platform
+addBox(0, 0.15, 0, 6.0, 0.3, 4.0, [28, 24, 60], CYAN);
+addBox(0, 0.45, 0, 4.4, 0.3, 2.8, [34, 26, 72], MAG);
+// Twin pillars
+addBox(-1.6, 2.25, 0, 0.55, 3.3, 0.55, [30, 28, 70], CYAN);
+addBox( 1.6, 2.25, 0, 0.55, 3.3, 0.55, [30, 28, 70], CYAN);
+// Lintel
+addBox(0, 4.12, 0, 4.2, 0.45, 0.8, [40, 26, 78], MAG);
+// Crown cap
+addBox(0, 4.55, 0, 1.6, 0.4, 0.6, [48, 30, 84], GOLD);
+const BOX_FACES = faces.length; // 36
+
+// Octahedral crystals
+const OCTA_V = [[1,0,0],[-1,0,0],[0,1.6,0],[0,-1.6,0],[0,0,1],[0,0,-1]];
+const OCTA_F = [[2,4,0],[2,1,4],[2,5,1],[2,0,5],[3,0,4],[3,4,1],[3,1,5],[3,5,0]];
+const crystals = [];
+for (let i = 0; i < 6; i++) {
+  crystals.push({
+    phase: i / 6 * Math.PI * 2, r: 3.6 + (i % 2) * 0.5, h: 2.3 + Math.sin(i * 1.7) * 0.7,
+    size: 0.28 + (i % 3) * 0.05, spin: 0.8 + i * 0.15,
+    col: i % 2 ? MAG : CYAN,
+  });
+}
+const CRYSTAL_TRIS = crystals.length * OCTA_F.length; // 48
+
+// Portal
+const PORTAL_C = [0, 2.3, 0];
+
+// Stars (on a large sphere)
+const stars = [];
+for (let i = 0; i < 180; i++) {
+  const u = Math.random() * 2 - 1, th = Math.random() * Math.PI * 2;
+  const s = Math.sqrt(1 - u*u);
+  const y = Math.abs(u) * 0.9 + 0.05; // keep mostly above horizon
+  stars.push({ p: [s*Math.cos(th)*60, y*60 - 8, s*Math.sin(th)*60], ph: Math.random()*Math.PI*2, sp: 1 + Math.random()*3, sz: 0.5 + Math.random()*1.4 });
+}
+
+// Rising particles
+const particles = [];
+function spawn(p, initial) {
+  const a = Math.random() * Math.PI * 2, r = Math.random() * 1.3;
+  p.x = Math.cos(a) * r; p.z = Math.sin(a) * r * 0.5;
+  p.y = initial ? 0.6 + Math.random() * 5 : 0.6;
+  p.vy = 0.4 + Math.random() * 0.9;
+  p.drift = Math.random() * Math.PI * 2;
+  p.life = 0; p.max = 3 + Math.random() * 4;
+  if (initial) p.life = Math.random() * p.max;
+  p.col = Math.random() < 0.5 ? CYAN : MAG;
+  return p;
+}
+for (let i = 0; i < 110; i++) particles.push(spawn({}, true));
+
+// ---------- State ----------
+const st = { paused: false, orbit: true, speed: 1, t: 0, camAng: 0.6 };
+const defaults = { camAng: 0.6, speed: 1 };
+
+// ---------- Rendering helpers ----------
+function drawBackground(t) {
+  const g = ctx.createRadialGradient(W/2, H*0.45, 0, W/2, H*0.45, Math.max(W, H) * 0.8);
+  g.addColorStop(0, '#1d0f3d'); g.addColorStop(0.45, '#0b0820'); g.addColorStop(1, '#020106');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+}
+
+function drawStars(t) {
+  for (const s of stars) {
+    const v = toView(s.p);
+    if (v[2] < NEAR) continue;
+    const p = project(v);
+    if (p[0] < -5 || p[0] > W + 5 || p[1] < -5 || p[1] > H + 5) continue;
+    const tw = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(t * s.sp + s.ph));
+    ctx.fillStyle = `rgba(220,235,255,${tw.toFixed(3)})`;
+    ctx.beginPath(); ctx.arc(p[0], p[1], s.sz * (0.6 + tw * 0.6), 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+function line3(a, b, color, width) {
+  let va = toView(a), vb = toView(b);
+  if (va[2] < NEAR && vb[2] < NEAR) return;
+  if (va[2] < NEAR || vb[2] < NEAR) { // clip to near plane
+    const k = (NEAR - va[2]) / (vb[2] - va[2]);
+    const c = [va[0] + (vb[0]-va[0])*k, va[1] + (vb[1]-va[1])*k, NEAR];
+    if (va[2] < NEAR) va = c; else vb = c;
+  }
+  const pa = project(va), pb = project(vb);
+  ctx.strokeStyle = color; ctx.lineWidth = width;
+  ctx.beginPath(); ctx.moveTo(pa[0], pa[1]); ctx.lineTo(pb[0], pb[1]); ctx.stroke();
+}
+
+function drawGrid(t) {
+  const N = 14, S = 1.0, off = (t * 0.6) % S;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (let i = -N; i <= N; i++) {
+    const fade = 1 - Math.abs(i) / (N + 1);
+    const a = (0.28 * fade).toFixed(3);
+    line3([i*S, 0, -N*S], [i*S, 0, N*S], `rgba(0,240,255,${a})`, 1);
+    const z = i*S + off;
+    const fz = 1 - Math.abs(z) / (N + 1);
+    line3([-N*S, 0, z], [N*S, 0, z], `rgba(255,61,242,${(0.28 * Math.max(fz,0)).toFixed(3)})`, 1);
+  }
+  ctx.restore();
+}
+
+// Collect polygons (view-space) for painter's sort
+function buildPolys(t) {
+  const list = [];
+  for (let i = 0; i < BOX_FACES; i++) {
+    const f = faces[i];
+    if (dot(f.n, sub(cam.pos, f.v[0])) <= 0) continue; // backface cull
+    const vv = f.v.map(toView);
+    if (vv.some(v => v[2] < NEAR)) continue;
+    const diff = Math.max(0, dot(f.n, LIGHT));
+    const shade = 0.45 + 0.75 * diff;
+    let z = 0; for (const v of vv) z += v[2]; z /= vv.length;
+    list.push({ pts: vv.map(project), z, fill: [f.base[0]*shade, f.base[1]*shade, f.base[2]*shade], edge: f.edge, glow: 0.9 });
+  }
+  for (const c of crystals) {
+    const ang = c.phase + t * 0.45;
+    const center = [Math.cos(ang) * c.r, c.h + Math.sin(t * 1.3 + c.phase) * 0.35, Math.sin(ang) * c.r];
+    const wv = OCTA_V.map(v => {
+      let p = [v[0]*c.size, v[1]*c.size, v[2]*c.size];
+      p = rotY(p, t * c.spin); p = rotX(p, 0.3);
+      return [p[0]+center[0], p[1]+center[1], p[2]+center[2]];
+    });
+    for (const tri of OCTA_F) {
+      const a = wv[tri[0]], b = wv[tri[1]], d = wv[tri[2]];
+      const n = norm(cross(sub(b, a), sub(d, a)));
+      if (dot(n, sub(cam.pos, a)) <= 0) continue;
+      const vv = [a, b, d].map(toView);
+      if (vv.some(v => v[2] < NEAR)) continue;
+      const diff = Math.max(0, dot(n, LIGHT));
+      const s = 0.35 + 0.65 * diff;
+      list.push({ pts: vv.map(project), z: (vv[0][2]+vv[1][2]+vv[2][2])/3,
+        fill: [c.col[0]*s*0.7 + 20, c.col[1]*s*0.7 + 20, c.col[2]*s*0.7 + 30], edge: [255,255,255], glow: 0.6, alpha: 0.88 });
+    }
+  }
+  // Portal as one sortable item
+  const pv = toView(PORTAL_C);
+  list.push({ portal: true, z: pv[2] });
+  list.sort((a, b) => b.z - a.z);
+  return list;
+}
+
+function drawPoly(p) {
+  const pts = p.pts;
+  ctx.beginPath();
+  ctx.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+  ctx.closePath();
+  ctx.fillStyle = rgba(p.fill, p.alpha || 1);
+  ctx.fill();
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = rgba(p.edge, p.glow);
+  ctx.lineWidth = 1.2;
+  ctx.shadowColor = rgba(p.edge, 1);
+  ctx.shadowBlur = 8;
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+}
+
+function ringPoints(radius, rx, rz, spin, n) {
+  const out = [];
+  for (let i = 0; i <= n; i++) {
+    const a = i / n * Math.PI * 2;
+    let p = [Math.cos(a) * radius, Math.sin(a) * radius, 0];
+    p = rotZ(p, spin); p = rotX(p, rx); p = rotY(p, rz);
+    const v = toView([p[0]+PORTAL_C[0], p[1]+PORTAL_C[1], p[2]+PORTAL_C[2]]);
+    if (v[2] < NEAR) return null;
+    out.push(project(v));
+  }
+  return out;
+}
+
+function strokePath(pts, color, w, blur) {
+  if (!pts) return;
+  ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+  ctx.strokeStyle = color; ctx.lineWidth = w; ctx.shadowColor = color; ctx.shadowBlur = blur;
+  ctx.stroke(); ctx.shadowBlur = 0;
+}
+
+function drawPortal(t) {
+  const cv3 = toView(PORTAL_C);
+  if (cv3[2] < NEAR) return;
+  const c = project(cv3);
+  const scale = cam.f / cv3[2];
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  // Core glow
+  const pulse = 1 + Math.sin(t * 3) * 0.08;
+  const R = 1.25 * scale * pulse;
+  const g = ctx.createRadialGradient(c[0], c[1], 0, c[0], c[1], R);
+  g.addColorStop(0, 'rgba(255,255,255,0.95)');
+  g.addColorStop(0.18, 'rgba(120,250,255,0.75)');
+  g.addColorStop(0.5, 'rgba(160,60,255,0.35)');
+  g.addColorStop(1, 'rgba(255,61,242,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(c[0], c[1], R, 0, Math.PI * 2); ctx.fill();
+  // Swirl arms
+  for (let k = 0; k < 3; k++) {
+    ctx.beginPath();
+    for (let i = 0; i <= 40; i++) {
+      const u = i / 40, a = t * 2 + k * 2.094 + u * 4.5, r = u * 0.95 * scale;
+      const x = c[0] + Math.cos(a) * r, y = c[1] + Math.sin(a) * r;
+      i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+    }
+    ctx.strokeStyle = `rgba(${k===1?'255,61,242':'0,240,255'},0.55)`;
+    ctx.lineWidth = 2; ctx.stroke();
+  }
+  // Counter-rotating rings
+  strokePath(ringPoints(1.2, 0.25 + Math.sin(t*0.7)*0.15, t * 0.9, t * 1.2, 64), 'rgba(0,240,255,0.95)', 2.5, 18);
+  strokePath(ringPoints(1.0, -0.35 + Math.cos(t*0.6)*0.15, -t * 1.1, -t * 1.5, 64), 'rgba(255,61,242,0.95)', 2.5, 18);
+  ctx.restore();
+}
+
+function drawParticles(t, dt) {
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (const p of particles) {
+    if (dt > 0) {
+      p.life += dt; p.y += p.vy * dt; p.drift += dt;
+      p.x += Math.sin(p.drift * 1.5) * 0.15 * dt;
+      if (p.life > p.max || p.y > 7) spawn(p, false);
+    }
+    const v = toView([p.x, p.y, p.z]);
+    if (v[2] < NEAR) continue;
+    const s = project(v);
+    const k = p.life / p.max;
+    const alpha = Math.sin(k * Math.PI) * 0.9;
+    const r = Math.max(0.6, 0.06 * cam.f / v[2]);
+    const g = ctx.createRadialGradient(s[0], s[1], 0, s[0], s[1], r * 3);
+    g.addColorStop(0, rgba(p.col, alpha)); g.addColorStop(1, rgba(p.col, 0));
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(s[0], s[1], r * 3, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+}
+
+// ---------- HUD ----------
+const $ = id => document.getElementById(id);
+const fpsEl = $('fps'), polyEl = $('polys'), partEl = $('parts');
+const pauseBtn = $('pauseBtn'), orbitBtn = $('orbitBtn'), speed = $('speed'), spdVal = $('spdVal');
+pauseBtn.onclick = () => {
+  st.paused = !st.paused;
+  pauseBtn.textContent = st.paused ? 'Play' : 'Pause';
+  pauseBtn.classList.toggle('off', st.paused);
+};
+orbitBtn.onclick = () => {
+  st.orbit = !st.orbit;
+  orbitBtn.textContent = st.orbit ? 'Orbit ON' : 'Orbit OFF';
+  orbitBtn.classList.toggle('off', !st.orbit);
+};
+$('resetBtn').onclick = () => {
+  st.camAng = defaults.camAng; st.speed = defaults.speed; st.t = 0;
+  speed.value = defaults.speed; spdVal.textContent = defaults.speed.toFixed(2);
+  for (const p of particles) spawn(p, true);
+};
+speed.oninput = () => { st.speed = parseFloat(speed.value); spdVal.textContent = st.speed.toFixed(2); };
+
+// ---------- Loop ----------
+let last = performance.now(), fpsAcc = 0, fpsFrames = 0;
+function frame(now) {
+  const rawDt = Math.min(0.05, (now - last) / 1000); last = now;
+  fpsAcc += rawDt; fpsFrames++;
+  if (fpsAcc >= 0.5) { fpsEl.textContent = Math.round(fpsFrames / fpsAcc); fpsAcc = 0; fpsFrames = 0; }
+
+  const dt = st.paused ? 0 : rawDt * st.speed;
+  st.t += dt;
+  if (st.orbit) st.camAng += dt * 0.25;
+  const t = st.t;
+
+  const R = 10.5, eye = [Math.sin(st.camAng) * R, 3.6 + Math.sin(st.camAng * 0.7) * 0.9, Math.cos(st.camAng) * R];
+  setCamera(eye, [0, 2.1, 0]);
+
+  drawBackground(t);
+  drawStars(t);
+  drawGrid(t);
+  const polys = buildPolys(t);
+  let drawn = 0;
+  for (const p of polys) {
+    if (p.portal) drawPortal(t);
+    else { drawPoly(p); drawn++; }
+  }
+  drawParticles(t, dt);
+
+  polyEl.textContent = drawn + '/' + (BOX_FACES + CRYSTAL_TRIS);
+  partEl.textContent = particles.length;
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

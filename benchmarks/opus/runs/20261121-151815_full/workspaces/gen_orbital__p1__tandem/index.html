@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Orbital Particle Simulation</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; }
+  body {
+    background: #060913;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #e8ecff;
+  }
+  #sim {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    display: block;
+    cursor: crosshair;
+    z-index: 0;
+  }
+  #hud {
+    position: fixed;
+    top: 18px;
+    left: 18px;
+    z-index: 10;
+    min-width: 232px;
+    padding: 16px 18px;
+    background: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 14px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+    user-select: none;
+  }
+  #hud h1 {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.72);
+    margin-bottom: 12px;
+  }
+  .row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+    font-size: 13px;
+  }
+  .row:last-child { margin-bottom: 0; }
+  .stat { display: flex; gap: 6px; align-items: baseline; }
+  .stat .k { color: rgba(255, 255, 255, 0.55); }
+  .stat .v { font-variant-numeric: tabular-nums; color: #fff; font-weight: 600; }
+  .btns { display: flex; gap: 8px; margin-bottom: 12px; }
+  button {
+    flex: 1;
+    padding: 8px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #eef1ff;
+    background: rgba(255, 255, 255, 0.10);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 9px;
+    cursor: pointer;
+    transition: background 0.15s ease, transform 0.05s ease;
+  }
+  button:hover { background: rgba(255, 255, 255, 0.18); }
+  button:active { transform: translateY(1px); }
+  .slider { display: flex; align-items: center; gap: 10px; }
+  .slider label { font-size: 12px; color: rgba(255, 255, 255, 0.6); white-space: nowrap; }
+  #speed {
+    flex: 1;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.22);
+    outline: none;
+    cursor: pointer;
+  }
+  #speed::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #8fb4ff;
+    border: 2px solid rgba(255, 255, 255, 0.85);
+    cursor: pointer;
+  }
+  #speed::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #8fb4ff;
+    border: 2px solid rgba(255, 255, 255, 0.85);
+    cursor: pointer;
+  }
+  #speedVal {
+    min-width: 34px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    color: #fff;
+  }
+  .hint {
+    margin-top: 10px;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.42);
+    line-height: 1.4;
+  }
+</style>
+</head>
+<body>
+  <canvas id="sim"></canvas>
+  <div id="hud">
+    <h1>Orbital Sim</h1>
+    <div class="btns">
+      <button id="playPause">Pause</button>
+      <button id="trailsToggle">Trails: ON</button>
+      <button id="reset">Reset</button>
+    </div>
+    <div class="row slider">
+      <label for="speed">Speed</label>
+      <input type="range" id="speed" min="0.2" max="3.0" step="0.1" value="1.0">
+      <span id="speedVal">1.0x</span>
+    </div>
+    <div class="row">
+      <span class="stat"><span class="k">FPS</span><span class="v" id="fps">0</span></span>
+      <span class="stat"><span class="k">Time</span><span class="v" id="simTime">0.0s</span></span>
+      <span class="stat"><span class="k">Particles</span><span class="v" id="particleCount">0</span></span>
+    </div>
+    <div class="hint">Click anywhere on the canvas to spawn a particle burst.</div>
+  </div>
+<script>
+(function () {
+  "use strict";
+
+  var canvas = document.getElementById("sim");
+  var ctx = canvas.getContext("2d");
+
+  var fpsEl = document.getElementById("fps");
+  var simTimeEl = document.getElementById("simTime");
+  var particleCountEl = document.getElementById("particleCount");
+  var speedInput = document.getElementById("speed");
+  var speedVal = document.getElementById("speedVal");
+  var playPauseBtn = document.getElementById("playPause");
+  var trailsToggleBtn = document.getElementById("trailsToggle");
+  var resetBtn = document.getElementById("reset");
+
+  var W = 0, H = 0, DPR = 1;
+
+  function resize() {
+    DPR = window.devicePixelRatio || 1;
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = Math.round(W * DPR);
+    canvas.height = Math.round(H * DPR);
+    canvas.style.width = W + "px";
+    canvas.style.height = H + "px";
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+  window.addEventListener("resize", resize);
+  resize();
+
+  // ---- State ----
+  var state = {
+    paused: false,
+    trails: true,
+    speed: 1.0,
+    simTime: 0,
+    fps: 0,
+    frozen: false
+  };
+
+  // ---- Starfield ----
+  var stars = [];
+  function makeStars() {
+    stars.length = 0;
+    var count = 220;
+    for (var i = 0; i < count; i++) {
+      stars.push({
+        x: Math.random() * W,
+        y: Math.random() * H,
+        r: 0.4 + Math.random() * 1.4,
+        base: 0.25 + Math.random() * 0.6,
+        tw: 0.5 + Math.random() * 2.5,
+        ph: Math.random() * Math.PI * 2
+      });
+    }
+  }
+  makeStars();
+
+  // ---- Planets ----
+  var planets = [
+    { r: 70,  speed: 0.90, color: "#7fb2ff", size: 5,  angle: 0.0 },
+    { r: 110, speed: 0.62, color: "#ff9e6b", size: 7,  angle: 1.1 },
+    { r: 155, speed: 0.45, color: "#6be3c1", size: 6,  angle: 2.3 },
+    { r: 205, speed: 0.32, color: "#c58bff", size: 8,  angle: 3.6 },
+    { r: 258, speed: 0.22, color: "#ffd166", size: 6,  angle: 4.9 },
+    { r: 315, speed: 0.15, color: "#ff6b9d", size: 9,  angle: 5.7 }
+  ];
+  planets.forEach(function (p) {
+    p.initAngle = p.angle;
+    p.trail = [];
+  });
+
+  // ---- Moons ----
+  var moons = [
+    { planet: 1, dist: 16, speed: 2.2, size: 2.5, color: "#dfe6ff", angle: 0.0 },
+    { planet: 3, dist: 20, speed: 1.8, size: 3.0, color: "#ffe0b0", angle: 2.0 },
+    { planet: 5, dist: 24, speed: 1.5, size: 3.5, color: "#bfe3ff", angle: 4.0 }
+  ];
+  moons.forEach(function (m) { m.initAngle = m.angle; });
+
+  // ---- Burst particles ----
+  var particles = [];
+  function spawnBurst(x, y) {
+    var n = 72;
+    for (var i = 0; i < n; i++) {
+      var a = (i / n) * Math.PI * 2 + Math.random() * 0.3;
+      var sp = 40 + Math.random() * 220;
+      particles.push({
+        x: x, y: y,
+        vx: Math.cos(a) * sp,
+        vy: Math.sin(a) * sp,
+        life: 1.0,
+        decay: 0.5 + Math.random() * 0.9,
+        size: 1.5 + Math.random() * 2.5,
+        hue: 180 + Math.random() * 120
+      });
+    }
+  }
+
+  // ---- Drawing helpers ----
+  function drawStarfield() {
+    for (var i = 0; i < stars.length; i++) {
+      var s = stars[i];
+      var a = s.base * (0.55 + 0.45 * Math.sin(state.simTime * s.tw + s.ph));
+      if (a < 0) a = 0;
+      ctx.globalAlpha = a;
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawStar(cx, cy) {
+    var pulse = 0.5 + 0.5 * Math.sin(state.simTime * 1.6);
+    var coreR = 26 + pulse * 6;
+    var coronaR = 90 + pulse * 26;
+    var coronaAlpha = 0.35 + pulse * 0.25;
+
+    var g = ctx.createRadialGradient(cx, cy, 0, cx, cy, coronaR);
+    g.addColorStop(0, "rgba(255, 255, 255, 0.95)");
+    g.addColorStop(0.18, "rgba(255, 236, 190, 0.85)");
+    g.addColorStop(0.45, "rgba(255, 190, 120, " + (coronaAlpha * 0.5).toFixed(3) + ")");
+    g.addColorStop(1, "rgba(255, 150, 80, 0)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(cx, cy, coronaR, 0, Math.PI * 2);
+    ctx.fill();
+
+    var g2 = ctx.createRadialGradient(cx, cy, 0, cx, cy, coreR);
+    g2.addColorStop(0, "rgba(255, 255, 255, 1)");
+    g2.addColorStop(0.6, "rgba(255, 244, 214, 0.95)");
+    g2.addColorStop(1, "rgba(255, 220, 160, 0)");
+    ctx.fillStyle = g2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, coreR, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function drawOrbits(cx, cy) {
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.06)";
+    ctx.lineWidth = 1;
+    for (var i = 0; i < planets.length; i++) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, planets[i].r, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+
+  function drawTrails(cx, cy) {
+    for (var i = 0; i < planets.length; i++) {
+      var p = planets[i];
+      var t = p.trail;
+      for (var j = 0; j < t.length; j++) {
+        var a = (j + 1) / t.length;
+        ctx.globalAlpha = a * 0.5;
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(t[j].x, t[j].y, p.size * 0.5 * a + 0.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawPlanets(cx, cy) {
+    for (var i = 0; i < planets.length; i++) {
+      var p = planets[i];
+      var x = cx + Math.cos(p.angle) * p.r;
+      var y = cy + Math.sin(p.angle) * p.r;
+      p.x = x;
+      p.y = y;
+
+      var g = ctx.createRadialGradient(x - p.size * 0.3, y - p.size * 0.3, 0, x, y, p.size * 2.2);
+      g.addColorStop(0, "rgba(255,255,255,0.9)");
+      g.addColorStop(0.4, p.color);
+      g.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(x, y, p.size * 2.2, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(x, y, p.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function drawMoons(cx, cy) {
+    for (var i = 0; i < moons.length; i++) {
+      var m = moons[i];
+      var p = planets[m.planet];
+      var x = p.x + Math.cos(m.angle) * m.dist;
+      var y = p.y + Math.sin(m.angle) * m.dist;
+      ctx.fillStyle = m.color;
+      ctx.beginPath();
+      ctx.arc(x, y, m.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function drawParticles() {
+    for (var i = 0; i < particles.length; i++) {
+      var pt = particles[i];
+      var a = pt.life;
+      ctx.globalAlpha = a;
+      ctx.fillStyle = "hsla(" + pt.hue + ", 90%, 70%, 1)";
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, pt.size * (0.5 + a * 0.8), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // ---- Update ----
+  function update(dt) {
+    state.simTime += dt * state.speed;
+
+    for (var i = 0; i < planets.length; i++) {
+      var p = planets[i];
+      p.angle += p.speed * dt * state.speed;
+      var x = W / 2 + Math.cos(p.angle) * p.r;
+      var y = H / 2 + Math.sin(p.angle) * p.r;
+      p.x = x;
+      p.y = y;
+      if (state.trails) {
+        p.trail.push({ x: x, y: y });
+        if (p.trail.length > 40) p.trail.shift();
+      }
+    }
+
+    for (var m = 0; m < moons.length; m++) {
+      var mo = moons[m];
+      mo.angle += mo.speed * dt * state.speed;
+    }
+
+    for (var k = particles.length - 1; k >= 0; k--) {
+      var pt = particles[k];
+      pt.x += pt.vx * dt;
+      pt.y += pt.vy * dt;
+      pt.vx *= 0.96;
+      pt.vy *= 0.96;
+      pt.life -= pt.decay * dt;
+      if (pt.life <= 0) {
+        particles.splice(k, 1);
+      }
+    }
+  }
+
+  function render() {
+    ctx.clearRect(0, 0, W, H);
+    var cx = W / 2, cy = H / 2;
+    drawStarfield();
+    drawOrbits(cx, cy);
+    if (state.trails) drawTrails(cx, cy);
+    drawStar(cx, cy);
+    drawPlanets(cx, cy);
+    drawMoons(cx, cy);
+    drawParticles();
+  }
+
+  // ---- HUD ----
+  function updateHUD() {
+    fpsEl.textContent = String(state.fps);
+    simTimeEl.textContent = state.simTime.toFixed(1) + "s";
+    particleCountEl.textContent = String(particles.length);
+  }
+
+  // ---- Main loop ----
+  var last = performance.now();
+  var fpsAccum = 0, fpsFrames = 0, fpsTimer = 0;
+
+  function frame(now) {
+    var rawDt = (now - last) / 1000;
+    last = now;
+    if (rawDt < 0) rawDt = 0;
+    if (rawDt > 0.1) rawDt = 0.1;
+
+    fpsAccum += rawDt;
+    fpsFrames += 1;
+    fpsTimer += rawDt;
+    if (fpsTimer >= 0.5) {
+      state.fps = Math.round(fpsFrames / fpsAccum);
+      fpsAccum = 0;
+      fpsFrames = 0;
+      fpsTimer = 0;
+    }
+
+    if (!state.paused) {
+      update(rawDt);
+    }
+    render();
+    updateHUD();
+
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  // ---- Controls ----
+  playPauseBtn.addEventListener("click", function () {
+    state.paused = !state.paused;
+    playPauseBtn.textContent = state.paused ? "Play" : "Pause";
+  });
+
+  trailsToggleBtn.addEventListener("click", function () {
+    state.trails = !state.trails;
+    trailsToggleBtn.textContent = state.trails ? "Trails: ON" : "Trails: OFF";
+    if (!state.trails) {
+      for (var i = 0; i < planets.length; i++) planets[i].trail.length = 0;
+    }
+  });
+
+  resetBtn.addEventListener("click", function () {
+    state.simTime = 0;
+    state.speed = 1.0;
+    state.paused = false;
+    playPauseBtn.textContent = "Pause";
+    speedInput.value = "1.0";
+    speedVal.textContent = "1.0x";
+    for (var i = 0; i < planets.length; i++) {
+      planets[i].angle = planets[i].initAngle;
+      planets[i].trail.length = 0;
+    }
+    for (var m = 0; m < moons.length; m++) moons[m].angle = moons[m].initAngle;
+    particles.length = 0;
+  });
+
+  speedInput.addEventListener("input", function () {
+    state.speed = parseFloat(speedInput.value);
+    speedVal.textContent = state.speed.toFixed(1) + "x";
+  });
+
+  canvas.addEventListener("mousedown", function (e) {
+    var rect = canvas.getBoundingClientRect();
+    spawnBurst(e.clientX - rect.left, e.clientY - rect.top);
+  });
+
+  // ---- Expose live state ----
+  window.app = {
+    get planets() { return planets; },
+    get moons() { return moons; },
+    get stars() { return stars; },
+    get particles() { return particles; },
+    get paused() { return state.paused; },
+    set paused(v) { state.paused = v; },
+    get trails() { return state.trails; },
+    set trails(v) { state.trails = v; },
+    get speed() { return state.speed; },
+    set speed(v) { state.speed = v; },
+    get simTime() { return state.simTime; },
+    set simTime(v) { state.simTime = v; },
+    get fps() { return state.fps; },
+    set fps(v) { state.fps = v; }
+  };
+})();
+</script>
+</body>
+</html>

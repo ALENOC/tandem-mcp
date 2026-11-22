@@ -1,5 +1,26 @@
 # Changelog
 
+## 4.0.0
+
+### Autonomous profile for a minimal-cloud orchestrator
+- `TANDEM_PROFILE=autonomous` exposes four tools (`delegate`, `job_continue`, `job_status`, `job_rollback`). The orchestrator writes the contract once. `delegate` blocks while the local model writes the code, runs the checks and repairs, with no cloud call, bounded by `TANDEM_JOB_SECONDS` (default 3600), `TANDEM_MAX_REPAIRS` (20) and `TANDEM_MAX_STEPS` (160).
+- The receipt is one line when every check passes and every constraint has evidence (`ACCEPTED`). Otherwise it lists only what still fails, with only the failing steps of a `tandem:ui_test`.
+- The autonomous tools are async and send an MCP progress notification every 30 seconds, so clients do not abort a long job. Claude Code aborts a tool that stays silent for 30 minutes; a 2,000-second probe call completed.
+- Compound constraints are split by the server instead of refusing the contract: a refusal made the orchestrator write the whole contract again, its most expensive output.
+- The guide asks the orchestrator to delegate new code and changes over 30 lines, to write the contract in the user's language, to state palette, layout and finish for UI work, to keep tests to what was asked, to answer after `ACCEPTED` without reading files, and never to edit files blind after a failure.
+
+### `tandem:ui_test`
+- New `snapshot` and `differs` steps check that an action has a visible effect. A `region` on `expect` limits motion checks to part of the view.
+- Click, input and key steps wait 50 ms after acting instead of 300 ms. A state check right after an action is no longer raced by a running animation.
+
+### Benchmarks
+- All benchmarks run by other orchestrators are removed. The new suite in `benchmarks/opus` runs counterbalanced direct and Tandem pairs with Opus 5.5 in Claude Code (`claude -p`, isolated settings) and re-evaluates every artifact three times.
+- Five tasks, three pairs each: Tandem cut the total cloud cost by 61% and the cost per successful result by 52%, with 72% fewer output tokens. Medium and large tasks saved 27-57% per success. A 5-line fix cost 10% more. Inside the time budget Tandem delivered 9 results against 11; ignoring time, both delivered 11 of 15.
+- The Orbital evaluator reads `1.0×` speed readouts and `Sim s` time labels.
+
+### Tests
+- New `tests/test_autonomous.py`. `tests/test_ui_test.py` covers the new steps. Tests that only exercised the removed benchmark suites are removed; the historical portal pages and the pendulum checker used by product tests moved to `tests/fixtures`.
+
 ## 3.8.0
 
 ### Quality floor for delegated work

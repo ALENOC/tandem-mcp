@@ -32,20 +32,27 @@ Tandem runs as a local MCP server over standard input and output (stdio). The in
 
 ## Does it save cloud tokens?
 
-It depends on the task. On the 3D Portal demo, the hardest one, Tandem delivered a working result in all three runs and used 44.7% fewer cloud tokens per working result than the direct path, at about 40 times the wait. On the smaller Orbital demo the acceptance test that the orchestrator now writes costs more than it saves: 9.3% more cloud tokens. For small edits and ordinary chat requests, the tool schemas, the wait and the review cost about as much as writing the code directly, so Tandem acts directly there.
+Yes, on medium and large work. With **Opus 5.5** as the orchestrator in Claude Code and the autonomous profile, Opus writes a contract once. Tandem's local model then writes the code and repairs it against the checks, with no cloud call, and Opus gets back one line. Over five tasks, three pairs each, Tandem cut the total cloud bill by **61%** and the cost per successful result by **52%**. It used **72% fewer output tokens**, the most expensive kind.
 
-Quality has a floor: the orchestrator writes an acceptance test (`tandem:ui_test`), the local worker repairs against it at no cloud cost, and when the local result still fails, the orchestrator does the work itself. A passing result is only as good as that test, so one Orbital run passed it and still failed the independent evaluator.
-
-Figures are **cloud tokens per successful result**, with failed attempts counted, and the **median time** per attempt. Latest runs, Tandem 3.8.0:
-
-| Task | Direct | With Tandem | Cloud tokens |
+| Task | Direct | With Tandem | Cloud cost per success |
 | --- | --- | --- | ---: |
-| 3D Portal demo, 3 runs | 74,372 · 2/3 · 82 s | 41,149 · 3/3 · 57 min | **-44.7%** |
-| Orbital demo, 3 runs | 35,488 · 3/3 · 50 s | 38,800 · 2/3 · 18 min | **+9.3%** |
-| Boids animation in chat, 3 runs | 33,532 · 3/3 · 54 s | 33,214 · 3/3 · 9.5 min | -0.95% |
-| Python fix in chat, 1 run | 26,953 · 1/1 · 24 s | 33,479 · 1/1 · 105 s | +24.2% |
+| 5-line bug fix | $0.046 · 3/3 · 12 s | $0.050 · 3/3 · 2 min | **+10%** |
+| Cron parser module with tests | $0.243 · 3/3 · 66 s | $0.177 · 2/3 · 25 min | **-27%** |
+| Boids web simulation | $0.242 · 3/3 · 65 s | $0.157 · 2/3 · 10 min | **-35%** |
+| Orbital web simulation | $0.459 · 2/3 · 79 s | $0.199 · 2/3 · 26 min | **-57%** |
+| 3D neon portal | 0/3 · $0.537 per attempt | 0/3 · $0.135 per attempt | -75% per attempt |
+| **All 15 attempts** | **$4.12 · 11/15** | **$1.62 · 9/15** | **-52%** |
 
-One Portal run went past the local time limit and the orchestrator finished it directly. That run cost more than the direct path and is counted. The local model also uses tokens, power and time on your machine: about 88,000 local tokens per Orbital run and 300,000 per Portal run. Tandem stops delegating a kind of task when its local jobs usually fail (`TANDEM_MIN_LOCAL_SUCCESS`). [All results and method](docs/BENCHMARKS.md) · [Decision report (Italian)](docs/DECISION_REPORT_20261120.md)
+Each cell gives the cost per success (list prices, failed attempts counted), the successes inside the time budget and the median time.
+
+The trade-offs:
+
+- **Small edits do not pay:** writing the contract costs about as much as the edit. Tandem tells Opus to do edits under about 30 lines itself.
+- **Time:** a result takes minutes to an hour on the local model instead of seconds.
+- **Punctuality:** ignoring the time budget both arms deliver 11 correct results of 15, and Tandem is 61% cheaper. Inside the budget Tandem delivers 9 against 11, because two results came after the deadline.
+- **Finish:** the local model does what the contract says and little more. On the 3D portal its renderer runs at about 16 FPS against 60.
+
+[All results, method and earlier iterations](docs/BENCHMARKS.md)
 
 ### 3D neon portal
 
@@ -55,16 +62,14 @@ One Portal run went past the local time limit and the orchestrator finished it d
     <th width="50%">With Tandem</th>
   </tr>
   <tr>
-    <td><img src="benchmarks/hydrogen_3_6_1/gifs/portal_direct.gif" width="100%" alt="3D portal written directly by the cloud model"></td>
-    <td><img src="benchmarks/hydrogen_3_6_1/gifs/portal_tandem.gif" width="100%" alt="3D portal written by the local worker through Tandem"></td>
+    <td><img src="benchmarks/opus/gifs/portal_direct.gif" width="100%" alt="3D portal written directly by Opus"></td>
+    <td><img src="benchmarks/opus/gifs/portal_tandem.gif" width="100%" alt="3D portal written by the local model through Tandem"></td>
   </tr>
   <tr>
-    <td align="center">Run 3, passed · 2 of 3 direct runs passed</td>
-    <td align="center">Run 3, written locally · 3 of 3 delegated runs passed</td>
+    <td align="center">$0.33 cloud · 82 s</td>
+    <td align="center">$0.11 cloud · 52 min</td>
   </tr>
 </table>
-
-The delegated portal passes every automated check, but its crystals are drawn black instead of in color: the acceptance test checked the palette of the whole frame, not of each object.
 
 ### Orbital simulation
 
@@ -74,12 +79,12 @@ The delegated portal passes every automated check, but its crystals are drawn bl
     <th width="50%">With Tandem</th>
   </tr>
   <tr>
-    <td><img src="benchmarks/hydrogen_3_6_1/gifs/orbital_direct.gif" width="100%" alt="Orbital simulation written directly by the cloud model"></td>
-    <td><img src="benchmarks/hydrogen_3_6_1/gifs/orbital_tandem.gif" width="100%" alt="Orbital simulation written by the local worker through Tandem"></td>
+    <td><img src="benchmarks/opus/gifs/orbital_direct.gif" width="100%" alt="Orbital simulation written directly by Opus"></td>
+    <td><img src="benchmarks/opus/gifs/orbital_tandem.gif" width="100%" alt="Orbital simulation written by the local model through Tandem"></td>
   </tr>
   <tr>
-    <td align="center">Run 1 · 3 of 3 direct runs passed</td>
-    <td align="center">Run 2 · 2 of 3 delegated runs passed</td>
+    <td align="center">$0.31 cloud · 79 s · passed</td>
+    <td align="center">$0.14 cloud · 19 min · passed</td>
   </tr>
 </table>
 

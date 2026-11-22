@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Boids</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;overflow:hidden;background:#070b14;width:100%;height:100%}
+#sim{display:block;position:absolute;top:0;left:0}
+#hud{position:absolute;top:16px;left:16px;background:rgba(255,255,255,0.08);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.18);border-radius:14px;padding:14px;color:#e2e8f0;font-family:system-ui,sans-serif;font-size:14px;min-width:180px;user-select:none;z-index:10}
+#hud .row{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+#hud .row:last-child{margin-bottom:0}
+#hud .label{font-weight:600;opacity:0.85}
+#hud .val{font-variant-numeric:tabular-nums}
+.btns{display:flex;gap:8px;margin-top:10px}
+.btns button{background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);border-radius:8px;color:#e2e8f0;padding:6px 12px;cursor:pointer;font-family:inherit;font-size:13px;transition:background 0.15s}
+.btns button:hover{background:rgba(255,255,255,0.22)}
+.slider-row{display:flex;align-items:center;gap:8px;margin-top:10px}
+.slider-row label{font-size:13px;white-space:nowrap}
+.slider-row input[type=range]{flex:1;accent-color:#5eead4}
+</style>
+</head>
+<body>
+<canvas id="sim"></canvas>
+<div id="hud">
+  <div class="row"><span class="label">FPS</span><span class="val" id="fps">0</span></div>
+  <div class="row"><span class="label">Boids</span><span class="val" id="count">60</span></div>
+  <div class="row"><span class="label">Velocità</span><span class="val" id="speedVal">1.0x</span></div>
+  <div class="btns">
+    <button id="playBtn">Play</button>
+    <button id="stepBtn">Step</button>
+    <button id="resetBtn">Reset</button>
+  </div>
+  <div class="slider-row">
+    <label for="speed">Velocità</label>
+    <input type="range" id="speed" min="0.5" max="3.0" step="0.1" value="1.0">
+  </div>
+</div>
+<script>
+(function(){
+"use strict";
+var canvas=document.getElementById('sim');
+var ctx=canvas.getContext('2d');
+var fpsEl=document.getElementById('fps');
+var countEl=document.getElementById('count');
+var speedValEl=document.getElementById('speedVal');
+var playBtn=document.getElementById('playBtn');
+var stepBtn=document.getElementById('stepBtn');
+var resetBtn=document.getElementById('resetBtn');
+var speedInput=document.getElementById('speed');
+
+var SEP_RADIUS=25, ALI_RADIUS=50, MAX_SPEED=2.5;
+var BOID_COUNT=60;
+
+function resize(){
+  canvas.width=window.innerWidth;
+  canvas.height=window.innerHeight;
+}
+window.addEventListener('resize',resize);
+resize();
+
+function rand(a,b){return a+Math.random()*(b-a)}
+
+function makeBoid(x,y){
+  var angle=Math.random()*Math.PI*2;
+  var speed=rand(1,MAX_SPEED);
+  return{x:x,y:y,vx:Math.cos(angle)*speed,vy:Math.sin(angle)*speed};
+}
+
+function createBoids(){
+  var arr=[];
+  for(var i=0;i<BOID_COUNT;i++){
+    arr.push(makeBoid(Math.random()*canvas.width,Math.random()*canvas.height));
+  }
+  return arr;
+}
+
+var app={
+  boids:createBoids(),
+  running:false,
+  speed:1.0,
+  fps:0,
+  step:function(){
+    var boids=app.boids;
+    var n=boids.length;
+    var w=canvas.width,h=canvas.height;
+    var newVx=new Float64Array(n);
+    var newVy=new Float64Array(n);
+    for(var i=0;i<n;i++){
+      var b=boids[i];
+      var sx=0,sy=0,ax=0,ay=0,cx=0,cy=0,sc=0,ac=0;
+      for(var j=0;j<n;j++){
+        if(i===j)continue;
+        var o=boids[j];
+        var dx=o.x-b.x,dy=o.y-b.y;
+        var d=Math.sqrt(dx*dx+dy*dy);
+        if(d<SEP_RADIUS&&d>0){
+          sx-=dx/d;sy-=dy/d;sc++;
+        }
+        if(d<ALI_RADIUS){
+          ax+=o.vx;ay+=o.vy;
+          cx+=o.x;cy+=o.y;ac++;
+        }
+      }
+      var fx=0,fy=0;
+      if(sc>0){fx+=sx/sc*0.05;fy+=sy/sc*0.05}
+      if(ac>0){
+        fx+=(ax/ac-b.vx)*0.05;
+        fy+=(ay/ac-b.vy)*0.05;
+        fx+=(cx/ac-b.x)*0.005;
+        fy+=(cy/ac-b.y)*0.005;
+      }
+      var vx=b.vx+fx,vy=b.vy+fy;
+      var spd=Math.sqrt(vx*vx+vy*vy);
+      var maxS=MAX_SPEED*app.speed;
+      if(spd>maxS){vx=vx/spd*maxS;vy=vy/spd*maxS}
+      newVx[i]=vx;newVy[i]=vy;
+    }
+    for(var i=0;i<n;i++){
+      boids[i].x+=newVx[i];
+      boids[i].y+=newVy[i];
+      boids[i].vx=newVx[i];
+      boids[i].vy=newVy[i];
+      if(boids[i].x<0)boids[i].x+=w;
+      if(boids[i].x>=w)boids[i].x-=w;
+      if(boids[i].y<0)boids[i].y+=h;
+      if(boids[i].y>=h)boids[i].y-=h;
+    }
+  },
+  reset:function(){
+    app.boids=createBoids();
+    app.running=false;
+    playBtn.textContent='Play';
+    updateHUD();
+  },
+  addBoid:function(x,y){
+    app.boids.push(makeBoid(x,y));
+    updateHUD();
+  }
+};
+window.app=app;
+
+function updateHUD(){
+  countEl.textContent=String(app.boids.length);
+  speedValEl.textContent=app.speed.toFixed(1)+'x';
+}
+
+function draw(){
+  ctx.fillStyle='#070b14';
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.save();
+  ctx.shadowColor='#5eead4';
+  ctx.shadowBlur=6;
+  ctx.fillStyle='#5eead4';
+  var boids=app.boids;
+  for(var i=0;i<boids.length;i++){
+    var b=boids[i];
+    var angle=Math.atan2(b.vy,b.vx);
+    ctx.save();
+    ctx.translate(b.x,b.y);
+    ctx.rotate(angle);
+    ctx.beginPath();
+    ctx.moveTo(10,0);
+    ctx.lineTo(-5,5);
+    ctx.lineTo(-5,-5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+var lastTime=performance.now();
+var frameCount=0;
+var fpsTimer=0;
+
+function loop(now){
+  requestAnimationFrame(loop);
+  var dt=now-lastTime;
+  lastTime=now;
+  frameCount++;
+  fpsTimer+=dt;
+  if(fpsTimer>=1000){
+    app.fps=frameCount;
+    frameCount=0;
+    fpsTimer-=1000;
+  }
+  if(app.running){
+    app.step();
+  }
+  draw();
+  fpsEl.textContent=String(app.fps);
+  countEl.textContent=String(app.boids.length);
+}
+requestAnimationFrame(loop);
+
+playBtn.addEventListener('click',function(){
+  app.running=!app.running;
+  playBtn.textContent=app.running?'Pause':'Play';
+});
+stepBtn.addEventListener('click',function(){
+  app.step();
+});
+resetBtn.addEventListener('click',function(){
+  app.reset();
+});
+speedInput.addEventListener('input',function(){
+  app.speed=parseFloat(speedInput.value);
+  updateHUD();
+});
+canvas.addEventListener('click',function(e){
+  var rect=canvas.getBoundingClientRect();
+  app.addBoid(e.clientX-rect.left,e.clientY-rect.top);
+});
+updateHUD();
+})();
+</script>
+</body>
+</html>

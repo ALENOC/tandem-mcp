@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NEON PORTAL 3D</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: #05020f;
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    color: #eafcff;
+  }
+  #c {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    display: block;
+  }
+  #hud {
+    position: fixed;
+    top: 16px;
+    left: 16px;
+    z-index: 10;
+    padding: 14px 18px;
+    min-width: 210px;
+    background: rgba(255,255,255,0.08);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 14px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.45);
+  }
+  #hud h1 {
+    margin: 0 0 10px 0;
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: 2px;
+    color: #00f0ff;
+    text-shadow: 0 0 8px #00f0ff, 0 0 18px rgba(0,240,255,0.7);
+  }
+  #hud .stat {
+    font-size: 13px;
+    line-height: 1.7;
+    font-variant-numeric: tabular-nums;
+    color: #bfefff;
+  }
+  #hud .stat span { color: #ffffff; }
+  #controls {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px 16px;
+    background: rgba(255,255,255,0.08);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 14px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.45);
+  }
+  #controls .row { display: flex; gap: 8px; }
+  button {
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    color: #eafcff;
+    background: rgba(0,240,255,0.12);
+    border: 1px solid rgba(0,240,255,0.5);
+    border-radius: 8px;
+    padding: 8px 12px;
+    transition: background 0.15s, box-shadow 0.15s;
+  }
+  button:hover {
+    background: rgba(0,240,255,0.22);
+    box-shadow: 0 0 12px rgba(0,240,255,0.5);
+  }
+  .slider {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: #bfefff;
+  }
+  .slider label { white-space: nowrap; }
+  input[type=range] {
+    width: 120px;
+    accent-color: #00f0ff;
+  }
+</style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+
+  <div id="hud">
+    <h1>NEON PORTAL 3D</h1>
+    <div class="stat" id="fps">FPS: 0</div>
+    <div class="stat" id="polys">POLYS: 0</div>
+    <div class="stat" id="parts">PARTS: 110</div>
+  </div>
+
+  <div id="controls">
+    <div class="row">
+      <button id="btnPause">Pause</button>
+      <button id="btnOrbit">Orbit ON</button>
+      <button id="btnReset">Reset</button>
+    </div>
+    <div class="slider">
+      <label for="speed">Speed</label>
+      <input id="speed" type="range" min="0" max="3" step="0.1" value="1">
+    </div>
+  </div>
+
+  <script src="engine3d.js"></script>
+  <script src="scene.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

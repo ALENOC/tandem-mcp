@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Simulazione Boids</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #070b14;
+  }
+  body {
+    background-color: #070b14;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: #e2e8f0;
+  }
+  #sim {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    display: block;
+    background: #070b14;
+    cursor: crosshair;
+  }
+  .glass {
+    background: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 14px;
+    color: #e2e8f0;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  #hud {
+    position: fixed;
+    top: 16px;
+    left: 16px;
+    padding: 14px 18px;
+    min-width: 190px;
+    z-index: 10;
+    user-select: none;
+  }
+  #hud h1 {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    margin-bottom: 10px;
+    color: #5eead4;
+  }
+  #hud .row {
+    display: flex;
+    justify-content: space-between;
+    gap: 18px;
+    font-size: 13px;
+    line-height: 1.7;
+  }
+  #hud .row span:last-child {
+    font-variant-numeric: tabular-nums;
+    color: #e2e8f0;
+  }
+  #controls {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 16px;
+    z-index: 10;
+    user-select: none;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  #controls button {
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    color: #e2e8f0;
+    background: rgba(255, 255, 255, 0.10);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 9px;
+    padding: 8px 16px;
+    cursor: pointer;
+    transition: background 0.15s ease, transform 0.05s ease;
+  }
+  #controls button:hover {
+    background: rgba(255, 255, 255, 0.18);
+  }
+  #controls button:active {
+    transform: translateY(1px);
+  }
+  #playBtn {
+    min-width: 74px;
+  }
+  .sliderWrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+  }
+  #speed {
+    width: 130px;
+    accent-color: #5eead4;
+    cursor: pointer;
+  }
+  #speedVal {
+    min-width: 34px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    color: #5eead4;
+  }
+</style>
+</head>
+<body>
+  <canvas id="sim"></canvas>
+
+  <div id="hud" class="glass">
+    <h1>Simulazione Boids</h1>
+    <div class="row"><span>FPS</span><span id="fps">0</span></div>
+    <div class="row"><span>Boids</span><span id="count">0</span></div>
+    <div class="row"><span>Velocità</span><span id="speedVal">1.0x</span></div>
+  </div>
+
+  <div id="controls" class="glass">
+    <button id="playBtn" type="button">Play</button>
+    <button id="stepBtn" type="button">Step</button>
+    <button id="resetBtn" type="button">Reset</button>
+    <div class="sliderWrap">
+      <label for="speed">Velocità</label>
+      <input type="range" id="speed" min="0.5" max="3.0" step="0.1" value="1.0">
+    </div>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+
+  var canvas = document.getElementById("sim");
+  var ctx = canvas.getContext("2d");
+
+  var fpsEl = document.getElementById("fps");
+  var countEl = document.getElementById("count");
+  var speedValEl = document.getElementById("speedVal");
+  var playBtn = document.getElementById("playBtn");
+  var stepBtn = document.getElementById("stepBtn");
+  var resetBtn = document.getElementById("resetBtn");
+  var speedInput = document.getElementById("speed");
+
+  var INITIAL_COUNT = 60;
+  var NEIGHBOR_RADIUS = 50;
+  var MAX_SPEED = 3.2;
+  var MIN_SPEED = 1.2;
+  var MAX_FORCE = 0.06;
+
+  var W = 0;
+  var H = 0;
+  var dpr = 1;
+
+  function resize() {
+    dpr = Math.max(1, window.devicePixelRatio || 1);
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = Math.round(W * dpr);
+    canvas.height = Math.round(H * dpr);
+    canvas.style.width = W + "px";
+    canvas.style.height = H + "px";
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function rand(a, b) {
+    return a + Math.random() * (b - a);
+  }
+
+  function makeBoid(x, y) {
+    var ang = rand(0, Math.PI * 2);
+    var sp = rand(MIN_SPEED, MAX_SPEED);
+    return {
+      x: x,
+      y: y,
+      vx: Math.cos(ang) * sp,
+      vy: Math.sin(ang) * sp
+    };
+  }
+
+  var app = {
+    boids: [],
+    running: false,
+    speed: 1.0,
+    steps: 0,
+    step: function () {
+      update();
+      app.steps += 1;
+    },
+    reset: function () {
+      app.boids = [];
+      for (var i = 0; i < INITIAL_COUNT; i++) {
+        app.boids.push(makeBoid(rand(0, W), rand(0, H)));
+      }
+      app.running = false;
+      app.steps = 0;
+      syncUI();
+    }
+  };
+  window.app = app;
+
+  function limit(vx, vy, max) {
+    var m = Math.sqrt(vx * vx + vy * vy);
+    if (m > max && m > 0) {
+      return [vx / m * max, vy / m * max];
+    }
+    return [vx, vy];
+  }
+
+  function update() {
+    var boids = app.boids;
+    var n = boids.length;
+    var r2 = NEIGHBOR_RADIUS * NEIGHBOR_RADIUS;
+    var i, j, b;
+
+    for (i = 0; i < n; i++) {
+      b = boids[i];
+      var sepX = 0, sepY = 0;
+      var aliX = 0, aliY = 0;
+      var cohX = 0, cohY = 0;
+      var count = 0;
+
+      for (j = 0; j < n; j++) {
+        if (i === j) continue;
+        var o = boids[j];
+        var dx = o.x - b.x;
+        var dy = o.y - b.y;
+        var d2 = dx * dx + dy * dy;
+        if (d2 < r2 && d2 > 0) {
+          var d = Math.sqrt(d2);
+          // separation: push away, weighted by 1/d
+          sepX -= dx / d / d;
+          sepY -= dy / d / d;
+          // alignment
+          aliX += o.vx;
+          aliY += o.vy;
+          // cohesion
+          cohX += o.x;
+          cohY += o.y;
+          count++;
+        }
+      }
+
+      var ax = 0, ay = 0;
+      if (count > 0) {
+        // alignment: steer towards average velocity
+        aliX /= count;
+        aliY /= count;
+        var a1 = limit(aliX - b.vx, aliY - b.vy, MAX_FORCE);
+        ax += a1[0];
+        ay += a1[1];
+
+        // cohesion: steer towards center of mass
+        cohX = cohX / count - b.x;
+        cohY = cohY / count - b.y;
+        var a2 = limit(cohX, cohY, MAX_FORCE);
+        ax += a2[0];
+        ay += a2[1];
+
+        // separation
+        var a3 = limit(sepX, sepY, MAX_FORCE * 1.6);
+        ax += a3[0];
+        ay += a3[1];
+      }
+
+      b.vx += ax;
+      b.vy += ay;
+
+      // clamp speed
+      var sp = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
+      if (sp > MAX_SPEED) {
+        b.vx = b.vx / sp * MAX_SPEED;
+        b.vy = b.vy / sp * MAX_SPEED;
+      } else if (sp < MIN_SPEED && sp > 0) {
+        b.vx = b.vx / sp * MIN_SPEED;
+        b.vy = b.vy / sp * MIN_SPEED;
+      }
+    }
+
+    // integrate + wrap-around
+    for (i = 0; i < n; i++) {
+      b = boids[i];
+      b.x += b.vx * app.speed;
+      b.y += b.vy * app.speed;
+      if (b.x < 0) b.x += W;
+      else if (b.x >= W) b.x -= W;
+      if (b.y < 0) b.y += H;
+      else if (b.y >= H) b.y -= H;
+    }
+  }
+
+  function drawBoid(b) {
+    var ang = Math.atan2(b.vy, b.vx);
+    var size = 7;
+    ctx.save();
+    ctx.translate(b.x, b.y);
+    ctx.rotate(ang);
+    ctx.beginPath();
+    ctx.moveTo(size * 1.6, 0);
+    ctx.lineTo(-size, size * 0.7);
+    ctx.lineTo(-size * 0.5, 0);
+    ctx.lineTo(-size, -size * 0.7);
+    ctx.closePath();
+    ctx.shadowColor = "rgba(94, 234, 212, 0.9)";
+    ctx.shadowBlur = 10;
+    ctx.fillStyle = "#5eead4";
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function draw() {
+    // trail effect: translucent fill over previous frame
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.globalCompositeOperation = "source-over";
+    ctx.fillStyle = "rgba(7, 11, 20, 0.35)";
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.globalCompositeOperation = "lighter";
+    for (var i = 0; i < app.boids.length; i++) {
+      drawBoid(app.boids[i]);
+    }
+    ctx.globalCompositeOperation = "source-over";
+  }
+
+  function syncUI() {
+    countEl.textContent = String(app.boids.length);
+    speedValEl.textContent = app.speed.toFixed(1) + "x";
+    playBtn.textContent = app.running ? "Pause" : "Play";
+  }
+
+  // FPS tracking
+  var lastTime = performance.now();
+  var fpsAccum = 0;
+  var fpsFrames = 0;
+  var fpsShown = 0;
+
+  function loop(now) {
+    var dt = now - lastTime;
+    lastTime = now;
+
+    if (app.running) {
+      update();
+      app.steps += 1;
+    }
+
+    draw();
+
+    // fps
+    fpsFrames++;
+    fpsAccum += dt;
+    if (fpsAccum >= 250) {
+      fpsShown = Math.round(fpsFrames * 1000 / fpsAccum);
+      fpsFrames = 0;
+      fpsAccum = 0;
+      fpsEl.textContent = String(fpsShown);
+    }
+
+    requestAnimationFrame(loop);
+  }
+
+  // events
+  playBtn.addEventListener("click", function () {
+    app.running = !app.running;
+    syncUI();
+  });
+
+  stepBtn.addEventListener("click", function () {
+    if (!app.running) {
+      update();
+      app.steps += 1;
+    }
+  });
+
+  resetBtn.addEventListener("click", function () {
+    app.reset();
+  });
+
+  speedInput.addEventListener("input", function () {
+    var v = parseFloat(speedInput.value);
+    if (!isNaN(v)) {
+      app.speed = v;
+      speedValEl.textContent = app.speed.toFixed(1) + "x";
+    }
+  });
+
+  canvas.addEventListener("click", function (e) {
+    var rect = canvas.getBoundingClientRect();
+    var x = e.clientX - rect.left;
+    var y = e.clientY - rect.top;
+    app.boids.push(makeBoid(x, y));
+    countEl.textContent = String(app.boids.length);
+  });
+
+  window.addEventListener("resize", function () {
+    resize();
+  });
+
+  // init
+  resize();
+  app.reset();
+  // initial full clear so first frame is clean
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = "#070b14";
+  ctx.fillRect(0, 0, W, H);
+  draw();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
