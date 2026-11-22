@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Documentation
+- GitHub Pages site with the interactive benchmark comparison (`site/`, built by `scripts/build_site.py`, deployed by `.github/workflows/pages.yml`). It works on phones: cards instead of wide tables, stacked GIFs, horizontal filters.
+- README and docs reviewed before the repository goes public: stale reference to the removed decision report, time range of a Tandem result, `TANDEM_PROGRESS_SECONDS`, security policy link.
+
 ## 4.0.1
 
 ### Fixes

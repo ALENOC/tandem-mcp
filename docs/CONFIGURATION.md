@@ -40,6 +40,7 @@ All settings are controlled via environment variables read by the `tandem-mcp` s
 | `TANDEM_JOB_SECONDS` | Time budget of an autonomous job: the local model repairs until every check passes or this runs out | `3600` |
 | `TANDEM_MAX_REPAIRS` | Most repair rounds of an autonomous job | `20` |
 | `TANDEM_MAX_STEPS` | Most executor steps of an autonomous job | `160` |
+| `TANDEM_PROGRESS_SECONDS` | Interval of the MCP progress notifications sent while an autonomous job runs, so the client does not abort a silent tool | `30` |
 | `TANDEM_AUTO_POLICY` | `first_turn`: act directly in turn 1, `auto_route` optional. `mandatory_route`: call `auto_route` first | `first_turn` |
 | `TANDEM_HOST_MANAGED` | `1`: `delegate` returns the job ID at once and a local host process waits, with no cloud polling | off |
 | `TANDEM_WAIT_SECONDS` | Default wait of a lean `delegate` call (seconds, capped at `1500`) | `150` |

@@ -12,4 +12,4 @@ Only the latest release on the `main` branch receives fixes.
 
 ## Scope
 
-The threat model and the limits of the sandbox are described in the Security section of the [README](README.md). In unjailed mode, `run` and `verify_commands` refuse workspaces with symlinks pointing outside the workspace (`TANDEM_ALLOW_OUTBOUND_SYMLINKS=1` overrides). A report is most useful when it shows a way out of those limits: a path outside the workspace, a command that passes the allow list and the safety list but should not, a write to a protected file, or a way to reach the network or the credential folders from a sandboxed command.
+The threat model and the limits of the sandbox are described in the [security model](docs/SECURITY_MODEL.md). In unjailed mode, `run` and `verify_commands` refuse workspaces with symlinks pointing outside the workspace (`TANDEM_ALLOW_OUTBOUND_SYMLINKS=1` overrides). A report is most useful when it shows a way out of those limits: a path outside the workspace, a command that passes the allow list and the safety list but should not, a write to a protected file, or a way to reach the network or the credential folders from a sandboxed command.

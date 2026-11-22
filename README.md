@@ -48,7 +48,7 @@ Each cell gives the cost per success (list prices, failed attempts counted), the
 The trade-offs:
 
 - **Small edits do not pay:** writing the contract costs about as much as the edit. Tandem tells Opus to do edits under about 30 lines itself.
-- **Time:** a result takes minutes to an hour on the local model instead of seconds.
+- **Time:** a result takes from a few minutes to two hours on the local model, against seconds to three minutes direct.
 - **Punctuality:** ignoring the time budget both arms deliver 11 correct results of 15, and Tandem is 61% cheaper. Inside the budget Tandem delivers 9 against 11, because two results came after the deadline.
 - **Finish:** the local model does what the contract says and little more. On the 3D portal its renderer runs at about 16 FPS against 60.
 
@@ -66,8 +66,8 @@ The trade-offs:
     <td><img src="benchmarks/opus/gifs/portal_tandem.gif" width="100%" alt="3D portal written by the local model through Tandem"></td>
   </tr>
   <tr>
-    <td align="center">$0.33 cloud · 82 s</td>
-    <td align="center">$0.11 cloud · 52 min</td>
+    <td align="center">$0.33 cloud · 82 s · failed (interactions)</td>
+    <td align="center">$0.11 cloud · 52 min · failed (interactions)</td>
   </tr>
 </table>
 
@@ -108,6 +108,6 @@ For a first edit, pick a failing test and tell the worker which file it may chan
 
 > Use Tandem to fix the discount calculation in discount.py. Keep the tests unchanged, run them, and show me the diff.
 
-For manual setup or a different model endpoint, see [Getting Started](docs/GETTING_STARTED.md) and [Configuration](docs/CONFIGURATION.md). The decision report describes the experimental routing used in the chat benchmarks. The released server's tools are listed in the [tool reference](docs/TOOLS.md).
+For manual setup or a different model endpoint, see [Getting Started](docs/GETTING_STARTED.md) and [Configuration](docs/CONFIGURATION.md). The tools are listed in the [tool reference](docs/TOOLS.md).
 
 [Changelog](CHANGELOG.md) · [Security policy](SECURITY.md) · [MIT license](LICENSE) · Copyright (c) 2026 [Alessandro Nocentini](https://github.com/ALENOC)
