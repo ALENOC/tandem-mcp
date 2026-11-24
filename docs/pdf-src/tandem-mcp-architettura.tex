@@ -6,13 +6,13 @@
 \usepackage[margin=1.8cm]{geometry}
 \usepackage{graphicx,booktabs,tabularx,enumitem,microtype,xcolor}
 \usepackage[hidelinks]{hyperref}
-\hypersetup{pdftitle={Architettura di Tandem MCP 4.0.1},pdfauthor={Alessandro Nocentini (ALENOC)},pdflang={it}}
+\hypersetup{pdftitle={Architettura di Tandem MCP 4.1.0},pdfauthor={Alessandro Nocentini (ALENOC)},pdflang={it}}
 \setlist{nosep,leftmargin=1.2em}
 \setlength{\parindent}{0pt}
 \setlength{\parskip}{4pt}
 \newcommand{\code}[1]{\texttt{\detokenize{#1}}}
 
-\title{\vspace{-1.5em}Architettura di Tandem MCP\\\large Versione 4.0.1: orchestratore cloud, esecutore locale}
+\title{\vspace{-1.5em}Architettura di Tandem MCP\\\large Versione 4.1.0: orchestratore cloud, esecutore locale}
 \author{Alessandro Nocentini (ALENOC)\\\small\url{https://github.com/ALENOC/tandem-mcp}}
 \date{Novembre 2026}
 
@@ -39,10 +39,10 @@ Modulo & Compito\\
 \code{server.py} & 20 tool MCP (4 nel profilo autonomo), validazione rigorosa del contratto, ricevute, oscuramento dei segreti\\
 \code{engine.py} & Ricerca del server, verifica delle capacità, scelta del modello per ruolo, nuovi tentativi con attesa crescente\\
 \code{digest.py} & Lettura a blocchi map-reduce, verifica lessicale delle citazioni, numeri non supportati, unione per schema\\
-\code{agent.py} & Ciclo di strumenti dell'esecutore, \code{replace_in_file} multiplo, registro, lotti, rollback\\
+\code{agent.py} & Ciclo esecutore a prefisso stabile, compattazione lazy, \code{replace_in_file} multiplo, registro, lotti, rollback\\
 \code{sandbox.py} & Glob, parser dei comandi, rifiuto dei symlink esterni, impronta SHA-256, jail Bubblewrap\\
 \code{ui_test.py} & Scenari \code{tandem:ui_test} del contratto, eseguiti in Chromium headless\\
-\code{web_check.py} & Controllo integrato di esecuzione e animazione delle pagine web\\
+\code{web_check.py} & Controllo integrato di esecuzione, animazione e soglia 40 FPS per pagine web\\
 \code{router.py} & \code{auto_route}: strumenti deterministici, risposta diretta o delega locale\\
 \code{host_runner.py} & Attesa del lavoro gestita da un processo locale, senza interrogare il cloud\\
 \code{store.py} & Persistenza in \code{TANDEM_HOME}, lock tra processi, riconciliazione all'avvio\\
@@ -56,9 +56,11 @@ Modulo & Compito\\
   server divide i vincoli composti invece di rifiutare il contratto.
 \item \textbf{Controllo iniziale e protezione:} i controlli girano prima di ogni modifica; i file di test sono in sola
   lettura e vengono ripristinati se toccati.
-\item \textbf{Ciclo di riparazione:} a \code{finish} Tandem controlla la sintassi, esegue i controlli da shell nella
-  sandbox e ogni \code{tandem:ui_test} in Chromium headless, e verifica una riga citata per ogni vincolo. Gli
-  errori tornano al modello locale.
+\item \textbf{Ciclo locale e riparazione:} la conversazione cresce solo in coda così il server locale riusa la
+  cache del prompt; ogni risposta arriva a 12.000 token (\code{TANDEM_REPLY_TOKENS}). A \code{finish} Tandem
+  controlla sintassi, controlli da shell nella sandbox (rimandando una volta quelli lenti oltre
+  \code{TANDEM_SLOW_CHECK_S}), \code{tandem:ui_test}, soglia 40 FPS in Chromium headless e righe citate.
+  L'output tagliato conserva le righe fallite; tre fallimenti identici di fila fermano il lavoro come \code{stuck}.
 \item \textbf{Profilo autonomo} (\code{TANDEM_PROFILE=autonomous}): quattro tool. \code{delegate} resta in
   attesa mentre il ciclo gira in locale, senza chiamate cloud, entro \code{TANDEM_JOB_SECONDS} (3600),
   \code{TANDEM_MAX_REPAIRS} (20) e \code{TANDEM_MAX_STEPS} (160). Una notifica di avanzamento ogni 30 secondi
@@ -81,10 +83,13 @@ Modulo & Compito\\
 \end{itemize}
 
 \section{Risparmio misurato}
-Con Opus 5.5 come orchestratore e il profilo autonomo, su cinque compiti e tre coppie bilanciate per
-compito, Tandem ha ridotto la spesa cloud totale del 61\% e il costo per risultato riuscito del 52\%, con il
-72\% di token di output in meno. Una correzione di 5 righe è costata il 10\% in più; un risultato Tandem
-richiede da 2 minuti a 2 ore, uno diretto da 12 secondi a 3 minuti. Modello locale: Qwen3.8 27B IQ3\_S su una GPU AMD Radeon
-RX 6800 serie (16 GB). Dettagli: \code{docs/BENCHMARKS.md} e \url{https://alenoc.github.io/tandem-mcp/}.
+Con Opus 5.5 come orchestratore e il profilo autonomo (serie 4.1.0, quattro compiti medi e grandi, quattro
+coppie bilanciate ciascuno), Tandem ha ridotto la spesa cloud totale del 57\% e il costo per successo del 61\%
+(\$0,217 contro \$0,556), con il 67\% di token di output in meno (esclusi due incidenti infrastrutturali nel
+run finale: 10/15 successi per braccio, -61\% totale e per successo, -72\% token di output). Il tempo mediano
+è sceso da 25 a 19 minuti (40--45\% in meno per chiamata locale) e la soglia 40 FPS ha portato i portali 3D
+da 4--20 FPS a 38--60 FPS. Le modifiche sotto le 30 righe restano dirette (+10\% in 4.0.0). Modello locale:
+Qwen3.8 27B IQ3\_S su GPU AMD Radeon RX 6800 serie (16 GB). Dettagli: \code{docs/BENCHMARKS.md} e
+\url{https://alenoc.github.io/tandem-mcp/}.
 
 \end{document}

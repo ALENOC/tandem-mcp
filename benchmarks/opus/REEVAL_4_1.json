@@ -1,0 +1,1049 @@
+{
+  "reevaluated_at": "2026-11-24T11:47:11.612390+00:00",
+  "repeats": 3,
+  "rule": "success = every repetition passes and the attempt ended inside its budget",
+  "runs": [
+    "20261124-030230_adversarial_pilot1",
+    "20261124-052842_adversarial_confirm",
+    "20261124-103103_adversarial_final"
+  ],
+  "evaluator_sha256": {
+    "check_boids_behavioral.mjs": "3c887778fe8dbff980d7c92146993fb332a1c750d6a9f90918710271b9b16247",
+    "check_orbital_behavioral.mjs": "b9616a84e1daf484457700136c88edffb7b09f3f844fae509b8e811bd5b5a1f2",
+    "check_portal_behavioral.mjs": "d3bd364c628846ee4d0ac886250bfd926fa2ebf9474a5e6780fb13ff1f7690fb",
+    "check_portal_visual.mjs": "58be7b30dd17486ca1b21b76f78ddf82d636d975c66150d99fdc3c636884b10d",
+    "check_stars.mjs": "bf35a6a7f13dcdd45a7d41038c394a524ab594aab4d4cbc608a5246e7d55805d"
+  },
+  "summary": {
+    "gen_orbital": {
+      "direct": {
+        "attempts": 4,
+        "successes": 1,
+        "cost_usd_total": 1.1947,
+        "cost_usd_per_success": 1.1947,
+        "tokens_total": {
+          "input_tokens": 26,
+          "cache_creation_input_tokens": 50308,
+          "cache_read_input_tokens": 213145,
+          "output_tokens": 37476
+        },
+        "median_wall_seconds": 80.8,
+        "local_tokens_total": 0
+      },
+      "tandem": {
+        "attempts": 4,
+        "successes": 2,
+        "cost_usd_total": 0.9406,
+        "cost_usd_per_success": 0.4703,
+        "tokens_total": {
+          "input_tokens": 58,
+          "cache_creation_input_tokens": 48639,
+          "cache_read_input_tokens": 504993,
+          "output_tokens": 22512
+        },
+        "median_wall_seconds": 2354.4,
+        "local_tokens_total": 2741955
+      },
+      "tandem_vs_direct_per_success": -0.6063
+    },
+    "gen_portal": {
+      "direct": {
+        "attempts": 4,
+        "successes": 2,
+        "cost_usd_total": 2.1112,
+        "cost_usd_per_success": 1.0556,
+        "tokens_total": {
+          "input_tokens": 52,
+          "cache_creation_input_tokens": 84568,
+          "cache_read_input_tokens": 616110,
+          "output_tokens": 65560
+        },
+        "median_wall_seconds": 144.8,
+        "local_tokens_total": 0
+      },
+      "tandem": {
+        "attempts": 4,
+        "successes": 2,
+        "cost_usd_total": 0.4636,
+        "cost_usd_per_success": 0.2318,
+        "tokens_total": {
+          "input_tokens": 24,
+          "cache_creation_input_tokens": 27341,
+          "cache_read_input_tokens": 163756,
+          "output_tokens": 10603
+        },
+        "median_wall_seconds": 1373.7,
+        "local_tokens_total": 1239417
+      },
+      "tandem_vs_direct_per_success": -0.7804
+    },
+    "py_cron": {
+      "direct": {
+        "attempts": 4,
+        "successes": 3,
+        "cost_usd_total": 1.3216,
+        "cost_usd_per_success": 0.4405,
+        "tokens_total": {
+          "input_tokens": 46,
+          "cache_creation_input_tokens": 63893,
+          "cache_read_input_tokens": 369322,
+          "output_tokens": 36820
+        },
+        "median_wall_seconds": 96.7,
+        "local_tokens_total": 0
+      },
+      "tandem": {
+        "attempts": 4,
+        "successes": 3,
+        "cost_usd_total": 0.5186,
+        "cost_usd_per_success": 0.1729,
+        "tokens_total": {
+          "input_tokens": 24,
+          "cache_creation_input_tokens": 31357,
+          "cache_read_input_tokens": 160121,
+          "output_tokens": 11780
+        },
+        "median_wall_seconds": 1137.3,
+        "local_tokens_total": 677138
+      },
+      "tandem_vs_direct_per_success": -0.6075
+    },
+    "web_boids": {
+      "direct": {
+        "attempts": 4,
+        "successes": 4,
+        "cost_usd_total": 0.9291,
+        "cost_usd_per_success": 0.2323,
+        "tokens_total": {
+          "input_tokens": 46,
+          "cache_creation_input_tokens": 42541,
+          "cache_read_input_tokens": 385309,
+          "output_tokens": 25576
+        },
+        "median_wall_seconds": 66.8,
+        "local_tokens_total": 0
+      },
+      "tandem": {
+        "attempts": 4,
+        "successes": 4,
+        "cost_usd_total": 0.4686,
+        "cost_usd_per_success": 0.1172,
+        "tokens_total": {
+          "input_tokens": 24,
+          "cache_creation_input_tokens": 29929,
+          "cache_read_input_tokens": 159510,
+          "output_tokens": 9860
+        },
+        "median_wall_seconds": 435.5,
+        "local_tokens_total": 142299
+      },
+      "tandem_vs_direct_per_success": -0.4955
+    }
+  },
+  "attempts": [
+    {
+      "run": "20261124-030230_adversarial_pilot1",
+      "task": "web_boids",
+      "arm": "direct",
+      "pair": 1,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "timed_out": false,
+      "wall_seconds": 69.4,
+      "cost_usd": 0.24527579999999996,
+      "usage": {
+        "input_tokens": 12,
+        "cache_creation_input_tokens": 11659,
+        "cache_read_input_tokens": 100879,
+        "output_tokens": 6589
+      },
+      "num_turns": 6,
+      "tool_uses": [
+        "Write",
+        "Bash",
+        "Bash",
+        "Bash",
+        "Bash"
+      ],
+      "local_tokens": 0,
+      "local_jobs": []
+    },
+    {
+      "run": "20261124-030230_adversarial_pilot1",
+      "task": "web_boids",
+      "arm": "tandem",
+      "pair": 1,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "timed_out": false,
+      "wall_seconds": 420.62,
+      "cost_usd": 0.127402,
+      "usage": {
+        "input_tokens": 6,
+        "cache_creation_input_tokens": 8741,
+        "cache_read_input_tokens": 38450,
+        "output_tokens": 2488
+      },
+      "num_turns": 3,
+      "tool_uses": [
+        "ToolSearch",
+        "mcp__tandem__delegate"
+      ],
+      "local_tokens": 36710,
+      "local_jobs": [
+        "verified"
+      ]
+    },
+    {
+      "run": "20261124-030230_adversarial_pilot1",
+      "task": "gen_orbital",
+      "arm": "direct",
+      "pair": 1,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "timed_out": false,
+      "wall_seconds": 87.97,
+      "cost_usd": 0.3091462,
+      "usage": {
+        "input_tokens": 8,
+        "cache_creation_input_tokens": 12800,
+        "cache_read_input_tokens": 70571,
+        "output_tokens": 9630
+      },
+      "num_turns": 4,
+      "tool_uses": [
+        "Write",
+        "Bash",
+        "Edit"
+      ],
+      "local_tokens": 0,
+      "local_jobs": []
+    },
+    {
+      "run": "20261124-030230_adversarial_pilot1",
+      "task": "gen_orbital",
+      "arm": "tandem",
+      "pair": 1,
+      "success": false,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "timed_out": true,
+      "wall_seconds": 4073.41,
+      "cost_usd": 0.271891,
+      "usage": {
+        "input_tokens": 26,
+        "cache_creation_input_tokens": 14041,
+        "cache_read_input_tokens": 245495,
+        "output_tokens": 5518
+      },
+      "num_turns": 13,
+      "tool_uses": [
+        "ToolSearch",
+        "mcp__tandem__delegate",
+        "mcp__tandem__job_continue",
+        "Bash",
+        "Bash",
+        "Bash",
+        "Bash",
+        "Bash",
+        "Bash",
+        "Bash",
+        "Bash",
+        "Bash"
+      ],
+      "local_tokens": 1285162,
+      "local_jobs": [
+        "checks_failed"
+      ]
+    },
+    {
+      "run": "20261124-030230_adversarial_pilot1",
+      "task": "py_cron",
+      "arm": "direct",
+      "pair": 1,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "timed_out": false,
+      "wall_seconds": 92.6,
+      "cost_usd": 0.3696058,
+      "usage": {
+        "input_tokens": 14,
+        "cache_creation_input_tokens": 17564,
+        "cache_read_input_tokens": 114989,
+        "output_tokens": 10302
+      },
+      "num_turns": 8,
+      "tool_uses": [
+        "Bash",
+        "Write",
+        "Bash",
+        "Bash",
+        "Bash",
+        "Write",
+        "Bash"
+      ],
+      "local_tokens": 0,
+      "local_jobs": []
+    },
+    {
+      "run": "20261124-030230_adversarial_pilot1",
+      "task": "py_cron",
+      "arm": "tandem",
+      "pair": 1,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "timed_out": false,
+      "wall_seconds": 1244.17,
+      "cost_usd": 0.1317732,
+      "usage": {
+        "input_tokens": 6,
+        "cache_creation_input_tokens": 7544,
+        "cache_read_input_tokens": 40386,
+        "output_tokens": 3166
+      },
+      "num_turns": 3,
+      "tool_uses": [
+        "ToolSearch",
+        "mcp__tandem__delegate"
+      ],
+      "local_tokens": 225885,
+      "local_jobs": [
+        "verified"
+      ]
+    },
+    {
+      "run": "20261124-030230_adversarial_pilot1",
+      "task": "gen_portal",
+      "arm": "direct",
+      "pair": 1,
+      "success": false,
+      "verdicts_agree": true,
+      "failed_checks": [
+        "interactions"
+      ],
+      "timed_out": false,
+      "wall_seconds": 114.28,
+      "cost_usd": 0.4278844,
+      "usage": {
+        "input_tokens": 10,
+        "cache_creation_input_tokens": 16881,
+        "cache_read_input_tokens": 93882,
+        "output_tokens": 13701
+      },
+      "num_turns": 5,
+      "tool_uses": [
+        "Bash",
+        "Write",
+        "Bash",
+        "Bash"
+      ],
+      "local_tokens": 0,
+      "local_jobs": []
+    },
+    {
+      "run": "20261124-030230_adversarial_pilot1",
+      "task": "gen_portal",
+      "arm": "tandem",
+      "pair": 1,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "timed_out": false,
+      "wall_seconds": 1202.03,
+      "cost_usd": 0.11472460000000001,
+      "usage": {
+        "input_tokens": 6,
+        "cache_creation_input_tokens": 7099,
+        "cache_read_input_tokens": 40443,
+        "output_tokens": 2491
+      },
+      "num_turns": 3,
+      "tool_uses": [
+        "ToolSearch",
+        "mcp__tandem__delegate"
+      ],
+      "local_tokens": 250465,
+      "local_jobs": [
+        "verified"
+      ]
+    },
+    {
+      "run": "20261124-052842_adversarial_confirm",
+      "task": "web_boids",
+      "arm": "direct",
+      "pair": 1,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "timed_out": false,
+      "wall_seconds": 67.83,
+      "cost_usd": 0.24711360000000004,
+      "usage": {
+        "input_tokens": 12,
+        "cache_creation_input_tokens": 10406,
+        "cache_read_input_tokens": 103088,
+        "output_tokens": 7160
+      },
+      "num_turns": 6,
+      "tool_uses": [
+        "Write",
+        "Bash",
+        "Bash",
+        "Bash",
+        "Bash"
+      ],
+      "local_tokens": 0,
+      "local_jobs": []
+    },
+    {
+      "run": "20261124-052842_adversarial_confirm",
+      "task": "web_boids",
+      "arm": "tandem",
+      "pair": 1,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "timed_out": false,
+      "wall_seconds": 436.57,
+      "cost_usd": 0.1105124,
+      "usage": {
+        "input_tokens": 6,
+        "cache_creation_input_tokens": 6918,
+        "cache_read_input_tokens": 40422,
+        "output_tokens": 2353
+      },
+      "num_turns": 3,
+      "tool_uses": [
+        "ToolSearch",
+        "mcp__tandem__delegate"
+      ],
+      "local_tokens": 46053,
+      "local_jobs": [
+        "verified"
+      ]
+    },
+    {
+      "run": "20261124-052842_adversarial_confirm",
+      "task": "web_boids",
+      "arm": "tandem",
+      "pair": 2,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "timed_out": false,
+      "wall_seconds": 434.52,
+      "cost_usd": 0.10066440000000001,
+      "usage": {
+        "input_tokens": 6,
+        "cache_creation_input_tokens": 5359,
+        "cache_read_input_tokens": 41942,
+        "output_tokens": 2469
+      },
+      "num_turns": 3,
+      "tool_uses": [
+        "ToolSearch",
+        "mcp__tandem__delegate"
+      ],
+      "local_tokens": 37764,
+      "local_jobs": [
+        "verified"
+      ]
+    },
+    {
+      "run": "20261124-052842_adversarial_confirm",
+      "task": "web_boids",
+      "arm": "direct",
+      "pair": 2,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "timed_out": false,
+      "wall_seconds": 65.72,
+      "cost_usd": 0.2236282,
+      "usage": {
+        "input_tokens": 12,
+        "cache_creation_input_tokens": 9666,
+        "cache_read_input_tokens": 101961,
+        "output_tokens": 6293
+      },
+      "num_turns": 6,
+      "tool_uses": [
+        "Write",
+        "Bash",
+        "Bash",
+        "Bash",
+        "Bash"
+      ],
+      "local_tokens": 0,
+      "local_jobs": []
+    },
+    {
+      "run": "20261124-052842_adversarial_confirm",
+      "task": "gen_orbital",
+      "arm": "direct",
+      "pair": 1,
+      "success": false,
+      "verdicts_agree": false,
+      "failed_checks": [
+        "clickSpawnsBurst"
+      ],
+      "timed_out": false,
+      "wall_seconds": 77.28,
+      "cost_usd": 0.28652199999999994,
+      "usage": {
+        "input_tokens": 6,
+        "cache_creation_input_tokens": 12113,
+        "cache_read_input_tokens": 47270,
+        "output_tokens": 9007
+      },
+      "num_turns": 3,
+      "tool_uses": [
+        "Write",
+        "Bash"
+      ],
+      "local_tokens": 0,
+      "local_jobs": []
+    },
+    {
+      "run": "20261124-052842_adversarial_confirm",
+      "task": "gen_orbital",
+      "arm": "tandem",
+      "pair": 1,
+      "success": false,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "timed_out": true,
+      "wall_seconds": 4251.62,
+      "cost_usd": 0.1775584,
+      "usage": {
+        "input_tokens": 14,
+        "cache_creation_input_tokens": 10041,
+        "cache_read_input_tokens": 117072,
+        "output_tokens": 3688
+      },
+      "num_turns": 7,
+      "tool_uses": [
+        "ToolSearch",
+        "mcp__tandem__delegate",
+        "mcp__tandem__job_continue",
+        "Bash",
+        "Bash",
+        "Bash"
+      ],
+      "local_tokens": 1377669,
+      "local_jobs": [
+        "out_of_time"
+      ]
+    },
+    {
+      "run": "20261124-052842_adversarial_confirm",
+      "task": "gen_orbital",
+      "arm": "tandem",
+      "pair": 2,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "timed_out": false,
+      "wall_seconds": 635.4,
+      "cost_usd": 0.145457,
+      "usage": {
+        "input_tokens": 6,
+        "cache_creation_input_tokens": 9635,
+        "cache_read_input_tokens": 39065,
+        "output_tokens": 3027
+      },
+      "num_turns": 3,
+      "tool_uses": [
+        "ToolSearch",
+        "mcp__tandem__delegate"
+      ],
+      "local_tokens": 79124,
+      "local_jobs": [
+        "verified"
+      ]
+    },
+    {
+      "run": "20261124-052842_adversarial_confirm",
+      "task": "gen_orbital",
+      "arm": "direct",
+      "pair": 2,
+      "success": false,
+      "verdicts_agree": false,
+      "failed_checks": [
+        "clickSpawnsBurst"
+      ],
+      "timed_out": false,
+      "wall_seconds": 74.71,
+      "cost_usd": 0.2958036,
+      "usage": {
+        "input_tokens": 6,
+        "cache_creation_input_tokens": 12608,
+        "cache_read_input_tokens": 47278,
+        "output_tokens": 9273
+      },
+      "num_turns": 3,
+      "tool_uses": [
+        "Write",
+        "Bash"
+      ],
+      "local_tokens": 0,
+      "local_jobs": []
+    },
+    {
+      "run": "20261124-052842_adversarial_confirm",
+      "task": "py_cron",
+      "arm": "direct",
+      "pair": 1,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "timed_out": false,
+      "wall_seconds": 100.73,
+      "cost_usd": 0.3357284,
+      "usage": {
+        "input_tokens": 12,
+        "cache_creation_input_tokens": 14494,
+        "cache_read_input_tokens": 100642,
+        "output_tokens": 9980
+      },
+      "num_turns": 6,
+      "tool_uses": [
+        "Bash",
+        "Write",
+        "Bash",
+        "Write",
+        "Bash"
+      ],
+      "local_tokens": 0,
+      "local_jobs": []
+    },
+    {
+      "run": "20261124-052842_adversarial_confirm",
+      "task": "py_cron",
+      "arm": "tandem",
+      "pair": 1,
+      "success": false,
+      "verdicts_agree": true,
+      "failed_checks": [
+        "timeout"
+      ],
+      "timed_out": false,
+      "wall_seconds": 1116.66,
+      "cost_usd": 0.11551860000000003,
+      "usage": {
+        "input_tokens": 6,
+        "cache_creation_input_tokens": 6969,
+        "cache_read_input_tokens": 40313,
+        "output_tokens": 2584
+      },
+      "num_turns": 3,
+      "tool_uses": [
+        "ToolSearch",
+        "mcp__tandem__delegate"
+      ],
+      "local_tokens": 89899,
+      "local_jobs": [
+        "verified"
+      ]
+    },
+    {
+      "run": "20261124-052842_adversarial_confirm",
+      "task": "py_cron",
+      "arm": "tandem",
+      "pair": 2,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "timed_out": false,
+      "wall_seconds": 1151.51,
+      "cost_usd": 0.1319948,
+      "usage": {
+        "input_tokens": 6,
+        "cache_creation_input_tokens": 7544,
+        "cache_read_input_tokens": 40594,
+        "output_tokens": 3175
+      },
+      "num_turns": 3,
+      "tool_uses": [
+        "ToolSearch",
+        "mcp__tandem__delegate"
+      ],
+      "local_tokens": 156905,
+      "local_jobs": [
+        "verified"
+      ]
+    },
+    {
+      "run": "20261124-052842_adversarial_confirm",
+      "task": "py_cron",
+      "arm": "direct",
+      "pair": 2,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "timed_out": false,
+      "wall_seconds": 78.22,
+      "cost_usd": 0.2660556,
+      "usage": {
+        "input_tokens": 10,
+        "cache_creation_input_tokens": 12006,
+        "cache_read_input_tokens": 78638,
+        "output_tokens": 7712
+      },
+      "num_turns": 5,
+      "tool_uses": [
+        "Bash",
+        "Write",
+        "Write",
+        "Bash"
+      ],
+      "local_tokens": 0,
+      "local_jobs": []
+    },
+    {
+      "run": "20261124-052842_adversarial_confirm",
+      "task": "gen_portal",
+      "arm": "direct",
+      "pair": 1,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "timed_out": false,
+      "wall_seconds": 215.96,
+      "cost_usd": 0.7216946,
+      "usage": {
+        "input_tokens": 18,
+        "cache_creation_input_tokens": 28615,
+        "cache_read_input_tokens": 259113,
+        "output_tokens": 22044
+      },
+      "num_turns": 9,
+      "tool_uses": [
+        "Bash",
+        "Write",
+        "Bash",
+        "Bash",
+        "Bash",
+        "Read",
+        "Bash",
+        "Read"
+      ],
+      "local_tokens": 0,
+      "local_jobs": []
+    },
+    {
+      "run": "20261124-052842_adversarial_confirm",
+      "task": "gen_portal",
+      "arm": "tandem",
+      "pair": 1,
+      "success": false,
+      "verdicts_agree": true,
+      "failed_checks": [
+        "interactions"
+      ],
+      "timed_out": false,
+      "wall_seconds": 1439.9,
+      "cost_usd": 0.1324496,
+      "usage": {
+        "input_tokens": 6,
+        "cache_creation_input_tokens": 7650,
+        "cache_read_input_tokens": 40528,
+        "output_tokens": 3156
+      },
+      "num_turns": 3,
+      "tool_uses": [
+        "ToolSearch",
+        "mcp__tandem__delegate"
+      ],
+      "local_tokens": 439726,
+      "local_jobs": [
+        "verified"
+      ]
+    },
+    {
+      "run": "20261124-052842_adversarial_confirm",
+      "task": "gen_portal",
+      "arm": "tandem",
+      "pair": 2,
+      "success": false,
+      "verdicts_agree": false,
+      "failed_checks": [
+        "interactions"
+      ],
+      "timed_out": false,
+      "wall_seconds": 1812.58,
+      "cost_usd": 0.1035798,
+      "usage": {
+        "input_tokens": 6,
+        "cache_creation_input_tokens": 5537,
+        "cache_read_input_tokens": 42099,
+        "output_tokens": 2542
+      },
+      "num_turns": 3,
+      "tool_uses": [
+        "ToolSearch",
+        "mcp__tandem__delegate"
+      ],
+      "local_tokens": 254227,
+      "local_jobs": [
+        "verified"
+      ]
+    },
+    {
+      "run": "20261124-052842_adversarial_confirm",
+      "task": "gen_portal",
+      "arm": "direct",
+      "pair": 2,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "timed_out": false,
+      "wall_seconds": 175.27,
+      "cost_usd": 0.6043229999999999,
+      "usage": {
+        "input_tokens": 16,
+        "cache_creation_input_tokens": 24485,
+        "cache_read_input_tokens": 199995,
+        "output_tokens": 18419
+      },
+      "num_turns": 8,
+      "tool_uses": [
+        "Bash",
+        "Write",
+        "Bash",
+        "Bash",
+        "Read",
+        "Bash",
+        "Read"
+      ],
+      "local_tokens": 0,
+      "local_jobs": []
+    },
+    {
+      "run": "20261124-103103_adversarial_final",
+      "task": "web_boids",
+      "arm": "direct",
+      "pair": 1,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "timed_out": false,
+      "wall_seconds": 58.84,
+      "cost_usd": 0.2130762,
+      "usage": {
+        "input_tokens": 10,
+        "cache_creation_input_tokens": 10810,
+        "cache_read_input_tokens": 79381,
+        "output_tokens": 5534
+      },
+      "num_turns": 5,
+      "tool_uses": [
+        "Write",
+        "Bash",
+        "Bash",
+        "Bash"
+      ],
+      "local_tokens": 0,
+      "local_jobs": []
+    },
+    {
+      "run": "20261124-103103_adversarial_final",
+      "task": "web_boids",
+      "arm": "tandem",
+      "pair": 1,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "timed_out": false,
+      "wall_seconds": 576.34,
+      "cost_usd": 0.1300512,
+      "usage": {
+        "input_tokens": 6,
+        "cache_creation_input_tokens": 8911,
+        "cache_read_input_tokens": 38696,
+        "output_tokens": 2550
+      },
+      "num_turns": 3,
+      "tool_uses": [
+        "ToolSearch",
+        "mcp__tandem__delegate"
+      ],
+      "local_tokens": 21772,
+      "local_jobs": [
+        "verified"
+      ]
+    },
+    {
+      "run": "20261124-103103_adversarial_final",
+      "task": "gen_orbital",
+      "arm": "direct",
+      "pair": 1,
+      "success": false,
+      "verdicts_agree": false,
+      "failed_checks": [
+        "trailsToggle"
+      ],
+      "timed_out": false,
+      "wall_seconds": 84.4,
+      "cost_usd": 0.3032452,
+      "usage": {
+        "input_tokens": 6,
+        "cache_creation_input_tokens": 12787,
+        "cache_read_input_tokens": 48026,
+        "output_tokens": 9566
+      },
+      "num_turns": 3,
+      "tool_uses": [
+        "Write",
+        "Bash"
+      ],
+      "local_tokens": 0,
+      "local_jobs": []
+    },
+    {
+      "run": "20261124-103103_adversarial_final",
+      "task": "gen_orbital",
+      "arm": "tandem",
+      "pair": 1,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "timed_out": false,
+      "wall_seconds": 122.73,
+      "cost_usd": 0.3456762,
+      "usage": {
+        "input_tokens": 12,
+        "cache_creation_input_tokens": 14922,
+        "cache_read_input_tokens": 103361,
+        "output_tokens": 10279
+      },
+      "num_turns": 6,
+      "tool_uses": [
+        "ToolSearch",
+        "mcp__tandem__delegate",
+        "mcp__tandem__job_continue",
+        "Write",
+        "Bash"
+      ],
+      "local_tokens": 0,
+      "local_jobs": [
+        "error"
+      ]
+    },
+    {
+      "run": "20261124-103103_adversarial_final",
+      "task": "py_cron",
+      "arm": "direct",
+      "pair": 1,
+      "success": false,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "timed_out": true,
+      "wall_seconds": 4505.86,
+      "cost_usd": 0.3502026,
+      "usage": {
+        "input_tokens": 10,
+        "cache_creation_input_tokens": 19829,
+        "cache_read_input_tokens": 75053,
+        "output_tokens": 8826
+      },
+      "num_turns": 6,
+      "tool_uses": [
+        "Bash",
+        "Write",
+        "Write",
+        "Bash",
+        "Bash"
+      ],
+      "local_tokens": 0,
+      "local_jobs": []
+    },
+    {
+      "run": "20261124-103103_adversarial_final",
+      "task": "py_cron",
+      "arm": "tandem",
+      "pair": 1,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "timed_out": false,
+      "wall_seconds": 1123.06,
+      "cost_usd": 0.1392896,
+      "usage": {
+        "input_tokens": 6,
+        "cache_creation_input_tokens": 9300,
+        "cache_read_input_tokens": 38828,
+        "output_tokens": 2855
+      },
+      "num_turns": 3,
+      "tool_uses": [
+        "ToolSearch",
+        "mcp__tandem__delegate"
+      ],
+      "local_tokens": 204449,
+      "local_jobs": [
+        "verified"
+      ]
+    },
+    {
+      "run": "20261124-103103_adversarial_final",
+      "task": "gen_portal",
+      "arm": "direct",
+      "pair": 1,
+      "success": false,
+      "verdicts_agree": true,
+      "failed_checks": [
+        "interactions"
+      ],
+      "timed_out": false,
+      "wall_seconds": 96.68,
+      "cost_usd": 0.357272,
+      "usage": {
+        "input_tokens": 8,
+        "cache_creation_input_tokens": 14587,
+        "cache_read_input_tokens": 63120,
+        "output_tokens": 11396
+      },
+      "num_turns": 4,
+      "tool_uses": [
+        "Bash",
+        "Write",
+        "Bash"
+      ],
+      "local_tokens": 0,
+      "local_jobs": []
+    },
+    {
+      "run": "20261124-103103_adversarial_final",
+      "task": "gen_portal",
+      "arm": "tandem",
+      "pair": 1,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "timed_out": false,
+      "wall_seconds": 1307.57,
+      "cost_usd": 0.11288119999999999,
+      "usage": {
+        "input_tokens": 6,
+        "cache_creation_input_tokens": 7055,
+        "cache_read_input_tokens": 40686,
+        "output_tokens": 2414
+      },
+      "num_turns": 3,
+      "tool_uses": [
+        "ToolSearch",
+        "mcp__tandem__delegate"
+      ],
+      "local_tokens": 294999,
+      "local_jobs": [
+        "verified"
+      ]
+    }
+  ]
+}

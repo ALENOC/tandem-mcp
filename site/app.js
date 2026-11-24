@@ -1,23 +1,28 @@
 "use strict";
 
 const TASKS = {
-  py_discount: { name: "Fix a bug in discount.py", kind: "5-line edit",
-    why: "The contract costs Opus about as much as the edit itself. Small edits do not pay." },
   py_cron: { name: "Cron parser module with tests", kind: "Python module",
-    why: "One Tandem result was correct but arrived at 42 minutes, past the 40-minute budget." },
+    why: "3/4 successes each (Direct lost 1 to a 74-minute API stall; Tandem lost 1 to a 141 s slow test suite before TANDEM_SLOW_CHECK_S=30 was added)." },
   web_boids: { name: "Boids web simulation", kind: "Web page",
-    why: "One Tandem page redraws its trail layer while paused, so the \"starts paused\" check fails." },
+    why: "4/4 successes on both arms, both at 60 FPS; Tandem cuts cloud cost per success in half." },
   gen_orbital: { name: "Orbital web simulation", kind: "Web page",
-    why: "One Tandem result was correct but late (55 minutes). One direct page missed the trails toggle." },
+    why: "Two Tandem artifacts passed the evaluator but ran over budget on orchestrator checks; final Tandem Orbital hit a GPU reset and fell back to Opus. Three Direct attempts missed an intermittent browser check." },
   gen_portal: { name: "3D neon portal (4 files)", kind: "3D web app",
-    why: "No page passes the strict evaluator, on either arm. Tandem costs 75% less per attempt; its renderer runs at about 16 FPS against 60." },
+    why: "2/4 successes on both arms. The 40 FPS gate lifted slow Tandem portals from 3–4 FPS to 60 FPS in confirm (38–39 vs 40 FPS in final), at 78% lower cloud cost per success." },
 };
-const ORDER = ["py_discount", "py_cron", "web_boids", "gen_orbital", "gen_portal"];
+const ORDER = ["py_cron", "web_boids", "gen_orbital", "gen_portal"];
+const RUN_TAG = (run) => {
+  if (!run) return "";
+  if (run.includes("pilot1")) return "pilot · ";
+  if (run.includes("confirm")) return "confirm · ";
+  if (run.includes("final")) return "final · ";
+  return "";
+};
 const DEMOS = {
-  orbital: { d: "orbital/direct", t: "orbital/tandem", cd: "pair 2 · passed", ct: "pair 2 · passed",
-    note: "Both pass the evaluator. The Tandem orbit trails are fainter." },
-  portal: { d: "portal/direct", t: "portal/tandem", cd: "pair 3 · failed (interactions)", ct: "pair 1 · failed (interactions)",
-    note: "Neither passes every check. The Tandem page has the neon palette and colored crystals the contract asked for; its software renderer runs at about 16 FPS against 60, and its camera orbits four times faster (1 rad/s against 0.25 rad/s) because the request did not fix the orbit speed." },
+  orbital: { d: "orbital/direct", t: "orbital/tandem", cd: "pilot p1 · passed", ct: "confirm p2 · passed",
+    note: "Both pass all three evaluations and run at 60 FPS. Direct adds extra visual polish (tapered trails and usage hint); Tandem finished in 11 min for $0.15 cloud." },
+  portal: { d: "portal/direct", t: "portal/tandem", cd: "final p1 · failed (interactions)", ct: "final p1 · passed",
+    note: "Same final 4.1.0 pair. Direct has neon wireframe edges and a full cross-grid (40 FPS at 1280x800) but fails interactions; Tandem passes all three evaluations (38–39 FPS at 1280x800) for $0.11 cloud." },
 };
 // pages render at a desktop size and are scaled down; a phone gets a smaller virtual size so the controls stay legible
 const viewW = (stage) => (stage.clientWidth < 560 ? 760 : 1280);
@@ -45,7 +50,7 @@ function renderKpis(data) {
     [pct(t.per / d.per - 1), "Cloud cost per success", `${usd(t.per)} with Tandem, ${usd(d.per)} direct`],
     [pct(t.cost / d.cost - 1), "Total cloud spend", `$${t.cost.toFixed(2)} against $${d.cost.toFixed(2)}, ${d.n} attempts each`],
     [pct(t.out / d.out - 1), "Cloud output tokens", `${k(t.out)} against ${k(d.out)}`],
-    [`${t.correct} = ${d.correct}`, "Correct results of " + d.n, `Inside the time budget: Tandem ${t.ok}, direct ${d.ok}`, true],
+    [`${t.ok} vs ${d.ok}`, "Successes of " + d.n, `Ignoring budget: Tandem ${t.correct}, direct ${d.correct}`, true],
   ];
   const box = $("#kpis");
   for (const [big, lbl, det, neutral] of cards) {
@@ -53,7 +58,7 @@ function renderKpis(data) {
     c.append(el("div", "big" + (neutral ? " neutral" : ""), big), el("div", "lbl", lbl), el("div", "det", det));
     box.append(c);
   }
-  $("#note-punctual").innerHTML = `<b>Trade-off:</b> Tandem saves cloud tokens but takes longer. A Tandem result takes from 2 minutes to 2 hours, the direct path from 12 seconds to 3 minutes. Ignoring time, the correct results cost ${usd(t.cost / t.correct)} each with Tandem and ${usd(d.cost / d.correct)} direct.`;
+  $("#note-punctual").innerHTML = `<b>Trade-off and caveats:</b> 4.1.0 cut local per-call time by ~40–45% and dropped median task time from 25 min to 19 min, but Tandem is still ~13x slower than direct (~7–39 min median vs ~1–2.5 min). Excluding two infrastructure incidents in the final run (a GPU reset on Tandem Orbital and a 74-minute API stall on Direct Cron): 10/15 successes each, $0.205 vs $0.521 (-61%, -72% output tokens). Small edits (&lt;30 lines) stay direct (+10% in 4.0.0).`;
 }
 
 function renderTasks(data) {
@@ -62,7 +67,7 @@ function renderTasks(data) {
     const s = data.summary[id], info = TASKS[id];
     const metric = (a) => s[a].cost_usd_per_success ?? s[a].cost_usd_total / s[a].attempts;
     const max = Math.max(metric("direct"), metric("tandem"));
-    const perAttempt = s.direct.cost_usd_per_success == null;
+    const perAttempt = s.direct.cost_usd_per_success == null || s.tandem.cost_usd_per_success == null;
     const delta = perAttempt ? metric("tandem") / metric("direct") - 1 : s.tandem_vs_direct_per_success;
     const c = el("article", "task");
     const h = el("h3");
@@ -79,7 +84,7 @@ function renderTasks(data) {
       r.append(el("div", "meta", `<span>${cost}</span><span>${a.successes}/${a.attempts} ok</span><span>median ${dur(a.median_wall_seconds)}</span>`));
       c.append(r);
     }
-    c.append(el("p", "why", (perAttempt ? "* per attempt, no success on either arm. " : "") + info.why));
+    c.append(el("p", "why", (perAttempt ? "* per attempt. " : "") + info.why));
     box.append(c);
   }
 }
@@ -103,7 +108,7 @@ function renderAttempts(data, filter) {
   for (const a of data.attempts.filter((x) => filter === "all" || x.task === filter)) {
     const st = a.success ? ["ok", "pass"] : a.timed_out && !a.failed_checks.length ? ["late", "correct, late"] : ["ko", "fail"];
     const c = el("div", "att " + a.arm);
-    c.append(el("div", "top", `<span>${TASKS[a.task].name.split(" (")[0]} · p${a.pair} · <span class="${a.arm === "direct" ? "arm-d" : "arm-t"}">${a.arm}</span></span><span class="st ${st[0]}">${st[1]}</span>`));
+    c.append(el("div", "top", `<span>${TASKS[a.task].name.split(" (")[0]} · ${RUN_TAG(a.run)}p${a.pair} · <span class="${a.arm === "direct" ? "arm-d" : "arm-t"}">${a.arm}</span></span><span class="st ${st[0]}">${st[1]}</span>`));
     let dl = `<dt>Cloud cost</dt><dd>${usd(a.cost_usd)}</dd><dt>Time</dt><dd>${dur(a.wall_seconds)}</dd><dt>Cloud output</dt><dd>${k(a.output_tokens)} tok</dd>`;
     if (a.arm === "tandem") dl += `<dt>Local tokens</dt><dd>${k(a.local_tokens)}</dd>`;
     if (a.failed_checks.length) dl += `<dt>Failed</dt><dd>${a.failed_checks.join(", ")}</dd>`;

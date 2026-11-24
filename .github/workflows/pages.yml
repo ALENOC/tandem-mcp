@@ -3,7 +3,7 @@ name: pages
 on:
   push:
     branches: [main]
-    paths: ['site/**', 'benchmarks/opus/REEVAL_V3.json', 'benchmarks/opus/gifs/**', 'benchmarks/opus/runs/20261121-215741_v3/workspaces/gen_*/**', 'scripts/build_site.py', '.github/workflows/pages.yml']
+    paths: ['site/**', 'benchmarks/opus/REEVAL_4_1.json', 'benchmarks/opus/gifs/**', 'benchmarks/opus/runs/20261124-*/workspaces/gen_*/**', 'scripts/build_site.py', '.github/workflows/pages.yml']
   workflow_dispatch:
 
 permissions:
