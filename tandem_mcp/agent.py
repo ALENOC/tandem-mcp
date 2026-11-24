@@ -30,7 +30,7 @@ import time
 import zlib
 from pathlib import Path
 
-from . import engine, sandbox, store, ui_test, web_check
+from . import engine, sandbox, store, ui_test, visual_review, web_check
 
 TOOLS = [
     ('list_files', 'List files of the workspace that match a glob such as "src/*.c" or "*.md".',
@@ -687,7 +687,7 @@ def _compact_messages_view(messages, keep_recent=2, only=None):
 class Task:
     def __init__(self, job, folder, goal, workspace, verify, max_steps=30, max_repairs=2, model='', context='',
                  baseline=True, max_seconds=0, checks_network=False, unjailed_checks=False, constraints=None,
-                 require_proof=False):
+                 require_proof=False, reference_image=''):
         self.require_proof = bool(require_proof)
         self.job, self.folder, self.goal, self.ws = job, folder, goal, workspace
         self.verify, self.max_steps, self.max_repairs, self.model = list(verify), max_steps, max_repairs, model
@@ -695,6 +695,10 @@ class Task:
         self.checks_network, self.unjailed_checks = bool(checks_network), bool(unjailed_checks)
         self.constraints = [str(c).strip() for c in (constraints or []) if str(c).strip()]
         self.web_check_spec = web_check.spec_for(self.goal, getattr(self.ws, 'write_globs', []), self.constraints)
+        self.reference_image = visual_review.prepare_reference(reference_image, folder) if reference_image else ''
+        self.screenshot = ''               # live 1280x800 screenshot saved by web_check inside the job folder
+        self.visual_strikes = 0            # local visual review rounds sent back to the executor
+        self.visual_review = None          # last local VLM visual review verdict
         self.journal = {}                  # relative path -> original text, None when the file was created
         self.journal_bin = {}              # relative path -> sha256 hex of original bytes, None when created
         self.journal_modes = {}            # relative path -> original st_mode (S_IMODE), None when created
@@ -1310,7 +1314,11 @@ class Task:
                 late = bool(self.max_seconds) and rem is not None and rem < 0.25 * self.max_seconds
                 perf = 'warn' if phase == 'baseline' or self.perf_strikes >= 2 or late else 'fail'
                 winfo = {}
-                wcode, wout = web_check.run(self.ws.root, self.web_check_spec, timeout_s=wc_timeout, perf=perf, info=winfo)
+                shot_dst = (self.folder / 'screenshot.jpg') if phase != 'baseline' else None
+                wcode, wout = web_check.run(self.ws.root, self.web_check_spec, timeout_s=wc_timeout, perf=perf,
+                                            info=winfo, screenshot_path=shot_dst)
+                if phase != 'baseline' and winfo.get('screenshot'):
+                    self.screenshot = winfo['screenshot']
                 if phase != 'baseline' and winfo.get('perf_failed'):
                     self.perf_strikes += 1
                 wc_outcome = 'passed' if wcode == 0 else ('not_evaluated' if wcode == 2 else 'failed')
@@ -1805,6 +1813,9 @@ class Task:
                 f'{i + 1}. {c}' for i, c in enumerate(self.constraints))
         if self.context:
             user += f'\n\nContext from the senior engineer:\n{self.context}'
+        if self.reference_image:
+            user += ('\n\nVisual target: a reference image was supplied with the contract. After functional checks pass, '
+                     'Tandem will compare a live 1280x800 screenshot of your page against it.')
         iface = self._interface_summary()
         if iface:
             user += f'\n\n{iface}'
@@ -2043,6 +2054,31 @@ class Task:
                     messages.append({'role': 'user', 'content': self._slow_report(slow)})
                     continue
                 self.slow = [[c['command'], c['seconds']] for c in slow]
+                # Local VLM visual review on captured web screenshot (0 cloud tokens, stateless so main KV cache stays intact).
+                if (self.screenshot and Path(self.screenshot).is_file() and visual_review.enabled()
+                        and not late and self.steps + 3 <= limit and self.repairs < self.max_repairs):
+                    max_vr = visual_review.max_repairs()
+                    vmodel = visual_review.select_vision_model(self.used)
+                    if vmodel and self.visual_strikes < max_vr:
+                        vr_timeout = 90.0 if rem is None else max(10.0, min(90.0, rem))
+                        vr = visual_review.review(
+                            self.screenshot, self.goal, self.constraints,
+                            reference_path=self.reference_image or None, model=vmodel, timeout=vr_timeout,
+                        )
+                        self.tokens += int(vr.get('tokens') or 0)
+                        self.visual_review = vr
+                        self.log.append({
+                            'step': self.steps,
+                            'tool': 'tandem:visual_review',
+                            'args': {'model': vr.get('model') or vmodel, 'has_reference': bool(self.reference_image)},
+                            'result': f'{vr.get("status")}: {vr.get("summary") or vr.get("reason") or ""}'[:300],
+                        })
+                        store.write_json(self.folder / 'log.json', self.log)
+                        if vr.get('status') == 'failed':
+                            self.visual_strikes += 1
+                            self.repairs += 1
+                            messages.append({'role': 'user', 'content': visual_review.format_repair(vr, bool(self.reference_image))})
+                            continue
                 state = 'verified' if checks else 'unverified'
                 break
             # a finish that changed no file since the last one, and failed in the same checks: the third in a row
@@ -2163,6 +2199,8 @@ class Task:
                     evidence_items=self.evidence_items, compact_ids=sorted(self.compact_ids),
                     perf_strikes=self.perf_strikes, shrinks=self.shrinks, same_failures=self.same,
                     slow_warned=self.slow_warned, slow=self.slow,
+                    screenshot=self.screenshot, reference_image=self.reference_image,
+                    visual_strikes=self.visual_strikes, visual_review=self.visual_review,
                     backup_status=backup_status, unbacked_files=unbacked_files,
                     syntax=self.syntax, changes=self.changes(),
                     tried=[f'{e["tool"]} {json.dumps(e["args"])[:90]} -> {e["result"][:90]}' for e in self.log[-4:]],
@@ -2266,13 +2304,13 @@ def _launch(task, body_of, release=None, ws_lease=None):
 
 def start(goal, workspace, verify, max_steps=30, max_repairs=2, model='', context='', baseline=True, max_seconds=0,
           release=None, checks_network=False, unjailed_checks=False, constraints=None, with_thread=False,
-          require_proof=False):
+          require_proof=False, reference_image=''):
     ws_lease = store.acquire_workspace_lease(workspace.root, owner_id='delegate') if workspace.claims is None else None
     try:
         job, folder = store.new_job('delegate')
         task = Task(job, folder, goal, workspace, verify, max_steps, max_repairs, model, context, baseline, max_seconds,
                     checks_network=checks_network, unjailed_checks=unjailed_checks, constraints=constraints,
-                    require_proof=require_proof)
+                    require_proof=require_proof, reference_image=reference_image)
         task._save('running', '', [])
         thread = _launch(task, task.run, release, ws_lease=ws_lease)
         return (job, thread) if with_thread else job
@@ -2301,7 +2339,11 @@ def resume(job, hint, extra_steps=15):
         task = Task(job, folder, data['goal'], ws, data.get('verify', []), data.get('max_steps', 30), data.get('max_repairs', 2),
                     data.get('model', ''), data.get('context', ''), False, data.get('max_seconds', 0),
                     checks_network=data.get('checks_network', False), unjailed_checks=data.get('unjailed_checks', False),
-                    constraints=data.get('constraints'), require_proof=data.get('require_proof', False))
+                    constraints=data.get('constraints'), require_proof=data.get('require_proof', False),
+                    reference_image=data.get('reference_image', ''))
+        task.screenshot = str(data.get('screenshot') or '')
+        task.visual_strikes = int(data.get('visual_strikes') or 0)
+        task.visual_review = data.get('visual_review')
         task.journal = store.read_json(folder / 'journal.json', {}) or {}
         task.journal_bin = store.read_json(folder / 'journal_bin.json', {}) or {}
         task.journal_modes = store.read_json(folder / 'journal_modes.json', {}) or {}
@@ -2726,7 +2768,8 @@ def start_batch(tasks, workspace, allow_run, workers=1, max_steps=30, max_repair
                                            checks_network=spec.get('checks_network', checks_network),
                                            unjailed_checks=spec.get('unjailed_checks', unjailed_checks),
                                            constraints=spec.get('constraints'), with_thread=True,
-                                           require_proof=require_proof)
+                                           require_proof=require_proof,
+                                           reference_image=spec.get('reference_image') or '')
                         running[row['name']] = started
                         row['state'] = state_of[row['name']] = 'running'
                         if ev and ev.is_set():

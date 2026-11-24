@@ -92,10 +92,10 @@ def _resolve_entry(ws_root: Path, spec: dict[str, Any]) -> str | None:
 
 
 def run(ws_root: str | Path, spec: dict[str, Any], timeout_s: float = 45.0, perf: str = "fail",
-        info: dict[str, Any] | None = None) -> tuple[int, str]:
+        info: dict[str, Any] | None = None, screenshot_path: str | Path | None = None) -> tuple[int, str]:
     """Run Chromium probe against the workspace entry point. Returns (exit_code, concise_report).
     perf 'fail': a frame rate under min_fps() fails the check; 'warn': it is only reported. info, when given,
-    receives the frame rate data and perf_failed (the frame rate failed the check)."""
+    receives the frame rate data, perf_failed, and screenshot path when captured."""
     root = Path(ws_root).resolve()
     entry = _resolve_entry(root, spec)
     if not entry:
@@ -115,11 +115,12 @@ def run(ws_root: str | Path, spec: dict[str, Any], timeout_s: float = 45.0, perf
     if not chrome_bin:
         return 2, "not_evaluated: Chromium executable not found for browser verification."
 
+    shot_arg = str(Path(screenshot_path).resolve()) if screenshot_path else ""
     try:
         proc = subprocess.run(
             [node_bin, str(_PROBE_SCRIPT), str(root), entry, chrome_bin, "1" if require_anim else "0",
              "1" if spec.get("dark_theme") else "0", "0" if spec.get("reset_check") is False else "1",
-             str(min_fps()), "0" if perf == "warn" else "1"],
+             str(min_fps()), "0" if perf == "warn" else "1", shot_arg],
             capture_output=True,
             text=True,
             timeout=max(10.0, float(timeout_s)),
@@ -140,6 +141,9 @@ def run(ws_root: str | Path, spec: dict[str, Any], timeout_s: float = 45.0, perf
     if info is not None:
         info["perf"] = perf_data
         info["perf_failed"] = perf_data.get("status") == "failed"
+        shot_out = data.get("screenshot") or ""
+        if shot_out and Path(shot_out).is_file() and Path(shot_out).stat().st_size > 0:
+            info["screenshot"] = shot_out
     fps_note = f", fps={perf_data['fps']}" if perf_data.get("fps") is not None else ""
     if proc.returncode == 0 and status == "passed":
         warned = (f" Frame rate below the target, not enforced any more: {perf_data.get('reason')}."

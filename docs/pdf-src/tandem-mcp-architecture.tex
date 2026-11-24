@@ -3,22 +3,22 @@
 \usepackage[utf8]{inputenc}
 \usepackage{lmodern}
 \usepackage[english]{babel}
-\usepackage[margin=1.8cm]{geometry}
+\usepackage[margin=1.7cm]{geometry}
 \usepackage{graphicx,booktabs,tabularx,enumitem,microtype,xcolor}
 \usepackage[hidelinks]{hyperref}
-\hypersetup{pdftitle={Tandem MCP Architecture 4.1.0},pdfauthor={Alessandro Nocentini (ALENOC)}}
+\hypersetup{pdftitle={Tandem MCP Architecture 4.2.0},pdfauthor={Alessandro Nocentini (ALENOC)}}
 \setlist{nosep,leftmargin=1.2em}
 \setlength{\parindent}{0pt}
-\setlength{\parskip}{4pt}
+\setlength{\parskip}{3.5pt}
 \newcommand{\code}[1]{\texttt{\detokenize{#1}}}
 
-\title{\vspace{-1.5em}Tandem MCP Architecture\\\large Version 4.1.0: cloud orchestrator, local executor}
+\title{\vspace{-1.6em}Tandem MCP Architecture\\\large Version 4.2.0: cloud orchestrator, local executor}
 \author{Alessandro Nocentini (ALENOC)\\\small\url{https://github.com/ALENOC/tandem-mcp}}
 \date{November 2026}
 
 \begin{document}
 \maketitle
-\vspace{-1em}
+\vspace{-1.1em}
 
 \section{Overview}
 Tandem MCP is a Model Context Protocol server that lets the model in your chat hand part of a coding
@@ -28,7 +28,7 @@ llama.cpp, vLLM or any OpenAI-compatible server) reads large files and writes co
 the contract, and Tandem checks every result before it reaches the orchestrator.
 
 \begin{center}
-\includegraphics[width=0.62\textwidth]{diagram-en.pdf}
+\includegraphics[width=0.58\textwidth]{diagram-en.pdf}
 \end{center}
 
 \section{Core modules}
@@ -36,35 +36,41 @@ the contract, and Tandem checks every result before it reaches the orchestrator.
 \toprule
 Module & Responsibility\\
 \midrule
-\code{server.py} & 20 MCP tools (4 in the autonomous profile), strict contract validation, receipts, secret redaction\\
-\code{engine.py} & Server discovery, capability probe, role routing (digest and delegate), retry with backoff\\
+\code{server.py} & 20 MCP tools (4 in the autonomous profile), strict contract validation, receipts, \code{ImageContent} screenshots, secret redaction\\
+\code{engine.py} & Server discovery, capability probe, role routing (digest, delegate, vision), retry with backoff\\
 \code{digest.py} & Chunked map-reduce reading, lexical quote checks, ungrounded numbers, schema merge\\
 \code{agent.py} & Prefix-stable executor loop, lazy write compaction, multi-edit \code{replace_in_file}, journal, batches, rollback\\
 \code{sandbox.py} & Glob matching, command parser, outbound symlink refusal, SHA-256 stamp, Bubblewrap jail\\
 \code{ui_test.py} & \code{tandem:ui_test} scenarios from the contract, run in headless Chromium\\
-\code{web_check.py} & Built-in runtime, animation and 40 FPS frame-rate gate for web deliverables\\
+\code{web_check.py} & Built-in runtime, animation, 40 FPS gate and live 1280x800 screenshot capture for web deliverables\\
+\code{visual_review.py} & Optional \code{reference_image} handling, stateless local VLM visual critique (0 cloud tokens) and receipt image encoding\\
 \code{router.py} & \code{auto_route}: deterministic tools, direct answer or local delegation\\
 \code{host_runner.py} & Host-managed wait for a job, with no cloud polling\\
 \code{store.py} & Persistence under \code{TANDEM_HOME}, cross-process locks, startup reconciliation\\
 \bottomrule
 \end{tabularx}
 
-\section{Delegation and the autonomous profile}
+\section{Delegation, visual review and the autonomous profile}
 \begin{itemize}
 \item \textbf{Contract:} \code{delegate} needs a goal, \code{write_globs}, \code{verify_commands} that fail
-  until the work is done, and atomic constraints, one requirement each. In the autonomous profile the
-  server splits compound constraints instead of refusing the contract.
+  until the work is done, and atomic constraints, one requirement each (plus optional \code{reference_image}
+  for UI work). In the autonomous profile the server splits compound constraints instead of refusing.
 \item \textbf{Baseline and protection:} checks run before any edit; test files are read-only and restored if touched.
 \item \textbf{Local loop and repair:} the conversation only grows at its end so the model server reuses its
   cached prompt; replies allow up to 12,000 tokens (\code{TANDEM_REPLY_TOKENS}). On \code{finish}, Tandem checks
   syntax, runs shell checks in the sandbox (sending slow passing checks over \code{TANDEM_SLOW_CHECK_S} back once),
-  runs \code{tandem:ui_test} and the 40 FPS \code{web_check} in headless Chromium, and verifies cited lines.
-  Trimmed outputs keep failing lines; three identical failures in a row stop early as \code{stuck}.
-\item \textbf{Autonomous profile} (\code{TANDEM_PROFILE=autonomous}): four tools. \code{delegate} blocks while
-  the loop runs locally, with no cloud call, bounded by \code{TANDEM_JOB_SECONDS} (3600),
-  \code{TANDEM_MAX_REPAIRS} (20) and \code{TANDEM_MAX_STEPS} (160). A progress notification every 30 seconds
-  keeps the client from aborting the call. The orchestrator gets one \code{ACCEPTED} line, or only the
-  checks that still fail.
+  runs \code{tandem:ui_test} and the 40 FPS \code{web_check} in headless Chromium (saving a live 1280x800 JPEG
+  screenshot in the job folder), and verifies cited lines. Trimmed outputs keep failing lines; three identical
+  failures in a row stop early as \code{stuck}.
+\item \textbf{Visual review (0 cloud code):} once functional checks and FPS pass, if a local VLM is configured
+  (\code{TANDEM_MODEL_VISION}) or loaded on the server (\code{TANDEM_VISUAL_REVIEW=auto}), \code{visual_review.py}
+  runs a stateless single-shot critique comparing the screenshot against the contract and any \code{reference_image},
+  feeding concrete visual fixes back into the local loop (\code{TANDEM_MAX_VISUAL_REPAIRS=2}) without disturbing the
+  coding KV cache. With \code{TANDEM_RECEIPT_SCREENSHOT=1}, finished web receipts attach the screenshot as MCP
+  \code{ImageContent} so the orchestrator can verify the look and send one short \code{job_continue(hint)} if needed.
+\item \textbf{Autonomous profile} (\code{TANDEM_PROFILE=autonomous}): four tools. \code{delegate} blocks locally
+  with no cloud call, bounded by \code{TANDEM_JOB_SECONDS} (3600), \code{TANDEM_MAX_REPAIRS} (20) and
+  \code{TANDEM_MAX_STEPS} (160). Progress notifications every 30 s keep the client from aborting.
 \end{itemize}
 
 \section{Security model and rollback}
@@ -82,8 +88,8 @@ Module & Responsibility\\
 \end{itemize}
 
 \section{Measured savings}
-With Opus 5.5 as the orchestrator and the autonomous profile (4.1.0 series, four medium and large tasks, four
-counterbalanced pairs each), Tandem cut total cloud spend by 57\% and cloud cost per successful result by 61\%
+With Opus 5.5 as the orchestrator and the autonomous profile (4.1.0 benchmark series, four medium and large tasks,
+four counterbalanced pairs each), Tandem cut total cloud spend by 57\% and cloud cost per successful result by 61\%
 (\$0.217 vs \$0.556), with 67\% fewer output tokens (excluding two final-run infrastructure incidents: 10/15
 successes each, -61\% total and per success, -72\% output tokens). Median task time dropped from 25 min to
 19 min (40--45\% faster per local call), and the 40 FPS gate lifted 3D portal frame rates from 4--20 FPS to

@@ -50,3 +50,5 @@ jobs:
           python tests/test_router_success.py
       - name: Autonomous profile, blocking delegate and receipts (no model)
         run: python tests/test_autonomous.py
+      - name: Visual reference, screenshot capture, local VLM review and ImageContent receipts (no model)
+        run: python tests/test_visual_review.py

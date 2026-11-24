@@ -149,7 +149,7 @@ const COSTLY = {
   filter: `Object.defineProperty(CanvasRenderingContext2D.prototype, 'filter', { configurable: true, get() { return 'none'; }, set(v) {} });`,
 };
 
-async function runProbe(wsDir, entryRel, chromePath, requireAnim, darkTheme, resetWanted = true, minFps = 0, perfFail = true) {
+async function runProbe(wsDir, entryRel, chromePath, requireAnim, darkTheme, resetWanted = true, minFps = 0, perfFail = true, screenshotPath = '') {
   if (!chromePath || !fs.existsSync(chromePath)) {
     return { status: 'not_evaluated', reason: `Chromium binary not found (${chromePath || 'unset'})` };
   }
@@ -286,6 +286,19 @@ async function runProbe(wsDir, entryRel, chromePath, requireAnim, darkTheme, res
       perf = await measurePerf(call, minFps);
     }
 
+    // Capture the live initial view at 1280x800 before controls are clicked, for local/cloud visual review.
+    let savedScreenshot = '';
+    if (screenshotPath) {
+      try {
+        const shot = await call('Page.captureScreenshot', { format: 'jpeg', quality: 82 });
+        if (shot && shot.data) {
+          fs.mkdirSync(path.dirname(screenshotPath), { recursive: true });
+          fs.writeFileSync(screenshotPath, Buffer.from(shot.data, 'base64'));
+          savedScreenshot = screenshotPath;
+        }
+      } catch (_) {}
+    }
+
     // Generic control check: Reset must bring back the initial running state, even after Pause.
     // Only judged when the page animated on its own at load and Pause really stopped the canvas.
     let resetCheck = { status: 'skipped' };
@@ -403,6 +416,7 @@ async function runProbe(wsDir, entryRel, chromePath, requireAnim, darkTheme, res
       resetCheck,
       exposure,
       perf,
+      screenshot: savedScreenshot || null,
       canvasObserved: hasCanvas ? { w: s1.w, h: s1.h, cw: s1.cw, ch: s1.ch, nonZeroPixels: s1.nonZero, hashes: [s1.hash, s2.hash, s3.hash] } : null,
       runtimeErrors,
       consoleErrors,
@@ -416,13 +430,13 @@ async function runProbe(wsDir, entryRel, chromePath, requireAnim, darkTheme, res
   }
 }
 
-const [, , wsDir, entryRel, chromePath, reqAnim, darkArg, resetArg, minFpsArg, perfArg] = process.argv;
+const [, , wsDir, entryRel, chromePath, reqAnim, darkArg, resetArg, minFpsArg, perfArg, screenshotArg] = process.argv;
 if (!wsDir || !entryRel) {
-  console.error('Usage: _web_probe.mjs <wsDir> <entryRel> <chromePath> <requireAnim:0|1> [dark:0|1] [reset:0|1] [minFps] [perfFail:0|1]');
+  console.error('Usage: _web_probe.mjs <wsDir> <entryRel> <chromePath> <requireAnim:0|1> [dark:0|1] [reset:0|1] [minFps] [perfFail:0|1] [screenshotPath]');
   process.exit(2);
 }
 const out = await runProbe(path.resolve(wsDir), entryRel, chromePath || '', reqAnim === '1', darkArg === '1', resetArg !== '0',
-  Number(minFpsArg) > 0 ? Number(minFpsArg) : 0, perfArg !== '0');
+  Number(minFpsArg) > 0 ? Number(minFpsArg) : 0, perfArg !== '0', screenshotArg || '');
 console.log(JSON.stringify(out));
 if (out.status === 'passed') process.exit(0);
 if (out.status === 'not_evaluated') process.exit(2);

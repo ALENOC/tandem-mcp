@@ -3,22 +3,22 @@
 \usepackage[utf8]{inputenc}
 \usepackage{lmodern}
 \usepackage[italian]{babel}
-\usepackage[margin=1.8cm]{geometry}
+\usepackage[margin=1.55cm]{geometry}
 \usepackage{graphicx,booktabs,tabularx,enumitem,microtype,xcolor}
 \usepackage[hidelinks]{hyperref}
-\hypersetup{pdftitle={Architettura di Tandem MCP 4.1.0},pdfauthor={Alessandro Nocentini (ALENOC)},pdflang={it}}
+\hypersetup{pdftitle={Architettura di Tandem MCP 4.2.0},pdfauthor={Alessandro Nocentini (ALENOC)},pdflang={it}}
 \setlist{nosep,leftmargin=1.2em}
 \setlength{\parindent}{0pt}
-\setlength{\parskip}{4pt}
+\setlength{\parskip}{2.8pt}
 \newcommand{\code}[1]{\texttt{\detokenize{#1}}}
 
-\title{\vspace{-1.5em}Architettura di Tandem MCP\\\large Versione 4.1.0: orchestratore cloud, esecutore locale}
+\title{\vspace{-1.8em}Architettura di Tandem MCP\\\large Versione 4.2.0: orchestratore cloud, esecutore locale}
 \author{Alessandro Nocentini (ALENOC)\\\small\url{https://github.com/ALENOC/tandem-mcp}}
 \date{Novembre 2026}
 
 \begin{document}
 \maketitle
-\vspace{-1em}
+\vspace{-1.2em}
 
 \section{Panoramica}
 Tandem MCP è un server Model Context Protocol che permette al modello della chat di affidare parte di un
@@ -28,7 +28,7 @@ locale (LM Studio, Ollama, llama.cpp, vLLM o un server compatibile OpenAI) legge
 codice entro i limiti del contratto, e Tandem controlla ogni risultato prima che arrivi all'orchestratore.
 
 \begin{center}
-\includegraphics[width=0.62\textwidth]{diagram-it.pdf}
+\includegraphics[width=0.52\textwidth]{diagram-it.pdf}
 \end{center}
 
 \section{Moduli principali}
@@ -36,36 +36,42 @@ codice entro i limiti del contratto, e Tandem controlla ogni risultato prima che
 \toprule
 Modulo & Compito\\
 \midrule
-\code{server.py} & 20 tool MCP (4 nel profilo autonomo), validazione rigorosa del contratto, ricevute, oscuramento dei segreti\\
-\code{engine.py} & Ricerca del server, verifica delle capacità, scelta del modello per ruolo, nuovi tentativi con attesa crescente\\
+\code{server.py} & 20 tool MCP (4 nel profilo autonomo), validazione rigorosa del contratto, ricevute, screenshot \code{ImageContent}, oscuramento segreti\\
+\code{engine.py} & Ricerca del server, verifica delle capacità, scelta del modello per ruolo (digest, delegate, vision), retry con backoff\\
 \code{digest.py} & Lettura a blocchi map-reduce, verifica lessicale delle citazioni, numeri non supportati, unione per schema\\
 \code{agent.py} & Ciclo esecutore a prefisso stabile, compattazione lazy, \code{replace_in_file} multiplo, registro, lotti, rollback\\
 \code{sandbox.py} & Glob, parser dei comandi, rifiuto dei symlink esterni, impronta SHA-256, jail Bubblewrap\\
 \code{ui_test.py} & Scenari \code{tandem:ui_test} del contratto, eseguiti in Chromium headless\\
-\code{web_check.py} & Controllo integrato di esecuzione, animazione e soglia 40 FPS per pagine web\\
+\code{web_check.py} & Controllo integrato di esecuzione, animazione, soglia 40 FPS e cattura screenshot 1280x800 per pagine web\\
+\code{visual_review.py} & Gestione \code{reference_image}, critica visiva stateless con VLM locale (0 token cloud) e codifica screenshot per MCP\\
 \code{router.py} & \code{auto_route}: strumenti deterministici, risposta diretta o delega locale\\
 \code{host_runner.py} & Attesa del lavoro gestita da un processo locale, senza interrogare il cloud\\
 \code{store.py} & Persistenza in \code{TANDEM_HOME}, lock tra processi, riconciliazione all'avvio\\
 \bottomrule
 \end{tabularx}
 
-\section{Delega e profilo autonomo}
+\section{Delega, revisione visiva e profilo autonomo}
 \begin{itemize}
 \item \textbf{Contratto:} \code{delegate} richiede un obiettivo, \code{write_globs}, \code{verify_commands} che
-  falliscono finché il lavoro non è fatto e vincoli atomici, un requisito ciascuno. Nel profilo autonomo il
-  server divide i vincoli composti invece di rifiutare il contratto.
+  falliscono finché il lavoro non è fatto e vincoli atomici, un requisito ciascuno (più un eventuale
+  \code{reference_image} per lavori UI). Nel profilo autonomo il server divide i vincoli composti invece di rifiutare.
 \item \textbf{Controllo iniziale e protezione:} i controlli girano prima di ogni modifica; i file di test sono in sola
   lettura e vengono ripristinati se toccati.
 \item \textbf{Ciclo locale e riparazione:} la conversazione cresce solo in coda così il server locale riusa la
   cache del prompt; ogni risposta arriva a 12.000 token (\code{TANDEM_REPLY_TOKENS}). A \code{finish} Tandem
   controlla sintassi, controlli da shell nella sandbox (rimandando una volta quelli lenti oltre
-  \code{TANDEM_SLOW_CHECK_S}), \code{tandem:ui_test}, soglia 40 FPS in Chromium headless e righe citate.
-  L'output tagliato conserva le righe fallite; tre fallimenti identici di fila fermano il lavoro come \code{stuck}.
+  \code{TANDEM_SLOW_CHECK_S}), \code{tandem:ui_test}, soglia 40 FPS in Chromium headless (salvando uno screenshot
+  JPEG 1280x800 nella cartella del lavoro) e righe citate. L'output tagliato conserva le righe fallite; tre
+  fallimenti identici di fila fermano il lavoro come \code{stuck}.
+\item \textbf{Revisione visiva (0 codice cloud):} superati i controlli funzionali e gli FPS, se è disponibile un VLM
+  locale (\code{TANDEM_MODEL_VISION} o un VLM già caricato con \code{TANDEM_VISUAL_REVIEW=auto}), \code{visual_review.py}
+  esegue una critica stateless confrontando lo screenshot con contratto ed eventuale \code{reference_image}, rimandando
+  correzioni concrete nel ciclo locale (\code{TANDEM_MAX_VISUAL_REPAIRS=2}) senza alterare la cache KV del coding. Con
+  \code{TANDEM_RECEIPT_SCREENSHOT=1} le ricevute web allegano lo screenshot come \code{ImageContent} MCP: l'orchestratore
+  può verificare la resa e mandare un breve \code{job_continue(hint)} senza scrivere codice.
 \item \textbf{Profilo autonomo} (\code{TANDEM_PROFILE=autonomous}): quattro tool. \code{delegate} resta in
-  attesa mentre il ciclo gira in locale, senza chiamate cloud, entro \code{TANDEM_JOB_SECONDS} (3600),
-  \code{TANDEM_MAX_REPAIRS} (20) e \code{TANDEM_MAX_STEPS} (160). Una notifica di avanzamento ogni 30 secondi
-  evita che il client interrompa la chiamata. L'orchestratore riceve una riga \code{ACCEPTED}, oppure solo i
-  controlli che falliscono ancora.
+  attesa in locale senza chiamate cloud, entro \code{TANDEM_JOB_SECONDS} (3600), \code{TANDEM_MAX_REPAIRS} (20)
+  e \code{TANDEM_MAX_STEPS} (160). Notifiche di avanzamento ogni 30 s evitano timeout del client.
 \end{itemize}
 
 \section{Sicurezza e rollback}
@@ -83,7 +89,7 @@ Modulo & Compito\\
 \end{itemize}
 
 \section{Risparmio misurato}
-Con Opus 5.5 come orchestratore e il profilo autonomo (serie 4.1.0, quattro compiti medi e grandi, quattro
+Con Opus 5.5 come orchestratore e il profilo autonomo (serie benchmark 4.1.0, quattro compiti medi e grandi, quattro
 coppie bilanciate ciascuno), Tandem ha ridotto la spesa cloud totale del 57\% e il costo per successo del 61\%
 (\$0,217 contro \$0,556), con il 67\% di token di output in meno (esclusi due incidenti infrastrutturali nel
 run finale: 10/15 successi per braccio, -61\% totale e per successo, -72\% token di output). Il tempo mediano

@@ -32,8 +32,9 @@ import time
 
 import anyio
 from mcp.server.mcpserver import Context, MCPServer
+from mcp.types import ImageContent, TextContent
 
-from . import __version__, agent, digest, engine, router, sandbox, store, ui_test
+from . import __version__, agent, digest, engine, router, sandbox, store, ui_test, visual_review
 
 GUIDE = '''Hybrid orchestration (cloud model = architect & reviewer, local model = reader & bounded executor, free to use):
 - Reading & extraction: use digest_file (with grep when possible), digest_command, digest_many, and extract_from_file
@@ -116,16 +117,15 @@ _AUTO_RULE_FIRST_TURN = (
 
 
 AUTONOMOUS_GUIDE = '''Tandem (autonomous): a free local model writes and checks code for you. Your output tokens are the cost to save.
-- New code, or a change of over 30 lines: call delegate ONCE, before reading or writing any source.
-  Give goal, write_globs, atomic constraints with exact names, values and colors, and verify_commands that fail
-  until done: an inline test or script, or for a web page a tandem:ui_test. Require a window.app object with named
-  fields; assert effects with js steps. Test only what was asked, under 20 steps, no time-window asserts.
-- The local model does only what the contract says: write it in the user's language, keep the request's labels
-  verbatim, and for UI state the palette, layout and finish you would give it yourself.
-- delegate blocks until all checks pass (max 1 hour); waiting costs you nothing.
-- ACCEPTED is final: answer the user in one or two sentences. Do not read files, rerun checks or open diffs.
-- FAILED lists what still fails: job_continue(hint) once. If the check itself is wrong, tell the user.
-  Never edit files blind. Smaller edits: do them yourself.'''
+- New code or edits over 30 lines: call delegate ONCE before reading or writing sources. Give goal, write_globs,
+  atomic constraints (exact names, values, colors), and verify_commands that fail until done: a test/script, or for
+  a web page tandem:ui_test (window.app with named fields, js steps, under 20 steps, no time-window asserts).
+- The local model does only what the contract says: write it in the user's language, keep labels verbatim, and for
+  UI state exact palette, layout, edges and finish (or pass reference_image).
+- delegate blocks until checks pass (max 1 hour); waiting costs you nothing.
+- ACCEPTED is final: answer in 1-2 sentences without reading files or diffs. If an ACCEPTED web receipt attaches a
+  screenshot with clear visual defects, call job_continue(hint) once; never edit files yourself.
+- FAILED: job_continue(hint) once, or report a bad check. Never edit blind. Under 30 lines: do it yourself.'''
 
 
 def _instructions():
@@ -168,6 +168,21 @@ def _saved(tool, bytes_in, text, **more):
     return sandbox.redact_secrets(text)
 
 
+def _with_screenshot(job_id: str, receipt: str) -> str | list[TextContent | ImageContent]:
+    """Attach the captured web screenshot as MCP ImageContent when enabled and available."""
+    if not visual_review.receipt_screenshot_enabled():
+        return receipt
+    data = store.read_job(job_id) or {}
+    shot = str(data.get('screenshot') or '')
+    if not shot or data.get('state') == 'running' or not Path(shot).is_file():
+        return receipt
+    try:
+        b64, mime = visual_review.image_b64(shot)
+    except OSError:
+        return receipt
+    return [TextContent(type='text', text=receipt), ImageContent(type='image', data=b64, mimeType=mime)]
+
+
 def _caps_line(found):
     return (f'tool calls: {"native" if found["tools"] else "JSON replies (no native tool calling)"}, '
             f'JSON schema: {"forced by the server" if found["schema"] else "by prompt and repair"}, '
@@ -192,12 +207,14 @@ def executor_status() -> str:
         routing.append(f'digest={os.environ["TANDEM_MODEL_DIGEST"].strip()}')
     if os.environ.get('TANDEM_MODEL_DELEGATE', '').strip():
         routing.append(f'delegate={os.environ["TANDEM_MODEL_DELEGATE"].strip()}')
+    if os.environ.get('TANDEM_MODEL_VISION', '').strip():
+        routing.append(f'vision={os.environ["TANDEM_MODEL_VISION"].strip()}')
     if routing:
         lines.append('  role routing: ' + ', '.join(routing))
     known = store.model_caps(f'{server["url"]}|{active}')
     lines.append('  ' + (_caps_line(known) if known and known.get('probed') else 'not probed yet: executor_probe measures what it can do'))
     state = {True: 'loaded', False: 'not loaded', None: ''}
-    lines += [f'- {m["id"]}  {state[m["loaded"]]}  {m["type"]}  context {m["context"] or "unknown"}' for m in rows]
+    lines += [f'- {m["id"]}  {state[m["loaded"]]}  {m["type"]}{" (vision)" if m.get("vision") else ""}  context {m["context"] or "unknown"}' for m in rows]
     others = [f'{name} ({url})' for name, url in engine.servers() if url != server['url']]
     if others:
         lines.append('other servers that answer (TANDEM_BASE_URL selects one): ' + ', '.join(others))
@@ -652,7 +669,8 @@ def delegate(goal: str, workspace: str, verify_commands: list[str] = [], write_g
              allow_run: list[str] = [], immutable: list[str] = [], context: str = '', max_steps: int = 30,
              max_repairs: int = 2, wait_seconds: int = 240, model: str = '', baseline: bool = True,
              max_seconds: int = 0, checks_network: bool = False, unjailed_checks: bool = False,
-             constraints: list[str] = [], read_globs: list[str] = []) -> str:
+             constraints: list[str] = [], read_globs: list[str] = [],
+             reference_image: str = '') -> str | list[TextContent | ImageContent]:
     """Give the local executor a bounded task in a project and get a receipt.
 
     A web page needs a behavioural acceptance check: tandem:ui_test {"steps": [...]} runs a JSON
@@ -708,9 +726,10 @@ def delegate(goal: str, workspace: str, verify_commands: list[str] = [], write_g
         job = agent.start(goal, ws, list(verify_commands), max(3, min(max_steps, 80)), max(0, min(max_repairs, 5)), model,
                           context, baseline or strict(), max(0, int(max_seconds)),
                           checks_network=checks_network, unjailed_checks=unjailed_checks,
-                          constraints=clean_constraints, require_proof=strict())
+                          constraints=clean_constraints, require_proof=strict(), reference_image=reference_image)
         _wait(job, 0 if host_managed() else wait_seconds)
-        return _host_managed_notice(job, _saved('delegate', 0, _receipt(job)))
+        out = _host_managed_notice(job, _saved('delegate', 0, _receipt(job)))
+        return _with_screenshot(job, out)
     except Exception as exc:
         return _fail(exc)
 
@@ -727,6 +746,7 @@ class BatchTaskSpec(TypedDict, total=False):
     checks_network: bool
     unjailed_checks: bool
     constraints: list[str]
+    reference_image: str
 
 
 @mcp.tool()
@@ -765,6 +785,7 @@ def delegate_many(tasks: list[BatchTaskSpec], workspace: str, allow_run: list[st
                           'constraints': t_constraints,
                           'checks_network': bool(t.get('checks_network', checks_network)),
                           'unjailed_checks': bool(t.get('unjailed_checks', unjailed_checks)),
+                          'reference_image': str(t.get('reference_image') or ''),
                           'after': [str(a) for a in (t.get('after') or [])], 'context': str(t.get('context') or '')})
         if not specs or len(specs) > 16:
             return _fail('a batch holds 1 to 16 tasks')
@@ -1283,6 +1304,15 @@ def _auto_receipt(job):
         note = f' Note: {slow.split("not enforced any more:", 1)[1].strip()[:160]}' if slow else ''
         for command, seconds in (data.get('slow') or [])[:2]:
             note += f' Note: `{str(command)[:80]}` passes but takes {float(seconds):.0f} s.'
+        vr = data.get('visual_review') or {}
+        if vr.get('status') == 'passed':
+            note += ' Visual review: passed locally.'
+        elif vr.get('status') == 'failed':
+            detail = (vr.get('summary') or '; '.join(vr.get('issues') or []))[:160]
+            if detail:
+                note += f' Visual review note: {detail}'
+        if data.get('screenshot') and Path(str(data['screenshot'])).is_file() and visual_review.receipt_screenshot_enabled():
+            note += ' Screenshot attached.'
         return sandbox.redact_secrets(
             f'job {job}: ACCEPTED. {len(checks)} checks and {len(data.get("constraints") or [])} constraints verified '
             f'locally ({data.get("repairs", 0)} local repairs). Changed: {files}. Nothing else to do.{note}')
@@ -1322,18 +1352,20 @@ def _auto_receipt(job):
 
 
 def auto_delegate(goal: str, workspace: str, write_globs: list[str], verify_commands: list[str],
-                  constraints: list[str] = [], allow_run: list[str] = [], context: str = '') -> str:
+                  constraints: list[str] = [], allow_run: list[str] = [], context: str = '',
+                  reference_image: str = '') -> str:
     try:
         ws = sandbox.Workspace(workspace, write_globs, allow_run, [])
         clean = _validate_contract(goal, constraints, verify_commands, write_globs)
         steps, repairs, seconds = _auto_limits()
         job = agent.start(goal, ws, list(verify_commands), steps, repairs, '', context, True, seconds,
-                          constraints=clean, require_proof=strict())
+                          constraints=clean, require_proof=strict(), reference_image=reference_image)
         _block(job, seconds)
         out = _saved('delegate', 0, _auto_receipt(job))
         return _log_mcp_boundary('delegate', {'goal': goal, 'workspace': workspace, 'write_globs': write_globs,
                                               'verify_commands': verify_commands, 'constraints': constraints,
-                                              'allow_run': allow_run, 'context': context}, out)
+                                              'allow_run': allow_run, 'context': context,
+                                              'reference_image': reference_image}, out)
     except Exception as exc:
         return _fail(exc)
 
@@ -1376,38 +1408,42 @@ async def _await_job(job, seconds, ctx):
 
 async def auto_delegate_tool(goal: str, workspace: str, write_globs: list[str], verify_commands: list[str],
                              constraints: list[str] = [], allow_run: list[str] = [], context: str = '',
-                             ctx: Context | None = None) -> str:
+                             reference_image: str = '',
+                             ctx: Context | None = None) -> str | list[TextContent | ImageContent]:
     try:
         ws = sandbox.Workspace(workspace, write_globs, allow_run, [])
         clean = _validate_contract(goal, constraints, verify_commands, write_globs)
         steps, repairs, seconds = _auto_limits()
         job = await anyio.to_thread.run_sync(lambda: agent.start(
             goal, ws, list(verify_commands), steps, repairs, '', context, True, seconds,
-            constraints=clean, require_proof=strict()))
+            constraints=clean, require_proof=strict(), reference_image=reference_image))
         await _await_job(job, seconds, ctx)
         out = _saved('delegate', 0, _auto_receipt(job))
-        return _log_mcp_boundary('delegate', {'goal': goal, 'workspace': workspace, 'write_globs': write_globs,
-                                              'verify_commands': verify_commands, 'constraints': constraints,
-                                              'allow_run': allow_run, 'context': context}, out)
+        logged = _log_mcp_boundary('delegate', {'goal': goal, 'workspace': workspace, 'write_globs': write_globs,
+                                                'verify_commands': verify_commands, 'constraints': constraints,
+                                                'allow_run': allow_run, 'context': context,
+                                                'reference_image': reference_image}, out)
+        return _with_screenshot(job, logged)
     except Exception as exc:
         return _fail(exc)
 
 
-async def auto_job_continue_tool(job_id: str, hint: str, ctx: Context | None = None) -> str:
+async def auto_job_continue_tool(job_id: str, hint: str,
+                                 ctx: Context | None = None) -> str | list[TextContent | ImageContent]:
     try:
         if not hint.strip():
             return _fail('give a hint: what the local model missed or should do next')
         steps, _, seconds = _auto_limits()
         await anyio.to_thread.run_sync(lambda: agent.resume(job_id, hint, max(10, steps // 2)))
         await _await_job(job_id, seconds, ctx)
-        return _auto_receipt(job_id)
+        return _with_screenshot(job_id, _auto_receipt(job_id))
     except Exception as exc:
         return _fail(exc)
 
 
-async def auto_job_status_tool(job_id: str, ctx: Context | None = None) -> str:
+async def auto_job_status_tool(job_id: str, ctx: Context | None = None) -> str | list[TextContent | ImageContent]:
     await _await_job(job_id, _auto_limits()[2], ctx)
-    return _auto_receipt(job_id)
+    return _with_screenshot(job_id, _auto_receipt(job_id))
 
 
 _AUTO_TOOLS = {
@@ -1416,7 +1452,9 @@ _AUTO_TOOLS = {
                                 'for a web page tandem:ui_test {"steps":[...]} run in Chromium: click (selector or '
                                 '"text:<regex>"), input+value, key, wait, expect moving|static (+region [x0,y0,x1,y1]), '
                                 'snapshot (name), differs (name, min share), exists, text+match, js, color+min|max. '
-                                'constraints: one requirement each. allow_run: regexes of commands it may run.'),
+                                'constraints: one requirement each. allow_run: regexes of commands it may run. '
+                                'reference_image: optional path to a target visual mockup image (PNG/JPEG/WebP/GIF) '
+                                'compared against the rendered 1280x800 screenshot.'),
     'job_continue': (auto_job_continue_tool, 'Send a FAILED job on locally with a one-line hint; blocks until done.'),
     'job_status': (auto_job_status_tool, 'Wait for a job that was still running and return its verdict.'),
     'job_rollback': (None, 'Undo every change of a job.'),

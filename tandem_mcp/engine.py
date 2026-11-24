@@ -155,20 +155,26 @@ def models(refresh=False):
     try:
         if s['kind'] == 'lmstudio':
             rows = [{'id': m['id'], 'loaded': m.get('state') == 'loaded', 'type': m.get('type') or 'llm',
+                     'vision': bool(m.get('type') == 'vlm' or m.get('vision') or 'vision' in (m.get('capabilities') or [])),
                      'context': m.get('loaded_context_length') or m.get('max_context_length')}
                     for m in _get(root + '/api/v0/models')['data']]
         elif s['kind'] == 'ollama':
             running = {m.get('name'): m.get('context_length') for m in _get(root + '/api/ps').get('models', [])}
-            rows = [{'id': m['name'], 'loaded': m['name'] in running, 'type': 'llm', 'context': running.get(m['name'])}
+            rows = [{'id': m['name'], 'loaded': m['name'] in running, 'type': 'llm',
+                     'vision': bool(m.get('vision') or 'vision' in (m.get('capabilities') or [])),
+                     'context': running.get(m['name'])}
                     for m in _get(root + '/api/tags').get('models', [])]
         elif s['kind'] == 'llamacpp':
             ctx = (_get(root + '/props').get('default_generation_settings') or {}).get('n_ctx')
-            rows = [{'id': m['id'], 'loaded': True, 'type': 'llm', 'context': ctx} for m in _get(s['url'] + '/models')['data']]
+            rows = [{'id': m['id'], 'loaded': True, 'type': 'llm', 'vision': bool(m.get('vision')), 'context': ctx}
+                    for m in _get(s['url'] + '/models')['data']]
     except Exception:
         rows = None
     if rows is None:
         try:
-            rows = [{'id': m['id'], 'loaded': None, 'type': 'llm', 'context': m.get('max_model_len') or m.get('context_length')}
+            rows = [{'id': m['id'], 'loaded': None, 'type': m.get('type') or 'llm',
+                     'vision': bool(m.get('type') == 'vlm' or m.get('vision') or 'vision' in (m.get('capabilities') or [])),
+                     'context': m.get('max_model_len') or m.get('context_length')}
                     for m in _get(s['url'] + '/models')['data']]
         except Exception as exc:
             raise ExecutorError(f'the model server at {s["url"]} does not answer: {exc}') from exc
@@ -239,7 +245,20 @@ def strip_think(text):
 
 
 def _estimate(messages):
-    return sum(len(str(m.get('content') or '')) for m in messages) // 4
+    chars = 0
+    for m in messages:
+        content = m.get('content')
+        if isinstance(content, list):
+            for part in content:
+                if isinstance(part, dict) and part.get('type') == 'image_url':
+                    chars += 5600    # ~1,400 vision tokens per image, not raw base64 length
+                elif isinstance(part, dict) and 'text' in part:
+                    chars += len(str(part.get('text') or ''))
+                else:
+                    chars += len(str(part))
+        else:
+            chars += len(str(content or ''))
+    return chars // 4
 
 
 def _create(model, messages, max_tokens, temperature, tools=None, schema=None, timeout=None):
@@ -482,7 +501,15 @@ def chat_json(messages, schema, tool='chat', model='', **kwargs):
             if rem <= 0:
                 raise ExecutorError('the executor timed out before completing JSON response')
             kwargs['timeout'] = max(0.5, rem)
-        sent = turns if native else turns[:-1] + [{**turns[-1], 'content': str(turns[-1]['content']) + guide}]
+        if native:
+            sent = turns
+        else:
+            last = turns[-1]
+            c = last.get('content')
+            if isinstance(c, list):
+                sent = turns[:-1] + [{**last, 'content': list(c) + [{'type': 'text', 'text': guide}]}]
+            else:
+                sent = turns[:-1] + [{**last, 'content': str(c or '') + guide}]
         try:
             reply, used = chat(sent, tool=tool, model=model, schema=schema if native else None, **kwargs)
         except ExecutorError as exc:

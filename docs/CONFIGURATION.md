@@ -10,6 +10,7 @@ All settings are controlled via environment variables read by the `tandem-mcp` s
 | `TANDEM_MODEL` | Default model ID | loaded chat model |
 | `TANDEM_MODEL_DIGEST` | Model ID for reading/text tools (`digest_*`, `extract_from_file`, `ask`) | `TANDEM_MODEL` |
 | `TANDEM_MODEL_DELEGATE` | Model ID for coding delegation (`delegate`, `delegate_many`, `job_continue`) | `TANDEM_MODEL` |
+| `TANDEM_MODEL_VISION` | Optional local VLM model ID used for stateless screenshot visual review (works even when the coding model is text-only) | auto (loaded VLM if any) |
 | `TANDEM_CONTEXT` | Context length fallback when server omits it | `8192` (Ollama: `4096`) |
 | `TANDEM_API_KEY` | API key sent only to the selected/configured server | `local` |
 | `TANDEM_TIMEOUT` | Per-completion timeout (seconds) | `900` |
@@ -54,6 +55,9 @@ All settings are controlled via environment variables read by the `tandem-mcp` s
 | `TANDEM_COMPACT_RECEIPT` | `1`: host-managed receipts lead with `VERDICT:` and keep only the evidence needed for review | `1` |
 | `TANDEM_WEB_CHECK` | `1`: run the built-in Chromium runtime and animation check on web deliverables | `1` |
 | `TANDEM_WEB_MIN_FPS` | Frames per second an animated page must reach in the web check (headless Chromium, 1280x800). A slower page goes back to the executor with the measured cause, at most twice and not in the last quarter of the job time; after that the frame rate is only reported in the receipt. `0` turns the check off | `40` |
+| `TANDEM_VISUAL_REVIEW` | Local VLM visual review on captured 1280x800 web screenshots (`auto`: runs when `TANDEM_MODEL_VISION` is set or a VLM is loaded; `on`: force; `off`: disable) | `auto` |
+| `TANDEM_MAX_VISUAL_REPAIRS` | Most local visual-review repair rounds per job (never in the last quarter of the job time) | `2` |
+| `TANDEM_RECEIPT_SCREENSHOT` | `1`: attach the captured 1280x800 web screenshot as MCP `ImageContent` on finished job receipts so the cloud orchestrator can inspect it and send one `job_continue(hint)` if needed | `1` |
 | `TANDEM_CHROME` | Path to the Chromium or Chrome binary used by the web check | auto-detected |
 | `TANDEM_MIN_LOCAL_SUCCESS` | Least estimated local success rate of a task family for `auto_route` to delegate a write (used after 3 finished jobs) | `0.6` |
 
