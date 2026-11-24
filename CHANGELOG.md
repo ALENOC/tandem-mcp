@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 4.1.0
 
 ### Local loop: faster, and the same prompt prefix at every step
 - The conversation sent to the local model now only grows at its end. The state of the work rode inside the task message and changed at every step, so the model server could not reuse its cached prompt and read the whole conversation again each time. Measured on LM Studio with Qwen 3.8 27B IQ3_S and a 23,700-token conversation: 156 s cold, 148 s with the task message edited as before, 1.1 s with the prefix unchanged. On the v3 and v4 benchmark runs this re-reading took about half of the 50,000 s of local model time. The state of the work is now added to the end of each request and never stored.
