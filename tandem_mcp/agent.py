@@ -2060,7 +2060,7 @@ class Task:
                     max_vr = visual_review.max_repairs()
                     vmodel = visual_review.select_vision_model(self.used)
                     if vmodel and self.visual_strikes < max_vr:
-                        vr_timeout = 90.0 if rem is None else max(10.0, min(90.0, rem))
+                        vr_timeout = 240.0 if rem is None else max(10.0, min(240.0, rem))
                         vr = visual_review.review(
                             self.screenshot, self.goal, self.constraints,
                             reference_path=self.reference_image or None, model=vmodel, timeout=vr_timeout,
