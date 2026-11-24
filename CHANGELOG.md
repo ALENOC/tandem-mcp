@@ -1,5 +1,18 @@
 # Changelog
 
+## 4.2.0
+
+### Visual review without cloud code generation
+- **Live 1280x800 screenshot capture:** `tandem:web_check` (`tandem_mcp/_web_probe.mjs`, `tandem_mcp/web_check.py`) captures a JPEG screenshot of the live animated page inside the job folder (`TANDEM_HOME/jobs/<job_id>/screenshot.jpg`), before Pause/Reset controls are clicked and without touching the user's workspace.
+- **Optional visual reference (`reference_image`):** `delegate`, `delegate_many` (`BatchTaskSpec`), and the autonomous `delegate` tool accept an optional `reference_image` path (`PNG`, `JPEG`, `WebP`, `GIF`, up to 8 MiB). Tandem validates and copies it into the job folder so it persists across `job_continue`.
+- **Stateless local VLM visual review (`tandem_mcp/visual_review.py`):** once functional checks, syntax, evidence, and the 40 FPS gate pass, Tandem checks for a local vision-capable model (`TANDEM_MODEL_VISION` or a loaded VLM reported by the server under `TANDEM_VISUAL_REVIEW=auto`). When available, it runs a single-shot stateless critique comparing the live screenshot against the contract (and optional `reference_image`) and sends concrete visual fixes back into the local repair loop (`TANDEM_MAX_VISUAL_REPAIRS=2`, never in the last quarter of the job time). The coding conversation stays text-only, preserving LM Studio's KV prefix cache at zero cloud token cost; text-only servers skip it cleanly with zero extra calls, and servers that reject image inputs degrade gracefully (`vision=False` remembered).
+- **MCP `ImageContent` screenshot attachment:** when `TANDEM_RECEIPT_SCREENSHOT=1` (default), finished web job receipts attach the 1280x800 screenshot as MCP `ImageContent` (`image/jpeg`) so the cloud orchestrator can inspect the final look and send one short `job_continue(hint)` without writing code itself. `AUTONOMOUS_GUIDE` updated to cover `reference_image` and visual receipt review while staying under 1,100 characters.
+- **`executor_status`:** reports `vision=` role routing (`TANDEM_MODEL_VISION`) and marks vision-capable models discovered on the local server.
+
+### Tests & Documentation
+- New `tests/test_visual_review.py` (49 checks) added to CI (`.github/workflows/tests.yml`): `reference_image` validation and idempotent resume, `select_vision_model` routing, graceful degradation on non-vision servers, real Chromium JPEG screenshot capture, end-to-end stateless VLM repair loop with prefix-stable text-only coding history, `TANDEM_MAX_VISUAL_REPAIRS` cap, and `TANDEM_RECEIPT_SCREENSHOT` toggle.
+- Updated `docs/ARCHITECTURE.md`, `docs/CONFIGURATION.md`, `docs/TOOLS.md`, `README.md`, and rebuilt both English and Italian architecture PDFs (`docs/tandem-mcp-architecture.pdf`, `docs/tandem-mcp-architettura.pdf`) for 4.2.0.
+
 ## 4.1.0
 
 ### Local loop: faster, and the same prompt prefix at every step
