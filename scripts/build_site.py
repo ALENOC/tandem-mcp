@@ -8,17 +8,17 @@ Usage: python scripts/build_site.py [out_dir]   (default: _site)
 """
 from __future__ import annotations
 
+import argparse
 import json
 import shutil
-import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 BENCH = REPO / "benchmarks" / "opus"
-REPORT = BENCH / "REEVAL_4_1.json"
+DEFAULT_REPORT = BENCH / "REEVAL_4_1.json"
 RUNS = BENCH / "runs"
 # the pages shown live on the site, the same attempts as the GIFs
-DEMOS = {
+DEFAULT_DEMOS = {
     "orbital/direct": "20261124-030230_adversarial_pilot1/workspaces/gen_orbital__p1__direct",
     "orbital/tandem": "20261124-052842_adversarial_confirm/workspaces/gen_orbital__p2__tandem",
     "portal/direct": "20261124-103103_adversarial_final/workspaces/gen_portal__p1__direct",
@@ -28,14 +28,21 @@ BUDGETS = {"py_discount": 900, "py_cron": 2400, "web_boids": 2400, "gen_orbital"
 
 
 def main() -> int:
-    out = Path(sys.argv[1] if len(sys.argv) > 1 else REPO / "_site")
+    ap = argparse.ArgumentParser(description="Build the GitHub Pages benchmark comparison site.")
+    ap.add_argument("out_dir", nargs="?", default=str(REPO / "_site"))
+    ap.add_argument("--report", default=str(DEFAULT_REPORT), help="Path to reeval JSON report")
+    ap.add_argument("--demos", default="", help="Optional JSON mapping demo slot -> run workspace path under benchmarks/opus/runs/")
+    args = ap.parse_args()
+    out = Path(args.out_dir)
+    report_path = Path(args.report)
+    demos = json.loads(args.demos) if args.demos else DEFAULT_DEMOS
     shutil.rmtree(out, ignore_errors=True)
     shutil.copytree(REPO / "site", out)
     shutil.copytree(BENCH / "gifs", out / "gifs")
     shutil.copy(REPO / "assets" / "logo.svg", out / "logo.svg")
-    for dst, ws in DEMOS.items():
+    for dst, ws in demos.items():
         shutil.copytree(RUNS / ws, out / "demos" / dst, ignore=shutil.ignore_patterns(".*", "__pycache__"))
-    report = json.loads(REPORT.read_text(encoding="utf-8"))
+    report = json.loads(report_path.read_text(encoding="utf-8"))
     attempts = [{
         "run": a["run"], "task": a["task"], "arm": a["arm"], "pair": a["pair"], "success": a["success"],
         "timed_out": a["timed_out"], "cost_usd": a["cost_usd"], "wall_seconds": a["wall_seconds"],
@@ -46,7 +53,7 @@ def main() -> int:
             "budgets": BUDGETS, "summary": report["summary"], "attempts": attempts}
     (out / "data.json").write_text(json.dumps(data, separators=(",", ":")), encoding="utf-8")
     (out / ".nojekyll").write_text("", encoding="utf-8")
-    print(f"site built in {out}")
+    print(f"site built in {out} from {report_path.name}")
     return 0
 
 

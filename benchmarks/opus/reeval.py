@@ -36,6 +36,8 @@ def main() -> int:
             ws = Path(r["workspace"])
             verdicts = [TASKS[r["task"]]["evaluate"](ws) for _ in range(REPEATS)]
             passed = all(v.get("passed") for v in verdicts)
+            loc_jobs = (r.get("local") or {}).get("jobs", [])
+            vr_statuses = [(j.get("visual_review") or {}).get("status") for j in loc_jobs if j.get("visual_review")]
             a = {
                 "run": run_dir.name, "task": r["task"], "arm": r["arm"], "pair": r["pair"],
                 "success": passed and not r.get("timed_out"), "verdicts_agree": len({bool(v.get("passed")) for v in verdicts}) == 1,
@@ -43,7 +45,10 @@ def main() -> int:
                 "timed_out": bool(r.get("timed_out")), "wall_seconds": r["wall_seconds"],
                 "cost_usd": r.get("total_cost_usd"), "usage": r.get("usage") or {}, "num_turns": r.get("num_turns"),
                 "tool_uses": r.get("tool_uses"), "local_tokens": (r.get("local") or {}).get("local_tokens", 0),
-                "local_jobs": [j.get("state") for j in (r.get("local") or {}).get("jobs", [])],
+                "local_jobs": [j.get("state") for j in loc_jobs],
+                "hints": sum(int(j.get("hints") or 0) for j in loc_jobs),
+                "visual_strikes": sum(int(j.get("visual_strikes") or 0) for j in loc_jobs),
+                "visual_review": vr_statuses,
             }
             attempts.append(a)
             print(f"{a['task']:12} p{a['pair']} {a['arm']:7} success={a['success']} agree={a['verdicts_agree']} "

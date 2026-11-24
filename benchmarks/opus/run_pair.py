@@ -8,11 +8,14 @@ permissions bypassed, and only the MCP servers given here (`--strict-mcp-config`
 - direct: no MCP server. Opus does the work itself.
 - tandem: the Tandem MCP server in the autonomous profile, with a fresh TANDEM_HOME. The request gets the
   fixed suffix TANDEM_SUFFIX. `delegate` blocks while the local model works, so the wait costs no cloud tokens.
+  On web tasks (Tandem 4.2.0+), `tandem:web_check` captures a live 1280x800 screenshot, runs optional local VLM
+  visual review when a vision model is available, and attaches the screenshot as MCP ImageContent on the receipt
+  (configurable via --vision-model, --visual-review, and --receipt-screenshot).
 
 Cloud cost is read from the `result` event of `claude -p --output-format json`: `total_cost_usd` (list
 prices, every model used in the run) and the token split (input, cache writes, cache reads, output).
 
-Usage: python run_pair.py --tasks gen_orbital,py_discount --pairs 3 --tag name
+Usage: python run_pair.py --tasks py_discount,py_cron,web_boids,gen_orbital,gen_portal --pairs 3 --tag v4_2
 """
 from __future__ import annotations
 
@@ -20,6 +23,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -35,6 +39,9 @@ from tasks import TASKS  # noqa: E402
 
 MODEL = os.environ.get("BENCH_MODEL", "claude-opus-5-5")
 EXECUTOR = os.environ.get("BENCH_EXECUTOR", "qwen3.8-27b@iq3_s")
+VISION_MODEL = os.environ.get("BENCH_VISION_MODEL", "")
+VISUAL_REVIEW = os.environ.get("BENCH_VISUAL_REVIEW", "auto")
+RECEIPT_SCREENSHOT = os.environ.get("BENCH_RECEIPT_SCREENSHOT", "1")
 LM_URL = os.environ.get("BENCH_LM_URL", "http://127.0.0.1:1234/v1")
 PYTHON = str(REPO / ".venv" / "bin" / "python")
 TANDEM_SUFFIX = "\n\nUsa Tandem."
@@ -45,6 +52,15 @@ def git_sha() -> str:
     sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO, capture_output=True, text=True).stdout.strip()
     dirty = subprocess.run(["git", "status", "--porcelain", "tandem_mcp"], cwd=REPO, capture_output=True, text=True).stdout
     return sha + ("+dirty" if dirty.strip() else "")
+
+
+def tandem_version(code_dir: Path) -> str:
+    init = code_dir / "tandem_mcp" / "__init__.py"
+    if init.is_file():
+        m = re.search(r"__version__\s*=\s*['\"]([^'\"]+)['\"]", init.read_text(encoding="utf-8"))
+        if m:
+            return m.group(1)
+    return "unknown"
 
 
 def snapshot_code(run_dir: Path) -> Path:
@@ -81,18 +97,39 @@ def tool_uses(events: list) -> list[str]:
             for c in (e.get("message") or {}).get("content", []) if c.get("type") == "tool_use"]
 
 
-def local_metrics(thome: Path) -> dict:
+def local_metrics(thome: Path, screenshot_dst: Path | None = None) -> dict:
     jobs = []
+    saved_shot = ""
     for jf in sorted((thome / "jobs").glob("*/job.json")) if (thome / "jobs").exists() else []:
         d = json.loads(jf.read_text(encoding="utf-8"))
-        jobs.append({"id": d.get("id"), "state": d.get("state"), "tokens": d.get("tokens"), "repairs": d.get("repairs"),
-                     "steps": d.get("steps"), "seconds": d.get("seconds"), "accepted": d.get("accepted"),
-                     "verify": [str(v)[:400] for v in d.get("verify") or []],
-                     "constraints": d.get("constraints"), "goal": d.get("goal")})
-    return {"jobs": jobs, "local_tokens": sum(int(j.get("tokens") or 0) for j in jobs)}
+        shot_src = Path(str(d.get("screenshot") or "")) if d.get("screenshot") else None
+        has_shot = bool(shot_src and shot_src.is_file())
+        if has_shot and screenshot_dst is not None:
+            screenshot_dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(shot_src, screenshot_dst)
+            saved_shot = str(screenshot_dst)
+        vr = d.get("visual_review") or {}
+        jobs.append({
+            "id": d.get("id"), "state": d.get("state"), "tokens": d.get("tokens"), "repairs": d.get("repairs"),
+            "steps": d.get("steps"), "seconds": d.get("seconds"), "accepted": d.get("accepted"),
+            "hints": int(d.get("hints") or 0),
+            "perf_strikes": int(d.get("perf_strikes") or 0),
+            "visual_strikes": int(d.get("visual_strikes") or 0),
+            "visual_review": {k: vr.get(k) for k in ("status", "model", "summary", "issues") if k in vr} if vr else None,
+            "screenshot": has_shot,
+            "reference_image": bool(d.get("reference_image")),
+            "verify": [str(v)[:400] for v in d.get("verify") or []],
+            "constraints": d.get("constraints"), "goal": d.get("goal"),
+        })
+    return {
+        "jobs": jobs,
+        "local_tokens": sum(int(j.get("tokens") or 0) for j in jobs),
+        "screenshot": saved_shot or None,
+    }
 
 
-def run_arm(task_id: str, arm: str, pair: int, run_dir: Path, code_dir: Path) -> dict:
+def run_arm(task_id: str, arm: str, pair: int, run_dir: Path, code_dir: Path,
+            vision_model: str = "", visual_review_mode: str = "auto", receipt_screenshot: str = "1") -> dict:
     task = TASKS[task_id]
     tag = f"{task_id}__p{pair}__{arm}"
     ws = run_dir / "workspaces" / tag
@@ -109,11 +146,21 @@ def run_arm(task_id: str, arm: str, pair: int, run_dir: Path, code_dir: Path) ->
     prompt = task["prompt"]
     if arm == "tandem":
         thome.mkdir(parents=True, exist_ok=True)
+        mcp_env = {
+            "PYTHONPATH": str(code_dir),
+            "TANDEM_HOME": str(thome),
+            "TANDEM_PROFILE": "autonomous",
+            "TANDEM_BASE_URL": LM_URL,
+            "TANDEM_MODEL": EXECUTOR,
+            "TANDEM_JOB_SECONDS": str(max(120, budget - LOCAL_RESERVE_S)),
+            "TANDEM_VISUAL_REVIEW": visual_review_mode,
+            "TANDEM_RECEIPT_SCREENSHOT": receipt_screenshot,
+        }
+        if vision_model:
+            mcp_env["TANDEM_MODEL_VISION"] = vision_model
         cfg = {"mcpServers": {"tandem": {
             "command": PYTHON, "args": ["-m", "tandem_mcp.server"], "timeout": (budget + 600) * 1000,
-            "env": {"PYTHONPATH": str(code_dir), "TANDEM_HOME": str(thome), "TANDEM_PROFILE": "autonomous",
-                    "TANDEM_BASE_URL": LM_URL, "TANDEM_MODEL": EXECUTOR,
-                    "TANDEM_JOB_SECONDS": str(max(120, budget - LOCAL_RESERVE_S))},
+            "env": mcp_env,
         }}}
         env["MCP_TOOL_TIMEOUT"] = str((budget + 600) * 1000)
         prompt = prompt + TANDEM_SUFFIX
@@ -155,7 +202,7 @@ def run_arm(task_id: str, arm: str, pair: int, run_dir: Path, code_dir: Path) ->
         "cost_missing": result.get("total_cost_usd") is None,
     }
     if arm == "tandem":
-        rec["local"] = local_metrics(thome)
+        rec["local"] = local_metrics(thome, screenshot_dst=run_dir / "screenshots" / f"{tag}.jpg")
     return rec
 
 
@@ -166,29 +213,53 @@ def main() -> int:
     ap.add_argument("--first-pair", type=int, default=1)
     ap.add_argument("--tag", default="")
     ap.add_argument("--arms", default="direct,tandem", help="arms to run, in the counterbalanced order of each pair")
+    ap.add_argument("--vision-model", default=VISION_MODEL, help="optional local VLM id (TANDEM_MODEL_VISION)")
+    ap.add_argument("--visual-review", default=VISUAL_REVIEW, choices=("auto", "on", "off"),
+                    help="local VLM visual review mode (TANDEM_VISUAL_REVIEW, default: auto)")
+    ap.add_argument("--receipt-screenshot", default=RECEIPT_SCREENSHOT, choices=("0", "1"),
+                    help="attach captured 1280x800 web screenshot to MCP receipts (TANDEM_RECEIPT_SCREENSHOT, default: 1)")
     args = ap.parse_args()
     run_id = datetime.now().strftime("%Y%m%d-%H%M%S") + (f"_{args.tag}" if args.tag else "")
     run_dir = ROOT / "runs" / run_id
     run_dir.mkdir(parents=True)
     code_dir = snapshot_code(run_dir)
-    meta = {"run_id": run_id, "started": datetime.now(timezone.utc).isoformat(), "model": MODEL, "executor": EXECUTOR,
-            "git": git_sha(), "tandem_code_sha256": (code_dir / "SHA256").read_text(),
-            "claude_version": subprocess.run(["claude", "--version"], capture_output=True, text=True).stdout.strip(),
-            "tandem_suffix": TANDEM_SUFFIX, "records": []}
+    meta = {
+        "run_id": run_id,
+        "started": datetime.now(timezone.utc).isoformat(),
+        "model": MODEL,
+        "executor": EXECUTOR,
+        "vision_model": args.vision_model or None,
+        "visual_review": args.visual_review,
+        "receipt_screenshot": args.receipt_screenshot == "1",
+        "tandem_version": tandem_version(code_dir),
+        "git": git_sha(),
+        "tandem_code_sha256": (code_dir / "SHA256").read_text(),
+        "claude_version": subprocess.run(["claude", "--version"], capture_output=True, text=True).stdout.strip(),
+        "tandem_suffix": TANDEM_SUFFIX,
+        "records": [],
+    }
     out = run_dir / "results.json"
     for task_id in args.tasks.split(","):
         for pair in range(args.first_pair, args.first_pair + args.pairs):
             arms = ("direct", "tandem") if pair % 2 else ("tandem", "direct")
             for arm in [a for a in arms if a in args.arms.split(",")]:
                 print(f"[{run_id}] {task_id} pair {pair} {arm} ...", flush=True)
-                rec = run_arm(task_id, arm, pair, run_dir, code_dir)
+                rec = run_arm(task_id, arm, pair, run_dir, code_dir,
+                              vision_model=args.vision_model,
+                              visual_review_mode=args.visual_review,
+                              receipt_screenshot=args.receipt_screenshot)
                 meta["records"].append(rec)
                 out.write_text(json.dumps(meta, indent=2), encoding="utf-8")
                 loc = rec.get("local", {})
+                jobs = loc.get("jobs", [])
+                vr_info = [f"{(j.get('visual_review') or {}).get('status')}/{j.get('visual_strikes', 0)}"
+                           for j in jobs if j.get("visual_review") or j.get("visual_strikes")]
+                hints = sum(int(j.get("hints") or 0) for j in jobs)
                 print(f"  -> {arm} success={rec['success']} cost=${rec['total_cost_usd']} turns={rec['num_turns']} "
                       f"wall={rec['wall_seconds']}s out={rec['usage'].get('output_tokens')} "
-                      f"local={loc.get('local_tokens', 0)} jobs={[j['state'] for j in loc.get('jobs', [])]} "
-                      f"tools={rec['tool_uses'][:12]} failed={rec['evaluation'].get('failed')}", flush=True)
+                      f"local={loc.get('local_tokens', 0)} jobs={[j['state'] for j in jobs]} "
+                      f"hints={hints} vr={vr_info} tools={rec['tool_uses'][:12]} "
+                      f"failed={rec['evaluation'].get('failed')}", flush=True)
     print(f"Saved {out}")
     return 0
 
