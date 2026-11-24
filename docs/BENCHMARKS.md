@@ -38,7 +38,7 @@ All local work ran on one desktop PC; the local model ran entirely on the GPU.
 | Model | Qwen3.8 27B, unsloth GGUF `Qwen3.8-27B-UD-IQ3_S.gguf` (LM Studio id `qwen3.8-27b@iq3_s`) |
 | Vision projector | `mmproj-F16.gguf` (885 MB), so LM Studio loads the model as `type=vlm` and the same model does the visual review |
 | Quantization | IQ3_S (about 3 bits per weight), 12.0 GB on disk |
-| Context length | 40,960 tokens (65,536 in 4.1.0; reduced to fit the vision projector in 16 GB; the model supports 262,144) |
+| Context length | 40,960 tokens (65,536 in the 4.1.0 runs; the model supports 262,144) |
 | GPU offload | all layers |
 | KV cache | K in `q8_0`, V in `q4_0` |
 | Parallel sessions | 1 |
@@ -77,23 +77,42 @@ Each cell gives the cost per success, the successes inside the budget and the me
 
 Output tokens are the most expensive part of the cost, and Tandem moves most of them to the local model.
 
-### Every Tandem attempt
+### Every attempt (5 tasks x 3 pairs x 2 arms)
 
-| Task | Pair | Local job | Evaluator | Cloud cost | Time | Opus `job_continue` | VLM review |
-| --- | ---: | --- | --- | ---: | ---: | --- | --- |
-| 5-line fix | 1, 2, 3 | verified | pass, pass, pass | $0.082, $0.059, $0.060 | 2.0, 2.2, 1.8 min | none | n/a |
-| Cron | 1 | verified | pass | $0.113 | 26 min | none | n/a |
-| Cron | 2 | out of time, twice | late (artifact passes) | $0.202 | 71 min | 1 functional hint | n/a |
-| Cron | 3 | verified | pass | $0.105 | 25 min | none | n/a |
-| Boids | 1 | verified | pass | $0.122 | 13 min | none | failed, 2 strikes (false positive) |
-| Boids | 2 | blocked | pass | $0.134 | 11 min | none | not run |
-| Boids | 3 | verified | pass | $0.124 | 10 min | none | passed |
-| Orbital | 1 | verified | fail (`trailsToggle`) | $0.174 | 12 min | 1 visual hint | passed |
-| Orbital | 2 | verified | fail (`pauseStopsTime`, `clickSpawnsBurst`) | $0.135 | 11 min | none | passed |
-| Orbital | 3 | verified | pass | $0.159 | 14 min | 1 visual hint | passed |
-| Portal | 1 | stuck | fail (`interactions`) | $0.285 | 33 min | none | not run |
-| Portal | 2 | verified | pass | $0.150 | 40 min | 1 visual hint | passed |
-| Portal | 3 | verified | fail (`interactions`) | $0.113 | 17 min | none | passed |
+Generated from `REEVAL_4_2.json`. Verdict is the re-evaluation (three repetitions); "late" means the attempt ended past its budget. The `job_continue` count is the `hints` field of the local job record.
+
+| Task | Pair | Arm | Verdict | Cloud cost | Time | Cloud output tokens | Local tokens | Local job | Opus `job_continue` | VLM review |
+| --- | ---: | --- | --- | ---: | ---: | ---: | ---: | --- | ---: | --- |
+| 5-line fix | 1 | Direct | pass | $0.074 | 10 s | 694 | 0 | n/a | n/a | n/a |
+| 5-line fix | 1 | Tandem | pass | $0.082 | 2 min | 785 | 14,745 | verified | 0 | n/a |
+| 5-line fix | 2 | Direct | pass | $0.052 | 10 s | 663 | 0 | n/a | n/a | n/a |
+| 5-line fix | 2 | Tandem | pass | $0.059 | 2 min | 786 | 18,735 | verified | 0 | n/a |
+| 5-line fix | 3 | Direct | pass | $0.060 | 11 s | 746 | 0 | n/a | n/a | n/a |
+| 5-line fix | 3 | Tandem | pass | $0.060 | 2 min | 801 | 14,755 | verified | 0 | n/a |
+| Cron | 1 | Direct | pass | $0.294 | 73 s | 8,843 | 0 | n/a | n/a | n/a |
+| Cron | 1 | Tandem | pass | $0.113 | 26 min | 2,581 | 194,819 | verified | 0 | n/a |
+| Cron | 2 | Direct | pass | $0.263 | 60 s | 7,431 | 0 | n/a | n/a | n/a |
+| Cron | 2 | Tandem | late (artifact passes after an Opus patch) | $0.202 | 71 min | 4,307 | 1,310,095 | out_of_time | 1 | n/a |
+| Cron | 3 | Direct | pass | $0.247 | 58 s | 7,386 | 0 | n/a | n/a | n/a |
+| Cron | 3 | Tandem | pass | $0.105 | 25 min | 2,650 | 388,590 | verified | 0 | n/a |
+| Boids | 1 | Direct | pass | $0.198 | 46 s | 5,979 | 0 | n/a | n/a | n/a |
+| Boids | 1 | Tandem | pass | $0.122 | 13 min | 2,437 | 99,533 | verified | 0 | failed (2 strikes) |
+| Boids | 2 | Direct | pass | $0.237 | 72 s | 7,088 | 0 | n/a | n/a | n/a |
+| Boids | 2 | Tandem | pass | $0.134 | 11 min | 2,918 | 80,862 | blocked | 0 | not run |
+| Boids | 3 | Direct | pass | $0.178 | 54 s | 5,600 | 0 | n/a | n/a | n/a |
+| Boids | 3 | Tandem | pass | $0.124 | 10 min | 2,513 | 71,041 | verified | 0 | passed |
+| Orbital | 1 | Direct | late (artifact passes) | $0.349 | 82 min | 9,740 | 0 | n/a | n/a | n/a |
+| Orbital | 1 | Tandem | fail (`trailsToggle`) | $0.174 | 12 min | 3,048 | 128,696 | verified | 1 | passed |
+| Orbital | 2 | Direct | fail (`trailsToggle`) | $0.300 | 78 s | 9,469 | 0 | n/a | n/a | n/a |
+| Orbital | 2 | Tandem | fail (`clickSpawnsBurst`, `pauseStopsTime`) | $0.135 | 11 min | 2,811 | 83,826 | verified | 0 | passed |
+| Orbital | 3 | Direct | pass | $0.303 | 86 s | 10,006 | 0 | n/a | n/a | n/a |
+| Orbital | 3 | Tandem | pass | $0.159 | 14 min | 3,488 | 129,760 | verified | 1 | passed |
+| Portal | 1 | Direct | fail (`interactions`, `visual`) | $0.610 | 3 min | 18,459 | 0 | n/a | n/a | n/a |
+| Portal | 1 | Tandem | fail (`interactions`) after an Opus patch | $0.285 | 33 min | 5,673 | 466,655 | stuck | 0 | not run |
+| Portal | 2 | Direct | fail (`interactions`) | $0.590 | 2 min | 15,445 | 0 | n/a | n/a | n/a |
+| Portal | 2 | Tandem | pass | $0.150 | 40 min | 2,796 | 531,741 | verified | 1 | passed |
+| Portal | 3 | Direct | fail (`visual`) | $0.532 | 2 min | 15,584 | 0 | n/a | n/a | n/a |
+| Portal | 3 | Tandem | fail (`interactions`) | $0.113 | 17 min | 2,041 | 192,809 | verified | 0 | passed |
 
 ### Incidents and attempts that need a note
 
@@ -120,7 +139,7 @@ Every attempt is in the totals above; nothing was excluded or re-run.
 | Opus `job_continue` hints without a screenshot | 1 (Cron pair 2, functional) |
 
 - **The two VLM strikes were false positives caused by the probe.** For a page that must start paused, the web probe clicks Play to check the animation (`_web_probe.mjs:278`) and only then captures the "initial view" (`:289`). The screenshot therefore showed "Pause", and the VLM reported that the page started running. The `ui_test` had already verified the `Play` label at startup. The job spent its 2 visual repairs on this and was accepted with the review note. It was the longest Boids job (13 min against 10 to 11 min) and cost no extra cloud tokens. Fix for the next version: capture before any click.
-- **Opus hints after the screenshot fixed what they targeted.** The second screenshots show labelled HUD numbers (Orbital pair 1), a HUD that fits (Orbital pair 3), and a cross grid with visible rings (Portal pair 2). Each hint added one short cloud turn ($0.02 to $0.04 against the hint-free attempts of the same task) and a few minutes of local time. Two of the three hinted attempts passed; Orbital pair 1 failed `trailsToggle`, a behaviour the HUD hint did not touch.
+- **Opus hints after the screenshot, checked on the two receipt screenshots of each job:** Orbital pair 1 went from bare HUD numbers (`60 4.1 0`) to labelled ones (`FPS 60 · Time 4.1 s · Particles 0`); Orbital pair 3 went from a wrapped `Trails: ON` button and an overflowing speed readout to a HUD that fits. Portal pair 2 was only partly fixed: the floor became a full cross grid, but the two rings are still barely visible and the scene ended up smaller in the frame. Each hint added one short cloud turn ($0.02 to $0.04 against the hint-free attempts of the same task) and a few minutes of local time. Two of the three hinted attempts passed; Orbital pair 1 failed `trailsToggle`, a behaviour the HUD hint did not touch.
 - **Frame rate:** measured with Tandem's own probe on every web artifact at 1280x800, twice each. All Tandem pages that passed run at 60 FPS; the only slow Tandem page is the Opus-patched Portal pair 1 (12 to 13 FPS). On Direct, Portal pair 1 runs at 36 FPS and one Boids pair 3 sample measured 36 FPS (60 on the second). In 4.1.0 the final Tandem portal ran at 38 to 39 FPS and the 4.0.0 portals at 4 to 20 FPS.
 
 ## From 4.0.0 to 4.1.0 to 4.2.0
@@ -143,7 +162,7 @@ All five tasks: 4.0.0 had Tandem at $0.180 per success (9/15) against $0.375 dir
 
 What changed in 4.2.0, and what it did in this run:
 
-- **Context 65,536 to 40,960 tokens** to fit the vision projector on the same 16 GB GPU.
+- **Local model loaded with its vision projector** (`mmproj-F16.gguf`, `type=vlm`) and a 40,960-token context (65,536 in the 4.1.0 runs).
 - **Screenshot on the receipt:** Opus used it 3 times to send a visual hint, the first time the cloud side could judge the look of a Tandem page without spending tokens on a browser session.
 - **Local VLM review:** it ran on every accepted web job; its only intervention was the false positive above.
 - **Cost per success went up slightly on the shared tasks** ($0.217 to $0.259) because the Tandem success rate dropped (69% to 58%) with the same per-attempt cost. Direct dropped too (63% to 58%), so the saving stays between 51% and 61% across the three versions. With 3 or 4 pairs per task, these success-rate changes are within noise.
@@ -202,6 +221,7 @@ Both pairs were picked by rule: the same pair for both arms, and for Tandem only
 - `job_continue` opens a new full time window, so a continued job can run far past the task budget.
 - When a local job fails, Opus sometimes patches the files itself in the same attempt: it edited through Bash in 2 of 15 Tandem attempts, and neither patch rescued the attempt.
 - The evaluator's interaction checks on Orbital and Portal are intermittent on both arms; the run-time and re-evaluation verdicts differed on 2 Direct attempts.
+- `tandem:ui_test` leaves its headless Chromium profile (about 120 MB each) in `/tmp` and, in some cases, the Chromium process running; the v4_2 run left about 25 such profiles.
 - Visual polish remains stronger on the direct path.
 
 ## Earlier baseline and how the version was reached
