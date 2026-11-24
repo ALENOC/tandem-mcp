@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NEON PORTAL 3D</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: #05010d;
+  }
+  #c {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    display: block;
+  }
+  #hud {
+    position: fixed;
+    top: 16px;
+    left: 16px;
+    z-index: 10;
+    background: rgba(255,255,255,0.08);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 16px;
+    padding: 14px 18px;
+    color: #fff;
+    font-family: system-ui, monospace;
+    min-width: 210px;
+    user-select: none;
+  }
+  #title {
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    margin: 0 0 10px 0;
+    color: #fff;
+    text-shadow: 0 0 6px #00f0ff, 0 0 12px #ff2bd6;
+  }
+  .stat {
+    font-family: monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    color: #cfefff;
+  }
+  .row {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  button {
+    flex: 1;
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(0,240,255,0.5);
+    border-radius: 10px;
+    color: #fff;
+    padding: 8px 10px;
+    font-family: system-ui, monospace;
+    font-size: 12px;
+    cursor: pointer;
+    transition: box-shadow 0.15s, background 0.15s;
+  }
+  button:hover {
+    box-shadow: 0 0 12px rgba(0,240,255,0.8);
+    background: rgba(0,240,255,0.18);
+  }
+  .slider {
+    margin-top: 12px;
+    font-size: 12px;
+    color: #cfefff;
+  }
+  .slider input[type=range] {
+    width: 100%;
+    accent-color: #00f0ff;
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">
+  <div id="title">NEON PORTAL 3D</div>
+  <div class="stat" id="fps">FPS: 0</div>
+  <div class="stat" id="polys">POLYS: 0</div>
+  <div class="stat" id="parts">PARTS: 110</div>
+  <div class="row">
+    <button id="btnPause">Pause</button>
+    <button id="btnOrbit">Orbit ON</button>
+    <button id="btnReset">Reset</button>
+  </div>
+  <div class="slider">
+    <label for="speed">Speed <span id="speedVal">1.0</span></label>
+    <input type="range" id="speed" min="0" max="3" step="0.1" value="1">
+  </div>
+</div>
+<script>
+(function () {
+  'use strict';
+
+  var canvas = document.getElementById('c');
+  var ctx = canvas.getContext('2d');
+  var W = 0, H = 0, DPR = 1;
+  var bgGrad = null;
+
+  function makeBg() {
+    bgGrad = ctx.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, Math.max(W, H) * 0.7);
+    bgGrad.addColorStop(0, '#1a0b2e');
+    bgGrad.addColorStop(1, '#05010d');
+  }
+
+  function resize() {
+    DPR = window.devicePixelRatio || 1;
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = Math.max(1, Math.round(W * DPR));
+    canvas.height = Math.max(1, Math.round(H * DPR));
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    makeBg();
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // ---- vec3 math ----
+  function v3(x, y, z) { return { x: x, y: y, z: z }; }
+  function v3add(a, b) { return { x: a.x + b.x, y: a.y + b.y, z: a.z + b.z }; }
+  function v3sub(a, b) { return { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z }; }
+  function v3scale(a, s) { return { x: a.x * s, y: a.y * s, z: a.z * s }; }
+  function v3cross(a, b) {
+    return {
+      x: a.y * b.z - a.z * b.y,
+      y: a.z * b.x - a.x * b.z,
+      z: a.x * b.y - a.y * b.x
+    };
+  }
+  function v3dot(a, b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
+  function v3norm(a) {
+    var l = Math.sqrt(a.x * a.x + a.y * a.y + a.z * a.z) || 1;
+    return { x: a.x / l, y: a.y / l, z: a.z / l };
+  }
+  function rotY(p, a) {
+    var c = Math.cos(a), s = Math.sin(a);
+    return { x: p.x * c + p.z * s, y: p.y, z: -p.x * s + p.z * c };
+  }
+  function rotX(p, a) {
+    var c = Math.cos(a), s = Math.sin(a);
+    return { x: p.x, y: p.y * c - p.z * s, z: p.y * s + p.z * c };
+  }
+  function rotZ(p, a) {
+    var c = Math.cos(a), s = Math.sin(a);
+    return { x: p.x * c - p.y * s, y: p.x * s + p.y * c, z: p.z };
+  }
+
+  // ---- app state ----
+  var app = {
+    boxFaces: 36,
+    crystalTris: 48,
+    crystals: [],
+    stars: [],
+    particles: [],
+    rings: [
+      { angle: 0, dir: 1, radius: 1.5, y: 2.6, color: '#00f0ff', seg: 64 },
+      { angle: 0, dir: -1, radius: 1.0, y: 2.6, color: '#ff2bd6', seg: 48 }
+    ],
+    camera: { angle: 0, radius: 11, height: 4.5 },
+    paused: false,
+    orbit: true,
+    speed: 1,
+    stats: { fps: 0, polys: 0, parts: 110 }
+  };
+  window.app = app;
+
+  var simTime = 0;
+  var last = performance.now();
+  var fpsAcc = 0, fpsCount = 0, fpsTimer = 0;
+  var statTimer = 0;
+
+  // ---- scene geometry ----
+  var boxes = [];
+  function addBox(cx, cy, cz, sx, sy, sz, fill, edge) {
+    var hx = sx / 2, hy = sy / 2, hz = sz / 2;
+    var c = [
+      v3(cx - hx, cy - hy, cz - hz),
+      v3(cx + hx, cy - hy, cz - hz),
+      v3(cx + hx, cy + hy, cz - hz),
+      v3(cx - hx, cy + hy, cz - hz),
+      v3(cx - hx, cy - hy, cz + hz),
+      v3(cx + hx, cy - hy, cz + hz),
+      v3(cx + hx, cy + hy, cz + hz),
+      v3(cx - hx, cy + hy, cz + hz)
+    ];
+    var idx = [
+      [0, 1, 2, 3], [5, 4, 7, 6],
+      [4, 0, 3, 7], [1, 5, 6, 2],
+      [3, 2, 6, 7], [4, 5, 1, 0]
+    ];
+    for (var i = 0; i < 6; i++) {
+      var f = idx[i];
+      boxes.push({
+        v: [c[f[0]], c[f[1]], c[f[2]], c[f[3]]],
+        fill: fill, edge: edge
+      });
+    }
+  }
+  // two-tier platform
+  addBox(0, 0.25, 0, 8, 0.5, 5, '#1b1033', '#00f0ff');
+  addBox(0, 0.75, 0, 6, 0.5, 3.5, '#1b1033', '#00f0ff');
+  // twin pillars
+  addBox(-2.5, 2.5, 0, 0.8, 3.5, 0.8, '#2a1450', '#ff2bd6');
+  addBox(2.5, 2.5, 0, 0.8, 3.5, 0.8, '#2a1450', '#ff2bd6');
+  // lintel
+  addBox(0, 4.5, 0, 6, 0.8, 0.8, '#2a1450', '#ff2bd6');
+  // crown cap
+  addBox(0, 5.1, 0, 6.4, 0.4, 1.2, '#3a1a6a', '#ffd166');
+
+  // ---- crystals (octahedra) ----
+  var CRYSTAL_COLORS = ['#00f0ff', '#ff2bd6', '#9b5cff'];
+  for (var ci = 0; ci < 6; ci++) {
+    app.crystals.push({
+      orbitR: 4.5,
+      orbitA: (ci / 6) * Math.PI * 2,
+      orbitSpeed: 0.6,
+      y: 1.5 + ci * 0.5,
+      spin: 1.2 + ci * 0.3,
+      color: CRYSTAL_COLORS[ci % 3],
+      size: 0.5
+    });
+  }
+
+  // ---- stars ----
+  for (var si = 0; si < 180; si++) {
+    app.stars.push({
+      x: Math.random() * 2 - 1,
+      y: Math.random() * 2 - 1,
+      z: Math.random() * 2 - 1,
+      phase: Math.random() * Math.PI * 2,
+      speed: 0.5 + Math.random() * 1.5,
+      size: 0.5 + Math.random() * 1.5
+    });
+  }
+
+  // ---- particles ----
+  for (var pi = 0; pi < 110; pi++) {
+    app.particles.push({
+      x: (Math.random() - 0.5) * 2,
+      y: Math.random() * 4,
+      z: (Math.random() - 0.5) * 2,
+      vy: 0.5 + Math.random() * 1.0,
+      color: Math.random() < 0.5 ? '#00f0ff' : '#ff2bd6'
+    });
+  }
+
+  // ---- projection ----
+  var camPos = v3(0, 0, 0);
+  var camF = v3(0, 0, 1);
+  var camR = v3(1, 0, 0);
+  var camU = v3(0, 1, 0);
+  var focal = 800;
+
+  function project(p) {
+    var d = v3sub(p, camPos);
+    var zc = v3dot(d, camF);
+    if (zc < 0.1) return null;
+    var xc = v3dot(d, camR);
+    var yc = v3dot(d, camU);
+    var sx = W / 2 + (xc / zc) * focal;
+    var sy = H / 2 - (yc / zc) * focal;
+    return { x: sx, y: sy, z: zc };
+  }
+
+  function hexToRgb(h) {
+    var n = parseInt(h.slice(1), 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+  function shade(hex, f) {
+    var c = hexToRgb(hex);
+    var k = 0.25 + 0.75 * f;
+    return 'rgb(' + Math.min(255, Math.round(c[0] * k)) + ',' +
+      Math.min(255, Math.round(c[1] * k)) + ',' +
+      Math.min(255, Math.round(c[2] * k)) + ')';
+  }
+
+  var polys = 0;
+
+  function tracePath(pts) {
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (var j = 1; j < pts.length; j++) ctx.lineTo(pts[j].x, pts[j].y);
+    ctx.closePath();
+  }
+  function drawPoly(pts, fill, edge, glow) {
+    if (pts.length < 3) return;
+    for (var i = 0; i < pts.length; i++) {
+      if (pts[i] === null) return;
+    }
+    tracePath(pts);
+    ctx.fillStyle = fill;
+    ctx.fill();
+    // cheap glow: a few translucent wide strokes, no shadowBlur
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = edge;
+    ctx.globalAlpha = 0.25;
+    ctx.lineWidth = 5;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    polys++;
+  }
+
+  function drawPolyline(pts, color, width, glow) {
+    var started = false;
+    ctx.beginPath();
+    for (var i = 0; i < pts.length; i++) {
+      if (pts[i] === null) { started = false; continue; }
+      if (!started) { ctx.moveTo(pts[i].x, pts[i].y); started = true; }
+      else ctx.lineTo(pts[i].x, pts[i].y);
+    }
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = 0.3;
+    ctx.lineWidth = width + 4;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.lineWidth = width;
+    ctx.stroke();
+  }
+
+  function drawBackground() {
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  function drawStars() {
+    for (var i = 0; i < app.stars.length; i++) {
+      var s = app.stars[i];
+      var b = 0.5 + 0.5 * Math.sin(simTime * s.speed + s.phase);
+      var sx = (s.x * 0.5 + 0.5) * W;
+      var sy = (s.y * 0.5 + 0.5) * H;
+      ctx.globalAlpha = 0.2 + 0.8 * b;
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(sx, sy, s.size * (0.6 + 0.4 * b), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawGrid() {
+    var N = 12, SP = 1.0;
+    var off = (simTime * 0.3) % SP;
+    ctx.lineWidth = 1;
+    for (var i = -N; i <= N; i++) {
+      var a = i * SP - off;
+      var b = (i + 1) * SP - off;
+      var p1 = project(v3(a, 0, -N * SP));
+      var p2 = project(v3(a, 0, N * SP));
+      if (p1 && p2) {
+        var d = (Math.abs(a) + Math.abs(b)) / 2;
+        var al = Math.max(0.05, 0.5 - d / (N * SP * 2));
+        ctx.strokeStyle = 'rgba(255,43,214,' + al.toFixed(3) + ')';
+        ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
+      }
+      var q1 = project(v3(-N * SP, 0, a));
+      var q2 = project(v3(N * SP, 0, a));
+      if (q1 && q2) {
+        var d2 = (Math.abs(a) + Math.abs(b)) / 2;
+        var al2 = Math.max(0.05, 0.5 - d2 / (N * SP * 2));
+        ctx.strokeStyle = 'rgba(255,43,214,' + al2.toFixed(3) + ')';
+        ctx.beginPath(); ctx.moveTo(q1.x, q1.y); ctx.lineTo(q2.x, q2.y); ctx.stroke();
+      }
+    }
+  }
+
+  // pre-rendered glow sprites (drawn once, blitted per frame)
+  function makeGlowSprite(size, stops) {
+    var cv = document.createElement('canvas');
+    cv.width = cv.height = size;
+    var c = cv.getContext('2d');
+    var g = c.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+    for (var i = 0; i < stops.length; i++) g.addColorStop(stops[i][0], stops[i][1]);
+    c.fillStyle = g;
+    c.fillRect(0, 0, size, size);
+    return cv;
+  }
+  var coreSprite = makeGlowSprite(128, [
+    [0, 'rgba(255,255,255,0.55)'],
+    [0.4, 'rgba(155,92,255,0.4)'],
+    [1, 'rgba(155,92,255,0)']
+  ]);
+  var cyanSprite = makeGlowSprite(64, [
+    [0, 'rgba(210,255,255,0.5)'],
+    [0.3, 'rgba(0,240,255,0.45)'],
+    [1, 'rgba(0,240,255,0)']
+  ]);
+  var magentaSprite = makeGlowSprite(64, [
+    [0, 'rgba(255,210,245,0.5)'],
+    [0.3, 'rgba(255,43,214,0.45)'],
+    [1, 'rgba(255,43,214,0)']
+  ]);
+
+  function drawPortalCore() {
+    var c = project(v3(0, 2.6, 0));
+    if (!c) return;
+    var r = Math.max(14, 1.0 / c.z * focal);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.drawImage(coreSprite, c.x - r, c.y - r, r * 2, r * 2);
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  function drawRings() {
+    for (var i = 0; i < app.rings.length; i++) {
+      var ring = app.rings[i];
+      var pts = [];
+      for (var k = 0; k < ring.seg; k++) {
+        var a = ring.angle + (k / ring.seg) * Math.PI * 2;
+        var p = v3(Math.cos(a) * ring.radius, ring.y, Math.sin(a) * ring.radius);
+        pts.push(project(p));
+      }
+      drawPolyline(pts, ring.color, 2, 12);
+    }
+  }
+
+  function drawParticles() {
+    ctx.globalCompositeOperation = 'lighter';
+    for (var i = 0; i < app.particles.length; i++) {
+      var p = app.particles[i];
+      var pr = project(v3(p.x, p.y, p.z));
+      if (!pr) continue;
+      var sz = Math.max(1.5, 0.35 / pr.z * focal);
+      var spr = p.color === '#00f0ff' ? cyanSprite : magentaSprite;
+      ctx.globalAlpha = 0.55;
+      ctx.drawImage(spr, pr.x - sz, pr.y - sz, sz * 2, sz * 2);
+    }
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  function update(dt) {
+    if (app.orbit) {
+      app.camera.angle += dt * 0.25 * app.speed;
+    }
+    for (var i = 0; i < app.rings.length; i++) {
+      app.rings[i].angle += dt * 0.8 * app.rings[i].dir * app.speed;
+    }
+    for (var ci = 0; ci < app.crystals.length; ci++) {
+      var cr = app.crystals[ci];
+      cr.orbitA += dt * cr.orbitSpeed * app.speed;
+    }
+    for (var pi = 0; pi < app.particles.length; pi++) {
+      var p = app.particles[pi];
+      p.y += p.vy * dt * app.speed;
+      if (p.y > 6) {
+        p.y = 0.5;
+        p.x = (Math.random() - 0.5) * 2;
+        p.z = (Math.random() - 0.5) * 2;
+      }
+    }
+  }
+
+  function render() {
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    drawBackground();
+    drawStars();
+
+    // camera
+    var a = app.camera.angle;
+    camPos = v3(Math.sin(a) * app.camera.radius, app.camera.height, Math.cos(a) * app.camera.radius);
+    var target = v3(0, 2.5, 0);
+    camF = v3norm(v3sub(target, camPos));
+    var up = v3(0, 1, 0);
+    camR = v3norm(v3cross(camF, up));
+    camU = v3cross(camR, camF);
+
+    drawGrid();
+    drawPortalCore();
+    drawRings();
+
+    // collect faces
+    var faces = [];
+    for (var i = 0; i < boxes.length; i++) {
+      var b = boxes[i];
+      var pts = [];
+      for (var j = 0; j < 4; j++) pts.push(project(b.v[j]));
+      var sum = 0, ok = true;
+      for (var k = 0; k < 4; k++) { if (pts[k] === null) { ok = false; break; } sum += pts[k].z; }
+      if (!ok) continue;
+      var n = v3norm(v3cross(v3sub(b.v[1], b.v[0]), v3sub(b.v[2], b.v[0])));
+      var ctr = v3((b.v[0].x + b.v[2].x) / 2, (b.v[0].y + b.v[2].y) / 2, (b.v[0].z + b.v[2].z) / 2);
+      var toCam = v3norm(v3sub(camPos, ctr));
+      var lambert = Math.max(0, v3dot(n, toCam));
+      faces.push({ pts: pts, depth: sum / 4, fill: shade(b.fill, lambert), edge: b.edge });
+    }
+    // crystals
+    for (var ci = 0; ci < app.crystals.length; ci++) {
+      var cr = app.crystals[ci];
+      var cx = Math.cos(cr.orbitA) * cr.orbitR;
+      var cz = Math.sin(cr.orbitA) * cr.orbitR;
+      var cy = cr.y;
+      var s = cr.size;
+      // octahedron: 6 vertices, 8 triangles
+      var T = [
+        [0, 1, 2], [0, 2, 3], [0, 3, 4], [0, 4, 1],
+        [5, 6, 7], [5, 7, 8], [5, 8, 9], [5, 9, 6]
+      ];
+      var verts = [
+        v3(0, s, 0), v3(s, 0, 0), v3(0, 0, s), v3(-s, 0, 0),
+        v3(0, 0, -s), v3(0, -s, 0), v3(s, 0, 0), v3(0, 0, s),
+        v3(-s, 0, 0), v3(0, 0, -s)
+      ];
+      for (var ti = 0; ti < 8; ti++) {
+        var tri = T[ti];
+        var wpts = [];
+        for (var vi = 0; vi < 3; vi++) {
+          var lp = verts[tri[vi]];
+          var rp = rotY(lp, cr.orbitA * 0.5 + simTime * cr.spin);
+          wpts.push(v3add(v3(cx, cy, cz), rp));
+        }
+        var pts = [];
+        var sum = 0, ok = true;
+        for (var k = 0; k < 3; k++) {
+          var pr = project(wpts[k]);
+          pts.push(pr);
+          if (pr === null) { ok = false; break; }
+          sum += pr.z;
+        }
+        if (!ok) continue;
+        var n = v3norm(v3cross(v3sub(wpts[1], wpts[0]), v3sub(wpts[2], wpts[0])));
+        var ctr = v3((wpts[0].x + wpts[1].x + wpts[2].x) / 3, (wpts[0].y + wpts[1].y + wpts[2].y) / 3, (wpts[0].z + wpts[1].z + wpts[2].z) / 3);
+        var toCam = v3norm(v3sub(camPos, ctr));
+        var lambert = Math.max(0, v3dot(n, toCam));
+        faces.push({ pts: pts, depth: sum / 3, fill: shade(cr.color, lambert), edge: cr.color });
+      }
+    }
+
+    faces.sort(function (x, y) { return y.depth - x.depth; });
+    polys = 0;
+    for (var fi = 0; fi < faces.length; fi++) {
+      drawPoly(faces[fi].pts, faces[fi].fill, faces[fi].edge, 10);
+    }
+
+    drawParticles();
+    app.stats.polys = polys;
+  }
+
+  function updateStats() {
+    document.getElementById('fps').textContent = 'FPS: ' + app.stats.fps;
+    document.getElementById('polys').textContent = 'POLYS: ' + app.stats.polys;
+    document.getElementById('parts').textContent = 'PARTS: ' + app.stats.parts;
+  }
+
+  function frame(now) {
+    var dt = (now - last) / 1000;
+    last = now;
+    if (dt > 0.1) dt = 0.1;
+    if (dt < 0) dt = 0;
+
+    fpsAcc += dt; fpsCount++; fpsTimer += dt;
+    if (fpsTimer >= 0.5) {
+      app.stats.fps = Math.round(fpsCount / fpsAcc);
+      fpsAcc = 0; fpsCount = 0; fpsTimer = 0;
+    }
+
+    if (!app.paused) {
+      simTime += dt * app.speed;
+      update(dt * app.speed);
+    }
+    render();
+
+    statTimer += dt;
+    if (statTimer >= 0.5) {
+      statTimer = 0;
+      updateStats();
+    }
+    requestAnimationFrame(frame);
+  }
+
+  // ---- controls ----
+  var btnPause = document.getElementById('btnPause');
+  var btnOrbit = document.getElementById('btnOrbit');
+  var btnReset = document.getElementById('btnReset');
+  var speedInput = document.getElementById('speed');
+  var speedVal = document.getElementById('speedVal');
+
+  btnPause.addEventListener('click', function () {
+    app.paused = !app.paused;
+    btnPause.textContent = app.paused ? 'Resume' : 'Pause';
+  });
+  btnOrbit.addEventListener('click', function () {
+    app.orbit = !app.orbit;
+    btnOrbit.textContent = app.orbit ? 'Orbit ON' : 'Orbit OFF';
+  });
+  btnReset.addEventListener('click', function () {
+    app.camera.angle = 0;
+    app.speed = 1;
+    speedInput.value = '1';
+    speedVal.textContent = '1.0';
+    app.paused = false;
+    app.orbit = true;
+    btnPause.textContent = 'Pause';
+    btnOrbit.textContent = 'Orbit ON';
+  });
+  speedInput.addEventListener('input', function () {
+    app.speed = parseFloat(speedInput.value);
+    speedVal.textContent = app.speed.toFixed(1);
+  });
+
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Neon Portal 3D</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{width:100%;height:100%;overflow:hidden;background:#05030d;font-family:"Segoe UI",system-ui,-apple-system,sans-serif;color:#e8f6ff}
+  #c{position:fixed;inset:0;width:100vw;height:100vh;display:block;cursor:grab;touch-action:none}
+  #c.drag{cursor:grabbing}
+  .glass{position:fixed;background:rgba(255,255,255,.06);border:1px solid rgba(160,220,255,.22);
+    border-radius:16px;backdrop-filter:blur(14px) saturate(140%);-webkit-backdrop-filter:blur(14px) saturate(140%);
+    box-shadow:0 8px 32px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.12)}
+  #hud{top:18px;left:18px;padding:14px 18px;min-width:220px;user-select:none}
+  #hud h1{font-size:17px;letter-spacing:.28em;font-weight:700;
+    background:linear-gradient(90deg,#4ff8ff,#c56bff,#ff4fd8);-webkit-background-clip:text;background-clip:text;color:transparent;
+    filter:drop-shadow(0 0 6px rgba(120,200,255,.55));margin-bottom:10px}
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  .stat{background:rgba(0,0,0,.25);border-radius:10px;padding:6px 8px;text-align:center;border:1px solid rgba(120,200,255,.12)}
+  .stat b{display:block;font-size:10px;letter-spacing:.18em;color:#8fb8d8;font-weight:600}
+  .stat span{font:600 16px/1.3 ui-monospace,Consolas,monospace;color:#7ff6ff;text-shadow:0 0 8px rgba(80,240,255,.6)}
+  #controls{left:50%;bottom:20px;transform:translateX(-50%);padding:10px 14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:center}
+  button{font:600 12px/1 inherit;font-family:inherit;letter-spacing:.12em;color:#dff8ff;cursor:pointer;
+    background:rgba(80,200,255,.10);border:1px solid rgba(120,220,255,.35);border-radius:10px;padding:9px 14px;transition:.15s}
+  button:hover{background:rgba(80,200,255,.22);box-shadow:0 0 14px rgba(80,220,255,.35)}
+  button.off{color:#ffb6ec;border-color:rgba(255,110,210,.4);background:rgba(255,80,200,.10)}
+  label{font-size:11px;letter-spacing:.16em;color:#9fc4e0;display:flex;align-items:center;gap:8px}
+  input[type=range]{width:130px;accent-color:#c56bff}
+  #spv{font:600 12px ui-monospace,Consolas,monospace;color:#7ff6ff;min-width:34px}
+  #hint{position:fixed;right:18px;bottom:22px;font-size:11px;color:rgba(170,200,230,.5);letter-spacing:.08em;user-select:none}
+  @media (max-width:640px){#hint{display:none}#controls{bottom:10px;width:calc(100% - 20px)}}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="hud" class="glass">
+  <h1>NEON PORTAL 3D</h1>
+  <div class="stats">
+    <div class="stat"><b>FPS</b><span id="fps">0</span></div>
+    <div class="stat"><b>POLYS</b><span id="polys">0</span></div>
+    <div class="stat"><b>PARTS</b><span id="parts">0</span></div>
+  </div>
+</div>
+
+<div id="controls" class="glass">
+  <button id="pause">Pause</button>
+  <button id="orbit">Orbit ON</button>
+  <button id="reset">Reset</button>
+  <label>SPEED <input id="speed" type="range" min="0" max="3" step="0.05" value="1"><span id="spv">1.00×</span></label>
+</div>
+<div id="hint">drag to orbit · wheel to zoom</div>
+
+<script>
+"use strict";
+/* ================= engine: vector math + camera + projection ================= */
+const sub=(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]];
+const add=(a,b)=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]];
+const scl=(a,s)=>[a[0]*s,a[1]*s,a[2]*s];
+const dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+const norm=a=>{const l=Math.hypot(a[0],a[1],a[2])||1;return [a[0]/l,a[1]/l,a[2]/l];};
+const rotY=(p,a)=>{const c=Math.cos(a),s=Math.sin(a);return [p[0]*c+p[2]*s,p[1],-p[0]*s+p[2]*c];};
+const rotX=(p,a)=>{const c=Math.cos(a),s=Math.sin(a);return [p[0],p[1]*c-p[2]*s,p[1]*s+p[2]*c];};
+const rotZ=(p,a)=>{const c=Math.cos(a),s=Math.sin(a);return [p[0]*c-p[1]*s,p[0]*s+p[1]*c,p[2]];};
+
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+const FOV=55*Math.PI/180, NEAR=0.15;
+let W=0,H=0,DPR=1,FOC=1,bgGrad=null;
+
+function resize(){
+  DPR=Math.min(window.devicePixelRatio||1,2);
+  W=window.innerWidth;H=window.innerHeight;
+  canvas.width=Math.round(W*DPR);canvas.height=Math.round(H*DPR);
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  FOC=H/(2*Math.tan(FOV/2));
+  bgGrad=ctx.createRadialGradient(W/2,H*0.45,0,W/2,H*0.45,Math.hypot(W,H)*0.65);
+  bgGrad.addColorStop(0,'#1d0f3d');
+  bgGrad.addColorStop(0.35,'#0e0a26');
+  bgGrad.addColorStop(0.7,'#060514');
+  bgGrad.addColorStop(1,'#020208');
+}
+window.addEventListener('resize',resize);
+
+const cam={yaw:0.35,pitch:0.26,dist:11.5,target:[0,2.4,0],eye:[0,0,0],r:[1,0,0],u:[0,1,0],f:[0,0,-1]};
+function updateCam(){
+  const cp=Math.cos(cam.pitch);
+  cam.eye=add(cam.target,[Math.sin(cam.yaw)*cp*cam.dist,Math.sin(cam.pitch)*cam.dist,Math.cos(cam.yaw)*cp*cam.dist]);
+  cam.f=norm(sub(cam.target,cam.eye));
+  cam.r=norm(cross(cam.f,[0,1,0]));
+  cam.u=cross(cam.r,cam.f);
+}
+function toCam(p){const d=sub(p,cam.eye);return [dot(d,cam.r),dot(d,cam.u),dot(d,cam.f)];}
+function toCamDir(d){return [dot(d,cam.r),dot(d,cam.u),dot(d,cam.f)];}
+function proj(c){return [W/2+c[0]*FOC/c[2],H/2-c[1]*FOC/c[2]];}
+/* clip segment (camera space) against near plane; returns null or [a,b] */
+function clipSeg(a,b){
+  if(a[2]<NEAR&&b[2]<NEAR)return null;
+  if(a[2]<NEAR){const t=(NEAR-a[2])/(b[2]-a[2]);a=[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,NEAR];}
+  else if(b[2]<NEAR){const t=(NEAR-b[2])/(a[2]-b[2]);b=[b[0]+(a[0]-b[0])*t,b[1]+(a[1]-b[1])*t,NEAR];}
+  return [a,b];
+}
+
+/* ================= scene ================= */
+const PORTAL=[0,2.6,0];
+const LIGHT=norm([0.45,0.85,0.55]);
+
+// 6 boxes × 6 faces = 36 box faces
+const BOXES=[
+  {c:[0,0.2,0],  s:[7.0,0.4,4.6], base:[22,26,52], edge:'80,240,255'},   // lower tier
+  {c:[0,0.6,0],  s:[5.4,0.4,3.4], base:[26,24,58], edge:'140,160,255'},  // upper tier
+  {c:[-1.9,2.6,0],s:[0.6,3.6,0.6],base:[30,20,56], edge:'255,80,220'},   // left pillar
+  {c:[1.9,2.6,0], s:[0.6,3.6,0.6],base:[30,20,56], edge:'255,80,220'},   // right pillar
+  {c:[0,4.65,0], s:[4.6,0.5,0.9], base:[28,22,60], edge:'190,110,255'},  // lintel
+  {c:[0,5.05,0], s:[2.4,0.3,0.7], base:[40,30,50], edge:'255,210,110'},  // crown cap
+];
+const BOX_FACES=[ // [indices, normal]  vertex i: x=bit0, y=bit1, z=bit2
+  [[0,2,6,4],[-1,0,0]],[[1,5,7,3],[1,0,0]],
+  [[0,4,5,1],[0,-1,0]],[[2,3,7,6],[0,1,0]],
+  [[0,1,3,2],[0,0,-1]],[[4,6,7,5],[0,0,1]],
+];
+const faces=[];
+for(const b of BOXES){
+  const v=[];
+  for(let i=0;i<8;i++)v.push([b.c[0]+(i&1?.5:-.5)*b.s[0],b.c[1]+(i&2?.5:-.5)*b.s[1],b.c[2]+(i&4?.5:-.5)*b.s[2]]);
+  for(const [idx,n] of BOX_FACES){
+    const pts=idx.map(i=>v[i]);
+    const ctr=scl(pts.reduce((a,p)=>add(a,p),[0,0,0]),0.25);
+    faces.push({pts,n,ctr,base:b.base,edge:b.edge});
+  }
+}
+
+// six octahedral crystals → 48 triangles
+const CRYSTAL_HUES=[185,300,265,160,330,210];
+const crystals=CRYSTAL_HUES.map((h,i)=>({hue:h,phase:i*Math.PI/3,size:0.34+0.06*(i%2)}));
+const OCT_V=[[1,0,0],[0,0,1],[-1,0,0],[0,0,-1],[0,1.45,0],[0,-1.45,0]];
+const OCT_T=[];
+for(let i=0;i<4;i++){const a=i,b=(i+1)%4;OCT_T.push([4,a,b],[5,b,a]);}
+
+// stars
+const STAR_N=180, stars=[];
+// particles
+const PART_N=110, parts=[];
+function rnd(a,b){return a+Math.random()*(b-a);}
+function initStars(){
+  stars.length=0;
+  for(let i=0;i<STAR_N;i++){
+    const u=Math.random()*2-1,th=Math.random()*Math.PI*2,r=Math.sqrt(1-u*u);
+    stars.push({d:[r*Math.cos(th),u*0.9+0.1,r*Math.sin(th)],size:rnd(0.6,1.9),ph:rnd(0,6.28),sp:rnd(0.8,3.2),hue:Math.random()<0.25?rnd(180,320):0});
+  }
+}
+function spawnPart(p,fresh){
+  const a=rnd(0,Math.PI*2),r=Math.sqrt(Math.random())*2.4;
+  p.x=Math.cos(a)*r;p.z=Math.sin(a)*r*0.7;
+  p.y=fresh?rnd(0.8,6):rnd(0.8,1.2);
+  p.vy=rnd(0.35,1.1);p.life=0;p.max=rnd(3,7);
+  p.hue=Math.random()<0.5?rnd(175,200):rnd(285,325);
+  p.sz=rnd(0.02,0.045);p.sw=rnd(0,6.28);
+  if(fresh)p.life=rnd(0,p.max);
+}
+function initParts(){parts.length=0;for(let i=0;i<PART_N;i++){const p={};spawnPart(p,true);parts.push(p);}}
+
+/* ================= renderer ================= */
+let drawList=[], polyCount=0;
+
+function shade(base,n,ctr,t){
+  const diff=Math.max(0,dot(n,LIGHT));
+  const toP=sub(PORTAL,ctr),dist=Math.hypot(toP[0],toP[1],toP[2]);
+  const pg=Math.max(0,dot(n,scl(toP,1/dist)))*(0.9/(1+dist*dist*0.35))*(0.85+0.15*Math.sin(t*3));
+  const k=0.5+0.8*diff;
+  return [base[0]*k+110*pg,base[1]*k+70*pg,base[2]*k+200*pg].map(v=>Math.min(255,v|0));
+}
+
+function pushPoly(pts3,n,ctr,rgb,edge,edgeA){
+  const cp=pts3.map(toCam);
+  for(const c of cp)if(c[2]<NEAR)return;
+  let z=0;for(const c of cp)z+=c[2];
+  drawList.push({z:z/cp.length,k:0,sp:cp.map(proj),rgb,edge,edgeA});
+  polyCount++;
+}
+
+function buildGeometry(t){
+  // box faces with backface culling
+  for(const f of faces){
+    if(dot(f.n,sub(cam.eye,f.ctr))<=0)continue;
+    pushPoly(f.pts,f.n,f.ctr,shade(f.base,f.n,f.ctr,t),f.edge,0.75);
+  }
+  // crystals
+  for(const cr of crystals){
+    const ang=t*0.45+cr.phase;
+    const c=[Math.cos(ang)*3.6,PORTAL[1]+Math.sin(t*1.3+cr.phase*2)*0.45,Math.sin(ang)*3.6];
+    const spin=t*1.6+cr.phase, tilt=0.35*Math.sin(t*0.9+cr.phase);
+    const v=OCT_V.map(p=>add(c,rotX(rotY(scl(p,cr.size),spin),tilt)));
+    const hueRgb=hsl(cr.hue,0.95,0.55);
+    for(const tri of OCT_T){
+      const p=tri.map(i=>v[i]);
+      let n=norm(cross(sub(p[1],p[0]),sub(p[2],p[0])));
+      const ctr=scl(add(add(p[0],p[1]),p[2]),1/3);
+      if(dot(n,sub(ctr,c))<0)n=scl(n,-1);
+      if(dot(n,sub(cam.eye,ctr))<=0)continue;
+      const diff=Math.max(0,dot(n,LIGHT));
+      const k=0.35+0.75*diff;
+      const rgb=hueRgb.map(x=>Math.min(255,(x*k+40*diff*diff)|0));
+      pushPoly(p,n,ctr,rgb,'255,255,255',0.35+0.3*diff);
+    }
+  }
+}
+
+function hsl(h,s,l){
+  h/=360;const f=n=>{const k=(n+h*12)%12,a=s*Math.min(l,1-l);return l-a*Math.max(-1,Math.min(k-3,9-k,1));};
+  return [f(0)*255,f(8)*255,f(4)*255];
+}
+
+function buildPortal(t){
+  // core
+  const cc=toCam(PORTAL);
+  if(cc[2]>NEAR){
+    const N=48,R=1.15,ring=[];
+    for(let i=0;i<N;i++){const a=i/N*Math.PI*2;ring.push(proj(toCam([PORTAL[0]+Math.cos(a)*R,PORTAL[1]+Math.sin(a)*R,PORTAL[2]])));}
+    drawList.push({z:cc[2],k:1,c:proj(cc),rs:R*FOC/cc[2],ring,t});
+  }
+  // two counter-rotating segmented rings
+  const rings=[
+    {R:1.27,rot:t*1.1, tiltY:0.22*Math.sin(t*0.7), tiltX:0,              col:'80,245,255', w:0.07,gap:[0,24,48]},
+    {R:1.47,rot:-t*0.8,tiltY:0,              tiltX:0.22*Math.sin(t*0.6+1),col:'255,90,220', w:0.06,gap:[12,36,60]},
+  ];
+  const N=72;
+  for(const rg of rings){
+    const pts=[];
+    for(let i=0;i<=N;i++){
+      const a=i/N*Math.PI*2;
+      let p=rotZ([Math.cos(a)*rg.R,Math.sin(a)*rg.R,0],rg.rot);
+      p=rotX(rotY(p,rg.tiltY),rg.tiltX);
+      pts.push(toCam(add(PORTAL,p)));
+    }
+    for(let i=0;i<N;i++){
+      let skip=false;for(const g of rg.gap)if(i>=g&&i<g+3)skip=true;
+      if(skip)continue;
+      const s=clipSeg(pts[i],pts[i+1]);if(!s)continue;
+      const z=(s[0][2]+s[1][2])/2;
+      const bright=0.55+0.45*Math.sin(i/N*Math.PI*6+t*4);
+      drawList.push({z,k:2,a:proj(s[0]),b:proj(s[1]),w:Math.max(1,rg.w*FOC/z),col:rg.col,al:bright});
+    }
+  }
+}
+
+function buildParticles(){
+  for(const p of parts){
+    const c=toCam([p.x+Math.sin(p.sw+p.life*1.5)*0.15,p.y,p.z]);
+    if(c[2]<NEAR)continue;
+    const lf=p.life/p.max;
+    const al=Math.min(1,lf*5)*(1-lf);
+    if(al<=0.01)continue;
+    drawList.push({z:c[2],k:3,s:proj(c),r:Math.max(0.6,p.sz*FOC/c[2]),hue:p.hue,al});
+  }
+}
+
+function drawBackground(t){
+  ctx.globalCompositeOperation='source-over';
+  ctx.fillStyle=bgGrad;ctx.fillRect(0,0,W,H);
+  // stars (direction only → infinitely far)
+  ctx.globalCompositeOperation='lighter';
+  for(const s of stars){
+    const c=toCamDir(s.d);if(c[2]<=0.05)continue;
+    const p=proj(c);if(p[0]<-5||p[0]>W+5||p[1]<-5||p[1]>H+5)continue;
+    const tw=0.35+0.65*(0.5+0.5*Math.sin(t*s.sp+s.ph));
+    ctx.fillStyle=s.hue?`hsla(${s.hue},90%,75%,${tw})`:`rgba(230,240,255,${tw})`;
+    const r=s.size*(0.7+0.5*tw);
+    ctx.fillRect(p[0]-r/2,p[1]-r/2,r,r);
+    if(s.size>1.5){ctx.fillStyle=`rgba(200,220,255,${tw*0.15})`;ctx.fillRect(p[0]-r*1.5,p[1]-r*1.5,r*3,r*3);}
+  }
+}
+
+function drawGrid(t){
+  const EXT=22,STEP=1,SEG=2;
+  const buckets=[[],[],[],[],[]];
+  const addSeg=(a,b)=>{
+    const mx=(a[0]+b[0])/2,mz=(a[2]+b[2])/2,d=Math.hypot(mx,mz);
+    const fade=Math.max(0,1-d/EXT);
+    const pulse=0.5+0.5*Math.sin(d*0.9-t*2.4);
+    const v=fade*(0.35+0.65*pulse*pulse);
+    const bi=Math.min(4,(v*5)|0);if(v<0.04)return;
+    const s=clipSeg(toCam(a),toCam(b));if(!s)return;
+    buckets[bi].push(proj(s[0]),proj(s[1]));
+  };
+  for(let i=-EXT;i<=EXT;i+=STEP){
+    for(let j=-EXT;j<EXT;j+=SEG){addSeg([i,0,j],[i,0,j+SEG]);addSeg([j,0,i],[j+SEG,0,i]);}
+  }
+  ctx.globalCompositeOperation='lighter';
+  ctx.lineCap='round';
+  for(let b=0;b<5;b++){
+    const L=buckets[b];if(!L.length)continue;
+    const a=(b+1)/5;
+    ctx.beginPath();
+    for(let i=0;i<L.length;i+=2){ctx.moveTo(L[i][0],L[i][1]);ctx.lineTo(L[i+1][0],L[i+1][1]);}
+    ctx.strokeStyle=`rgba(190,60,255,${0.10*a})`;ctx.lineWidth=4;ctx.stroke();
+    ctx.strokeStyle=`rgba(90,220,255,${0.55*a})`;ctx.lineWidth=1;ctx.stroke();
+  }
+  // floor glow under portal
+  const g=toCam([0,0,0]);
+  if(g[2]>NEAR){
+    const p=proj(g),r=6*FOC/g[2];
+    const gr=ctx.createRadialGradient(p[0],p[1],0,p[0],p[1],r);
+    gr.addColorStop(0,'rgba(140,80,255,0.28)');gr.addColorStop(1,'rgba(140,80,255,0)');
+    ctx.fillStyle=gr;ctx.save();ctx.translate(p[0],p[1]);ctx.scale(1,0.45);ctx.translate(-p[0],-p[1]);
+    ctx.beginPath();ctx.arc(p[0],p[1],r,0,Math.PI*2);ctx.fill();ctx.restore();
+  }
+}
+
+function drawItem(it){
+  switch(it.k){
+    case 0:{ // polygon
+      ctx.globalCompositeOperation='source-over';
+      const s=it.sp;
+      ctx.beginPath();ctx.moveTo(s[0][0],s[0][1]);
+      for(let i=1;i<s.length;i++)ctx.lineTo(s[i][0],s[i][1]);
+      ctx.closePath();
+      ctx.fillStyle=`rgb(${it.rgb[0]},${it.rgb[1]},${it.rgb[2]})`;ctx.fill();
+      ctx.lineJoin='round';
+      ctx.strokeStyle=`rgba(${it.edge},${it.edgeA*0.25})`;ctx.lineWidth=3.5;ctx.stroke();
+      ctx.strokeStyle=`rgba(${it.edge},${it.edgeA})`;ctx.lineWidth=1.1;ctx.stroke();
+      break;}
+    case 1:{ // portal core
+      ctx.globalCompositeOperation='lighter';
+      const [cx,cy]=it.c,R=it.rs,t=it.t;
+      const g=ctx.createRadialGradient(cx,cy,0,cx,cy,R*1.05);
+      const pulse=0.85+0.15*Math.sin(t*3);
+      g.addColorStop(0,`rgba(255,255,255,${0.95*pulse})`);
+      g.addColorStop(0.18,`rgba(150,250,255,${0.85*pulse})`);
+      g.addColorStop(0.55,`rgba(150,70,255,${0.55*pulse})`);
+      g.addColorStop(0.85,`rgba(255,60,200,${0.35*pulse})`);
+      g.addColorStop(1,'rgba(255,60,200,0)');
+      ctx.beginPath();ctx.moveTo(it.ring[0][0],it.ring[0][1]);
+      for(const p of it.ring)ctx.lineTo(p[0],p[1]);
+      ctx.closePath();ctx.fillStyle=g;ctx.fill();
+      // swirl arms (in-plane, mapped onto projected ellipse via ring basis)
+      const ex=[(it.ring[0][0]-it.ring[24][0])/2,(it.ring[0][1]-it.ring[24][1])/2];
+      const ey=[(it.ring[12][0]-it.ring[36][0])/2,(it.ring[12][1]-it.ring[36][1])/2];
+      ctx.lineCap='round';
+      for(let arm=0;arm<4;arm++){
+        ctx.beginPath();
+        for(let i=0;i<=40;i++){
+          const f=i/40,r=0.12+f*0.85,a=arm*Math.PI/2+f*3.2-t*2.2;
+          const x=Math.cos(a)*r,y=Math.sin(a)*r;
+          const px=cx+ex[0]*x+ey[0]*y,py=cy+ex[1]*x+ey[1]*y;
+          i?ctx.lineTo(px,py):ctx.moveTo(px,py);
+        }
+        ctx.strokeStyle=arm%2?'rgba(255,120,230,0.35)':'rgba(120,255,255,0.35)';
+        ctx.lineWidth=Math.max(1,R*0.05);ctx.stroke();
+      }
+      // halo
+      const h=ctx.createRadialGradient(cx,cy,R*0.8,cx,cy,R*2.4);
+      h.addColorStop(0,'rgba(120,120,255,0.18)');h.addColorStop(1,'rgba(120,120,255,0)');
+      ctx.fillStyle=h;ctx.fillRect(cx-R*2.4,cy-R*2.4,R*4.8,R*4.8);
+      break;}
+    case 2:{ // ring segment
+      ctx.globalCompositeOperation='lighter';ctx.lineCap='round';
+      ctx.beginPath();ctx.moveTo(it.a[0],it.a[1]);ctx.lineTo(it.b[0],it.b[1]);
+      ctx.strokeStyle=`rgba(${it.col},${0.16*it.al})`;ctx.lineWidth=it.w*3.2;ctx.stroke();
+      ctx.strokeStyle=`rgba(${it.col},${0.9*it.al})`;ctx.lineWidth=it.w;ctx.stroke();
+      ctx.strokeStyle=`rgba(255,255,255,${0.6*it.al})`;ctx.lineWidth=Math.max(0.6,it.w*0.3);ctx.stroke();
+      break;}
+    case 3:{ // particle
+      ctx.globalCompositeOperation='lighter';
+      const r=it.r;
+      ctx.fillStyle=`hsla(${it.hue},100%,70%,${it.al*0.18})`;
+      ctx.beginPath();ctx.arc(it.s[0],it.s[1],r*2.2,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle=`hsla(${it.hue},100%,85%,${it.al})`;
+      ctx.beginPath();ctx.arc(it.s[0],it.s[1],r,0,Math.PI*2);ctx.fill();
+      break;}
+  }
+}
+
+function render(t){
+  updateCam();
+  drawBackground(t);
+  drawGrid(t);
+  drawList=[];polyCount=0;
+  buildGeometry(t);
+  buildPortal(t);
+  buildParticles();
+  drawList.sort((a,b)=>b.z-a.z); // painter's algorithm: far → near
+  for(const it of drawList)drawItem(it);
+  ctx.globalCompositeOperation='source-over';
+}
+
+/* ================= app: loop + HUD ================= */
+const $=id=>document.getElementById(id);
+const state={t:0,paused:false,orbit:true,speed:1};
+let last=performance.now(),fpsAcc=0,fpsFrames=0,shownPolys=-1,shownParts=-1;
+
+function step(dt){
+  const d=dt*state.speed;
+  state.t+=d;
+  if(state.orbit&&!dragging)cam.yaw+=d*0.22;
+  for(const p of parts){
+    p.life+=d;p.y+=p.vy*d;
+    if(p.life>=p.max||p.y>7)spawnPart(p,false);
+  }
+}
+
+function frame(now){
+  const dt=Math.min(0.1,(now-last)/1000);last=now;
+  if(!state.paused)step(dt);
+  render(state.t);
+  if(polyCount!==shownPolys){shownPolys=polyCount;$('polys').textContent=polyCount;}
+  if(parts.length!==shownParts){shownParts=parts.length;$('parts').textContent=parts.length;}
+  fpsAcc+=dt;fpsFrames++;
+  if(fpsAcc>=0.5){
+    $('fps').textContent=Math.round(fpsFrames/fpsAcc);
+    fpsAcc=0;fpsFrames=0;
+  }
+  requestAnimationFrame(frame);
+}
+
+// buttons
+$('pause').onclick=()=>{state.paused=!state.paused;$('pause').textContent=state.paused?'Play':'Pause';$('pause').classList.toggle('off',state.paused);};
+$('orbit').onclick=()=>{state.orbit=!state.orbit;$('orbit').textContent=state.orbit?'Orbit ON':'Orbit OFF';$('orbit').classList.toggle('off',!state.orbit);};
+$('speed').oninput=e=>{state.speed=parseFloat(e.target.value);$('spv').textContent=state.speed.toFixed(2)+'×';};
+$('reset').onclick=()=>{
+  state.t=0;state.paused=false;state.orbit=true;state.speed=1;
+  cam.yaw=0.35;cam.pitch=0.26;cam.dist=11.5;
+  $('speed').value=1;$('spv').textContent='1.00×';
+  $('pause').textContent='Pause';$('pause').classList.remove('off');
+  $('orbit').textContent='Orbit ON';$('orbit').classList.remove('off');
+  initParts();
+};
+
+// pointer orbit + wheel zoom
+let dragging=false,px=0,py=0;
+canvas.addEventListener('pointerdown',e=>{dragging=true;px=e.clientX;py=e.clientY;canvas.setPointerCapture(e.pointerId);canvas.classList.add('drag');});
+canvas.addEventListener('pointermove',e=>{
+  if(!dragging)return;
+  cam.yaw-=(e.clientX-px)*0.006;
+  cam.pitch=Math.max(-0.05,Math.min(1.2,cam.pitch+(e.clientY-py)*0.005));
+  px=e.clientX;py=e.clientY;
+});
+const endDrag=()=>{dragging=false;canvas.classList.remove('drag');};
+canvas.addEventListener('pointerup',endDrag);
+canvas.addEventListener('pointercancel',endDrag);
+canvas.addEventListener('wheel',e=>{e.preventDefault();cam.dist=Math.max(6,Math.min(22,cam.dist*(1+Math.sign(e.deltaY)*0.08)));},{passive:false});
+window.addEventListener('keydown',e=>{if(e.code==='Space'){e.preventDefault();$('pause').click();}});
+
+resize();initStars();initParts();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

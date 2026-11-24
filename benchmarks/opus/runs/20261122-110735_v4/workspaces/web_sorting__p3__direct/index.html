@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Visualizzatore di algoritmi di ordinamento</title>
+<style>
+  :root {
+    --bg: #12141a;
+    --panel: #1c1f28;
+    --text: #e4e6eb;
+    --muted: #8a90a0;
+    --bar: #4a6fa5;
+    --compare: #f0b429;
+    --sorted: #3ecf8e;
+    --accent: #6c8cff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 16px;
+  }
+  h1 { font-size: 1.5rem; margin: 0 0 16px; font-weight: 600; }
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+    justify-content: center;
+    background: var(--panel);
+    padding: 12px 16px;
+    border-radius: 10px;
+    margin-bottom: 16px;
+  }
+  button, select {
+    background: #2a2f3d;
+    color: var(--text);
+    border: 1px solid #3a4050;
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-size: 0.95rem;
+    cursor: pointer;
+  }
+  button:hover:not(:disabled), select:hover { border-color: var(--accent); }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+  #playBtn { min-width: 90px; background: var(--accent); border-color: var(--accent); color: #fff; }
+  label { color: var(--muted); font-size: 0.9rem; display: flex; align-items: center; gap: 8px; }
+  input[type=range] { accent-color: var(--accent); width: 140px; }
+  .stats {
+    display: flex;
+    gap: 24px;
+    margin-bottom: 12px;
+    font-size: 1rem;
+  }
+  .stats span b { color: var(--accent); font-variant-numeric: tabular-nums; }
+  #status { color: var(--muted); }
+  #chart {
+    width: min(960px, 100%);
+    height: 420px;
+    background: var(--panel);
+    border-radius: 10px;
+    padding: 12px;
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+  }
+  .bar {
+    flex: 1;
+    background: var(--bar);
+    border-radius: 3px 3px 0 0;
+    transition: background-color 0.08s;
+  }
+  .bar.compare { background: var(--compare); }
+  .bar.sorted { background: var(--sorted); }
+  .legend { display: flex; gap: 18px; margin-top: 12px; color: var(--muted); font-size: 0.9rem; }
+  .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+</style>
+</head>
+<body>
+  <h1>Visualizzatore di algoritmi di ordinamento</h1>
+
+  <div class="controls">
+    <button id="playBtn" type="button">Play</button>
+    <button id="stepBtn" type="button">Step</button>
+    <button id="resetBtn" type="button">Reset</button>
+    <label>Algoritmo
+      <select id="algoSelect">
+        <option value="bubble">Bubble sort</option>
+        <option value="insertion">Insertion sort</option>
+        <option value="quick">Quick sort</option>
+      </select>
+    </label>
+    <label>Velocità
+      <input id="speed" type="range" min="1" max="100" value="50">
+    </label>
+  </div>
+
+  <div class="stats">
+    <span>Confronti: <b id="comparisons">0</b></span>
+    <span>Scambi: <b id="swaps">0</b></span>
+    <span id="status">In pausa</span>
+  </div>
+
+  <div id="chart"></div>
+
+  <div class="legend">
+    <span><i style="background:var(--bar)"></i>Non ordinata</span>
+    <span><i style="background:var(--compare)"></i>A confronto</span>
+    <span><i style="background:var(--sorted)"></i>Ordinata</span>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+
+  var SIZE = 40;
+  var chart = document.getElementById("chart");
+  var playBtn = document.getElementById("playBtn");
+  var stepBtn = document.getElementById("stepBtn");
+  var resetBtn = document.getElementById("resetBtn");
+  var algoSelect = document.getElementById("algoSelect");
+  var speedInput = document.getElementById("speed");
+  var compEl = document.getElementById("comparisons");
+  var swapEl = document.getElementById("swaps");
+  var statusEl = document.getElementById("status");
+
+  var arr = [];
+  var bars = [];
+  var sorted = new Set();
+  var comparing = [];
+  var comparisons = 0;
+  var swaps = 0;
+  var gen = null;
+  var running = false;
+  var finished = false;
+  var timer = null;
+
+  // ---- Algoritmi: generatori che fanno yield a ogni confronto ----
+  function compare(i, j) {
+    comparisons++;
+    comparing = [i, j];
+    return arr[i] > arr[j];
+  }
+  function swap(i, j) {
+    if (i === j) return;
+    var t = arr[i]; arr[i] = arr[j]; arr[j] = t;
+    swaps++;
+  }
+
+  function* bubbleSort() {
+    var n = arr.length;
+    for (var end = n - 1; end > 0; end--) {
+      var swapped = false;
+      for (var i = 0; i < end; i++) {
+        var gt = compare(i, i + 1);
+        yield;
+        if (gt) { swap(i, i + 1); swapped = true; }
+      }
+      sorted.add(end);
+      if (!swapped) break;
+    }
+    for (var k = 0; k < n; k++) sorted.add(k);
+  }
+
+  function* insertionSort() {
+    var n = arr.length;
+    for (var i = 1; i < n; i++) {
+      for (var j = i; j > 0; j--) {
+        var gt = compare(j - 1, j);
+        yield;
+        if (!gt) break;
+        swap(j - 1, j);
+      }
+    }
+    for (var k = 0; k < n; k++) sorted.add(k);
+  }
+
+  function* quickSort(lo, hi) {
+    if (lo > hi) return;
+    if (lo === hi) { sorted.add(lo); return; }
+    // Partizione di Lomuto con pivot = arr[hi]
+    var p = lo;
+    for (var i = lo; i < hi; i++) {
+      var gt = compare(i, hi); // arr[i] > pivot ?
+      yield;
+      if (!gt) { swap(i, p); p++; }
+    }
+    swap(p, hi);
+    sorted.add(p);
+    yield* quickSort(lo, p - 1);
+    yield* quickSort(p + 1, hi);
+  }
+
+  function makeGenerator() {
+    switch (algoSelect.value) {
+      case "insertion": return insertionSort();
+      case "quick": return (function* () {
+        yield* quickSort(0, arr.length - 1);
+        for (var k = 0; k < arr.length; k++) sorted.add(k);
+      })();
+      default: return bubbleSort();
+    }
+  }
+
+  // ---- Rendering ----
+  function buildBars() {
+    chart.innerHTML = "";
+    bars = [];
+    for (var i = 0; i < SIZE; i++) {
+      var b = document.createElement("div");
+      b.className = "bar";
+      chart.appendChild(b);
+      bars.push(b);
+    }
+  }
+
+  function render() {
+    for (var i = 0; i < SIZE; i++) {
+      var b = bars[i];
+      b.style.height = arr[i] + "%";
+      var cls = "bar";
+      if (comparing.indexOf(i) !== -1) cls += " compare";
+      else if (sorted.has(i)) cls += " sorted";
+      if (b.className !== cls) b.className = cls;
+    }
+    compEl.textContent = comparisons;
+    swapEl.textContent = swaps;
+  }
+
+  function updateUI() {
+    playBtn.textContent = running ? "Pause" : "Play";
+    playBtn.disabled = finished;
+    stepBtn.disabled = finished || running;
+    statusEl.textContent = finished ? "Completato" : (running ? "In esecuzione" : "In pausa");
+  }
+
+  // ---- Controllo esecuzione ----
+  function step() {
+    if (finished) return;
+    if (!gen) gen = makeGenerator();
+    var res = gen.next();
+    if (res.done) {
+      finished = true;
+      comparing = [];
+      stop();
+    }
+    render();
+    updateUI();
+  }
+
+  function delay() {
+    // velocità 1 -> 500 ms, 100 -> ~5 ms
+    var v = Number(speedInput.value);
+    return Math.round(500 * Math.pow(0.01, (v - 1) / 99));
+  }
+
+  function tick() {
+    timer = null;
+    if (!running) return;
+    step();
+    if (running) timer = setTimeout(tick, delay());
+  }
+
+  function play() {
+    if (finished) return;
+    running = true;
+    updateUI();
+    tick();
+  }
+
+  function stop() {
+    running = false;
+    if (timer !== null) { clearTimeout(timer); timer = null; }
+  }
+
+  function reset() {
+    stop();
+    arr = [];
+    for (var i = 0; i < SIZE; i++) arr.push(5 + Math.floor(Math.random() * 96));
+    sorted = new Set();
+    comparing = [];
+    comparisons = 0;
+    swaps = 0;
+    gen = null;
+    finished = false;
+    render();
+    updateUI();
+  }
+
+  playBtn.addEventListener("click", function () {
+    if (running) { stop(); updateUI(); } else { play(); }
+  });
+  stepBtn.addEventListener("click", step);
+  resetBtn.addEventListener("click", reset);
+  algoSelect.addEventListener("change", reset);
+  speedInput.addEventListener("input", function () {
+    if (running && timer !== null) {
+      clearTimeout(timer);
+      timer = setTimeout(tick, delay());
+    }
+  });
+
+  buildBars();
+  reset();
+})();
+</script>
+</body>
+</html>

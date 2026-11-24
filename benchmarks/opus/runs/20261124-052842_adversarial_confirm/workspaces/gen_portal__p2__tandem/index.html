@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NEON PORTAL 3D</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: #05010d;
+  }
+  #c {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+  }
+  #hud {
+    position: fixed;
+    top: 16px;
+    left: 16px;
+    z-index: 10;
+    min-width: 210px;
+    padding: 14px 16px;
+    background: rgba(255,255,255,0.08);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 14px;
+    color: #ffffff;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.45);
+  }
+  #hud h1 {
+    margin: 0 0 10px 0;
+    font-size: 18px;
+    letter-spacing: 2px;
+    color: #00f0ff;
+    text-shadow: 0 0 12px rgba(0,240,255,0.7);
+  }
+  .stats {
+    display: flex;
+    gap: 14px;
+    margin-bottom: 12px;
+  }
+  .stat {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.1;
+  }
+  .stat .lbl {
+    font-size: 10px;
+    letter-spacing: 1px;
+    color: rgba(255,255,255,0.55);
+  }
+  .stat .val {
+    font-size: 16px;
+    font-weight: 700;
+    color: #ffffff;
+    text-shadow: 0 0 8px rgba(0,240,255,0.5);
+  }
+  .row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  button {
+    font-family: inherit;
+    font-size: 12px;
+    color: #ffffff;
+    background: rgba(0,240,255,0.12);
+    border: 1px solid rgba(0,240,255,0.4);
+    border-radius: 8px;
+    padding: 6px 10px;
+    cursor: pointer;
+    transition: background 0.15s, box-shadow 0.15s;
+  }
+  button:hover {
+    background: rgba(0,240,255,0.22);
+    box-shadow: 0 0 12px rgba(0,240,255,0.4);
+  }
+  .slider {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .slider label {
+    font-size: 12px;
+    color: rgba(255,255,255,0.7);
+  }
+  input[type=range] {
+    width: 120px;
+    accent-color: #00f0ff;
+  }
+</style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+  <div id="hud">
+    <h1>NEON PORTAL 3D</h1>
+    <div class="stats">
+      <div class="stat"><span class="lbl">FPS</span><span class="val" id="fps">0</span></div>
+      <div class="stat"><span class="lbl">POLYS</span><span class="val" id="polys">0</span></div>
+      <div class="stat"><span class="lbl">PARTS</span><span class="val" id="parts">110</span></div>
+    </div>
+    <div class="row">
+      <button id="btnPause">Pause</button>
+      <button id="btnOrbit">Orbit ON</button>
+      <button id="btnReset">Reset</button>
+    </div>
+    <div class="slider">
+      <label for="speed">Speed</label>
+      <input type="range" id="speed" min="0" max="3" step="0.1" value="1">
+    </div>
+  </div>
+  <script src="engine3d.js"></script>
+  <script src="scene.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

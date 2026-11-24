@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Boids</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{margin:0;overflow:hidden;background:#070b14;font-family:system-ui,sans-serif}
+#c{display:block;width:100vw;height:100vh;background:#070b14}
+#hud{position:fixed;top:16px;left:16px;background:rgba(255,255,255,0.08);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.18);border-radius:14px;padding:14px 18px;color:#e2e8f0;font-family:system-ui,sans-serif;font-size:14px;min-width:180px;z-index:10}
+#hud .row{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+#hud .row:last-child{margin-bottom:0}
+#hud label{font-weight:500}
+#hud .val{font-variant-numeric:tabular-nums}
+#hud .controls{margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+#hud button{background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.2);color:#e2e8f0;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:13px;font-family:system-ui,sans-serif}
+#hud button:hover{background:rgba(255,255,255,0.2)}
+#hud input[type=range]{width:100px;accent-color:#7dd3fc}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">
+  <div class="row"><label>FPS</label><span id="fps" class="val">0</span></div>
+  <div class="row"><label>Boids</label><span id="count" class="val">0</span></div>
+  <div class="row"><label>Velocità</label><span id="speedVal" class="val">1.0</span></div>
+  <div class="controls">
+    <button id="play">Play</button>
+    <button id="step">Step</button>
+    <button id="reset">Reset</button>
+    <input type="range" id="speed" min="0.5" max="3.0" step="0.1" value="1.0">
+  </div>
+</div>
+<script>
+(function(){
+"use strict";
+var canvas=document.getElementById("c");
+var ctx=canvas.getContext("2d");
+var fpsEl=document.getElementById("fps");
+var countEl=document.getElementById("count");
+var speedValEl=document.getElementById("speedVal");
+var playBtn=document.getElementById("play");
+var stepBtn=document.getElementById("step");
+var resetBtn=document.getElementById("reset");
+var speedSlider=document.getElementById("speed");
+
+var W=0,H=0;
+var boids=[];
+var running=false;
+var speed=1.0;
+var fps=0;
+var frameCount=0;
+var lastFpsTime=performance.now();
+
+var PERCEPTION=50;
+var SEP_DIST=25;
+var MAX_SPEED=3;
+var MAX_FORCE=0.05;
+
+function resize(){
+  W=window.innerWidth;
+  H=window.innerHeight;
+  canvas.width=W;
+  canvas.height=H;
+}
+window.addEventListener("resize",resize);
+resize();
+
+function rand(a,b){return a+Math.random()*(b-a)}
+
+function makeBoid(x,y){
+  var angle=Math.random()*Math.PI*2;
+  var spd=rand(1,2);
+  return{x:x,y:y,vx:Math.cos(angle)*spd,vy:Math.sin(angle)*spd};
+}
+
+function initBoids(n){
+  boids=[];
+  for(var i=0;i<n;i++){
+    boids.push(makeBoid(rand(0,W),rand(0,H)));
+  }
+  updateCount();
+}
+
+function updateCount(){
+  countEl.textContent=String(boids.length);
+}
+
+function addBoid(x,y){
+  boids.push(makeBoid(x,y));
+  updateCount();
+}
+
+function step(){
+  var i,j,bx,by,bvx,bvy;
+  var n=boids.length;
+  var newVx=new Float64Array(n);
+  var newVy=new Float64Array(n);
+
+  for(i=0;i<n;i++){
+    var b=boids[i];
+    var sepX=0,sepY=0;
+    var aliX=0,aliY=0;
+    var cohX=0,cohY=0;
+    var neighbors=0;
+
+    for(j=0;j<n;j++){
+      if(i===j)continue;
+      var o=boids[j];
+      var dx=o.x-b.x;
+      var dy=o.y-b.y;
+      var dist=Math.sqrt(dx*dx+dy*dy);
+      if(dist<PERCEPTION&&dist>0){
+        neighbors++;
+        aliX+=o.vx;aliY+=o.vy;
+        cohX+=o.x;cohY+=o.y;
+        if(dist<SEP_DIST){
+          sepX-=dx/dist;
+          sepY-=dy/dist;
+        }
+      }
+    }
+
+    var ax=0,ay=0;
+
+    if(neighbors>0){
+      // Separation
+      var sepMag=Math.sqrt(sepX*sepX+sepY*sepY);
+      if(sepMag>0){
+        sepX=sepX/sepMag*MAX_SPEED-b.vx;
+        sepY=sepY/sepMag*MAX_SPEED-b.vy;
+        var sMag=Math.sqrt(sepX*sepX+sepY*sepY);
+        if(sMag>MAX_FORCE){sepX=sepX/sMag*MAX_FORCE;sepY=sepY/sMag*MAX_FORCE;}
+        ax+=sepX*1.5;
+        ay+=sepY*1.5;
+      }
+
+      // Alignment
+      aliX/=neighbors;aliY/=neighbors;
+      var aliMag=Math.sqrt(aliX*aliX+aliY*aliY);
+      if(aliMag>0){
+        aliX=aliX/aliMag*MAX_SPEED-b.vx;
+        aliY=aliY/aliMag*MAX_SPEED-b.vy;
+        var aMag=Math.sqrt(aliX*aliX+aliY*aliY);
+        if(aMag>MAX_FORCE){aliX=aliX/aMag*MAX_FORCE;aliY=aliY/aMag*MAX_FORCE;}
+        ax+=aliX;
+        ay+=aliY;
+      }
+
+      // Cohesion
+      cohX=cohX/neighbors-b.x;
+      cohY=cohY/neighbors-b.y;
+      var cohMag=Math.sqrt(cohX*cohX+cohY*cohY);
+      if(cohMag>0){
+        cohX=cohX/cohMag*MAX_SPEED-b.vx;
+        cohY=cohY/cohMag*MAX_SPEED-b.vy;
+        var cMag=Math.sqrt(cohX*cohX+cohY*cohY);
+        if(cMag>MAX_FORCE){cohX=cohX/cMag*MAX_FORCE;cohY=cohY/cMag*MAX_FORCE;}
+        ax+=cohX;
+        ay+=cohY;
+      }
+    }
+
+    newVx[i]=b.vx+ax;
+    newVy[i]=b.vy+ay;
+  }
+
+  for(i=0;i<n;i++){
+    var b2=boids[i];
+    b2.vx=newVx[i];
+    b2.vy=newVy[i];
+    var spd2=Math.sqrt(b2.vx*b2.vx+b2.vy*b2.vy);
+    if(spd2>MAX_SPEED){
+      b2.vx=b2.vx/spd2*MAX_SPEED;
+      b2.vy=b2.vy/spd2*MAX_SPEED;
+    }
+    b2.x+=b2.vx*speed;
+    b2.y+=b2.vy*speed;
+    // Wrap-around
+    if(b2.x<0)b2.x+=W;
+    if(b2.x>=W)b2.x-=W;
+    if(b2.y<0)b2.y+=H;
+    if(b2.y>=H)b2.y-=H;
+  }
+  draw();
+}
+
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle="#070b14";
+  ctx.fillRect(0,0,W,H);
+  ctx.fillStyle="#7dd3fc";
+  for(var i=0;i<boids.length;i++){
+    var b=boids[i];
+    var angle=Math.atan2(b.vy,b.vx);
+    ctx.save();
+    ctx.translate(b.x,b.y);
+    ctx.rotate(angle);
+    ctx.beginPath();
+    ctx.moveTo(8,0);
+    ctx.lineTo(-5,-4);
+    ctx.lineTo(-5,4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+function reset(){
+  running=false;
+  playBtn.textContent="Play";
+  initBoids(60);
+  draw();
+}
+
+function togglePlay(){
+  running=!running;
+  playBtn.textContent=running?"Pause":"Play";
+}
+
+// Event listeners
+playBtn.addEventListener("click",function(e){
+  e.stopPropagation();
+  togglePlay();
+});
+stepBtn.addEventListener("click",function(e){
+  e.stopPropagation();
+  step();
+});
+resetBtn.addEventListener("click",function(e){
+  e.stopPropagation();
+  reset();
+});
+speedSlider.addEventListener("input",function(){
+  speed=parseFloat(speedSlider.value);
+  speedValEl.textContent=speed.toFixed(1);
+});
+canvas.addEventListener("click",function(e){
+  addBoid(e.clientX,e.clientY);
+});
+
+// Prevent HUD clicks from reaching canvas
+document.getElementById("hud").addEventListener("click",function(e){
+  e.stopPropagation();
+});
+
+// Main loop
+function loop(){
+  frameCount++;
+  var now=performance.now();
+  var elapsed=now-lastFpsTime;
+  if(elapsed>=1000){
+    fps=Math.round(frameCount*1000/elapsed);
+    fpsEl.textContent=String(fps);
+    frameCount=0;
+    lastFpsTime=now;
+  }
+  if(running){
+    step();
+  }else{
+    draw();
+  }
+  requestAnimationFrame(loop);
+}
+
+// Init
+initBoids(60);
+draw();
+requestAnimationFrame(loop);
+
+// Expose app
+window.app={
+  get boids(){return boids},
+  get running(){return running},
+  set running(v){running=v;playBtn.textContent=v?"Pause":"Play"},
+  get speed(){return speed},
+  set speed(v){speed=v;speedValEl.textContent=speed.toFixed(1)},
+  get fps(){return fps},
+  set fps(v){fps=v},
+  step:step,
+  reset:reset,
+  addBoid:addBoid
+};
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Visualizzatore di algoritmi di ordinamento</title>
+<style>
+  :root {
+    --bg: #12141a;
+    --panel: #1c1f27;
+    --text: #e4e6eb;
+    --muted: #9aa0ab;
+    --bar: #5b6b8c;
+    --compare: #f5b942;
+    --swap: #ef5b5b;
+    --pivot: #b07cf2;
+    --sorted: #3fcf8e;
+    --accent: #4e8cff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 16px;
+  }
+  h1 { font-size: 1.5rem; margin: 0 0 16px; font-weight: 600; }
+  .panel {
+    width: 100%;
+    max-width: 960px;
+    background: var(--panel);
+    border-radius: 12px;
+    padding: 16px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.35);
+  }
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+    margin-bottom: 16px;
+  }
+  button, select {
+    background: #2a2f3a;
+    color: var(--text);
+    border: 1px solid #3a4150;
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-size: .95rem;
+    cursor: pointer;
+  }
+  button:hover:not(:disabled), select:hover { border-color: var(--accent); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; min-width: 90px; }
+  label { color: var(--muted); font-size: .9rem; display: flex; align-items: center; gap: 8px; }
+  input[type="range"] { accent-color: var(--accent); width: 140px; }
+  .stats {
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+    font-size: .95rem;
+    color: var(--muted);
+  }
+  .stats strong { color: var(--text); font-variant-numeric: tabular-nums; }
+  #status { margin-left: auto; }
+  #bars {
+    height: 360px;
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+    padding: 8px;
+    background: #15171d;
+    border-radius: 8px;
+  }
+  .bar {
+    flex: 1;
+    background: var(--bar);
+    border-radius: 3px 3px 0 0;
+    transition: height .08s linear, background-color .08s linear;
+  }
+  .bar.compare { background: var(--compare); }
+  .bar.swap { background: var(--swap); }
+  .bar.pivot { background: var(--pivot); }
+  .bar.sorted { background: var(--sorted); }
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-top: 12px;
+    font-size: .85rem;
+    color: var(--muted);
+  }
+  .legend span::before {
+    content: "";
+    display: inline-block;
+    width: 12px; height: 12px;
+    border-radius: 3px;
+    margin-right: 6px;
+    vertical-align: -1px;
+    background: var(--c);
+  }
+</style>
+</head>
+<body>
+  <h1>Visualizzatore di algoritmi di ordinamento</h1>
+  <div class="panel">
+    <div class="controls">
+      <button id="playBtn" class="primary" type="button">Play</button>
+      <button id="stepBtn" type="button">Step</button>
+      <button id="resetBtn" type="button">Reset</button>
+      <label>Algoritmo
+        <select id="algoSelect">
+          <option value="bubble">Bubble sort</option>
+          <option value="insertion">Insertion sort</option>
+          <option value="quick">Quick sort</option>
+        </select>
+      </label>
+      <label>Velocità
+        <input id="speed" type="range" min="1" max="100" value="50">
+      </label>
+    </div>
+    <div class="stats">
+      <div>Confronti: <strong id="comparisons">0</strong></div>
+      <div>Scambi: <strong id="swaps">0</strong></div>
+      <div id="status">In pausa</div>
+    </div>
+    <div id="bars"></div>
+    <div class="legend">
+      <span style="--c: var(--bar)">Non ordinata</span>
+      <span style="--c: var(--compare)">Confronto</span>
+      <span style="--c: var(--swap)">Scambio</span>
+      <span style="--c: var(--pivot)">Pivot</span>
+      <span style="--c: var(--sorted)">Ordinata</span>
+    </div>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+
+  var N = 40;
+  var barsEl = document.getElementById("bars");
+  var playBtn = document.getElementById("playBtn");
+  var stepBtn = document.getElementById("stepBtn");
+  var resetBtn = document.getElementById("resetBtn");
+  var algoSelect = document.getElementById("algoSelect");
+  var speedEl = document.getElementById("speed");
+  var compEl = document.getElementById("comparisons");
+  var swapEl = document.getElementById("swaps");
+  var statusEl = document.getElementById("status");
+
+  var initial = [];
+  var arr = [];
+  var sorted = [];
+  var comparisons = 0;
+  var swaps = 0;
+  var gen = null;
+  var playing = false;
+  var done = false;
+  var timer = null;
+  var highlight = { compare: [], swap: [], pivot: -1 };
+  var barEls = [];
+
+  function randomArray() {
+    var a = [];
+    for (var i = 0; i < N; i++) a.push(5 + Math.floor(Math.random() * 96));
+    return a;
+  }
+
+  function swap(i, j) {
+    var t = arr[i]; arr[i] = arr[j]; arr[j] = t;
+    swaps++;
+  }
+
+  function step(compare, swapped, pivot) {
+    return { compare: compare, swap: swapped ? compare : [], pivot: pivot === undefined ? -1 : pivot };
+  }
+
+  // Ogni yield corrisponde esattamente a un confronto.
+  function* bubbleSort() {
+    var n = arr.length;
+    for (var i = 0; i < n - 1; i++) {
+      var swappedAny = false;
+      for (var j = 0; j < n - 1 - i; j++) {
+        comparisons++;
+        var s = arr[j] > arr[j + 1];
+        if (s) { swap(j, j + 1); swappedAny = true; }
+        yield step([j, j + 1], s);
+      }
+      sorted[n - 1 - i] = true;
+      if (!swappedAny) break;
+    }
+  }
+
+  function* insertionSort() {
+    var n = arr.length;
+    sorted[0] = true;
+    for (var i = 1; i < n; i++) {
+      var j = i;
+      while (j > 0) {
+        comparisons++;
+        var s = arr[j - 1] > arr[j];
+        if (s) swap(j - 1, j);
+        yield step([j - 1, j], s);
+        if (!s) break;
+        j--;
+      }
+      for (var k = 0; k <= i; k++) sorted[k] = true;
+    }
+  }
+
+  function* quickSort(lo, hi) {
+    if (lo > hi) return;
+    if (lo === hi) { sorted[lo] = true; return; }
+    var pivot = arr[hi];
+    var i = lo - 1;
+    for (var j = lo; j < hi; j++) {
+      comparisons++;
+      var s = false;
+      if (arr[j] < pivot) {
+        i++;
+        if (i !== j) { swap(i, j); s = true; }
+      }
+      yield { compare: [j, hi], swap: s ? [i, j] : [], pivot: hi };
+    }
+    var p = i + 1;
+    if (p !== hi) swap(p, hi);
+    sorted[p] = true;
+    yield* quickSort(lo, p - 1);
+    yield* quickSort(p + 1, hi);
+  }
+
+  function* runner(algo) {
+    if (algo === "bubble") yield* bubbleSort();
+    else if (algo === "insertion") yield* insertionSort();
+    else yield* quickSort(0, arr.length - 1);
+  }
+
+  function buildBars() {
+    barsEl.innerHTML = "";
+    barEls = [];
+    for (var i = 0; i < N; i++) {
+      var b = document.createElement("div");
+      b.className = "bar";
+      barsEl.appendChild(b);
+      barEls.push(b);
+    }
+  }
+
+  function render() {
+    for (var i = 0; i < arr.length; i++) {
+      var b = barEls[i];
+      b.style.height = arr[i] + "%";
+      var cls = "bar";
+      if (sorted[i]) cls += " sorted";
+      if (i === highlight.pivot) cls += " pivot";
+      if (highlight.compare.indexOf(i) !== -1) cls += " compare";
+      if (highlight.swap.indexOf(i) !== -1) cls += " swap";
+      b.className = cls;
+      b.title = String(arr[i]);
+    }
+    compEl.textContent = comparisons;
+    swapEl.textContent = swaps;
+    playBtn.textContent = playing ? "Pause" : "Play";
+    playBtn.disabled = done;
+    stepBtn.disabled = done || playing;
+    statusEl.textContent = done ? "Ordinamento completato" : (playing ? "In esecuzione…" : "In pausa");
+  }
+
+  function doStep() {
+    if (done || !gen) return;
+    var r = gen.next();
+    if (r.done) {
+      finish();
+    } else {
+      highlight = r.value;
+    }
+    render();
+  }
+
+  function finish() {
+    done = true;
+    stop();
+    highlight = { compare: [], swap: [], pivot: -1 };
+    for (var i = 0; i < arr.length; i++) sorted[i] = true;
+  }
+
+  function delay() {
+    // slider 1..100 -> da ~600ms a ~5ms
+    var v = Number(speedEl.value);
+    return Math.round(600 * Math.pow(5 / 600, (v - 1) / 99));
+  }
+
+  function tick() {
+    timer = null;
+    if (!playing) return;
+    doStep();
+    if (playing && !done) timer = setTimeout(tick, delay());
+  }
+
+  function play() {
+    if (done) return;
+    playing = true;
+    render();
+    timer = setTimeout(tick, delay());
+  }
+
+  function stop() {
+    playing = false;
+    if (timer !== null) { clearTimeout(timer); timer = null; }
+  }
+
+  function start(newArray) {
+    stop();
+    if (newArray) initial = randomArray();
+    arr = initial.slice();
+    sorted = new Array(N).fill(false);
+    comparisons = 0;
+    swaps = 0;
+    done = false;
+    highlight = { compare: [], swap: [], pivot: -1 };
+    gen = runner(algoSelect.value);
+    render();
+  }
+
+  playBtn.addEventListener("click", function () {
+    if (playing) { stop(); render(); } else { play(); }
+  });
+  stepBtn.addEventListener("click", function () {
+    if (!playing) doStep();
+  });
+  resetBtn.addEventListener("click", function () { start(true); });
+  // Cambiando algoritmo si riparte dallo stesso array iniziale, in pausa.
+  algoSelect.addEventListener("change", function () { start(false); });
+  speedEl.addEventListener("input", function () {
+    if (playing && timer !== null) {
+      clearTimeout(timer);
+      timer = setTimeout(tick, delay());
+    }
+  });
+
+  buildBars();
+  start(true);
+})();
+</script>
+</body>
+</html>

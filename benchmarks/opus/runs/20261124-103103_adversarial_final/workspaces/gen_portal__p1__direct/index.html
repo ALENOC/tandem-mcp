@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Neon Portal 3D</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #03020a; }
+  body {
+    background: radial-gradient(ellipse at 50% 40%, #1a0f3d 0%, #0a0620 45%, #03020a 100%);
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    color: #e8f4ff;
+  }
+  #c { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+  .hud {
+    position: fixed; top: 18px; left: 18px; z-index: 2;
+    padding: 16px 18px; min-width: 240px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(160, 220, 255, 0.22);
+    border-radius: 16px;
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255,255,255,0.08);
+    user-select: none;
+  }
+  .hud h1 {
+    font-size: 17px; letter-spacing: 0.22em; font-weight: 700; margin-bottom: 12px;
+    background: linear-gradient(90deg, #4ff3ff, #c86bff, #ff4fd8);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    text-shadow: 0 0 18px rgba(120, 200, 255, 0.25);
+  }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
+  .stat { background: rgba(0, 0, 0, 0.25); border-radius: 10px; padding: 6px 8px; text-align: center; }
+  .stat span { display: block; font-size: 10px; letter-spacing: 0.15em; opacity: 0.6; }
+  .stat b { font-size: 15px; font-variant-numeric: tabular-nums; color: #7ff6ff; }
+  .btns { display: flex; gap: 6px; margin-bottom: 12px; }
+  button {
+    flex: 1; padding: 7px 8px; font-size: 12px; font-weight: 600; color: #e8f4ff; cursor: pointer;
+    background: rgba(120, 200, 255, 0.10); border: 1px solid rgba(120, 220, 255, 0.35);
+    border-radius: 9px; transition: background 0.15s, box-shadow 0.15s;
+  }
+  button:hover { background: rgba(120, 200, 255, 0.22); box-shadow: 0 0 12px rgba(80, 220, 255, 0.35); }
+  button.on { border-color: rgba(255, 110, 230, 0.6); }
+  label { display: flex; align-items: center; gap: 10px; font-size: 11px; letter-spacing: 0.12em; opacity: 0.85; }
+  input[type=range] { flex: 1; accent-color: #c86bff; }
+  #spdVal { width: 34px; text-align: right; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="hud">
+  <h1>NEON PORTAL 3D</h1>
+  <div class="stats">
+    <div class="stat"><span>FPS</span><b id="fps">0</b></div>
+    <div class="stat"><span>POLYS</span><b id="polys">0</b></div>
+    <div class="stat"><span>PARTS</span><b id="parts">0</b></div>
+  </div>
+  <div class="btns">
+    <button id="pauseBtn">Pause</button>
+    <button id="orbitBtn" class="on">Orbit ON</button>
+    <button id="resetBtn">Reset</button>
+  </div>
+  <label>SPEED <input id="speed" type="range" min="0" max="3" step="0.05" value="1"><span id="spdVal">1.00</span></label>
+</div>
+
+<script>
+"use strict";
+// ============================================================
+//  engine3d — minimal software 3D renderer (painter's algorithm)
+// ============================================================
+const V = {
+  sub: (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]],
+  cross: (a, b) => [a[1]*b[2] - a[2]*b[1], a[2]*b[0] - a[0]*b[2], a[0]*b[1] - a[1]*b[0]],
+  dot: (a, b) => a[0]*b[0] + a[1]*b[1] + a[2]*b[2],
+  norm: (a) => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0]/l, a[1]/l, a[2]/l]; },
+};
+const rotY = (p, a) => { const c = Math.cos(a), s = Math.sin(a); return [p[0]*c + p[2]*s, p[1], -p[0]*s + p[2]*c]; };
+const rotX = (p, a) => { const c = Math.cos(a), s = Math.sin(a); return [p[0], p[1]*c - p[2]*s, p[1]*s + p[2]*c]; };
+
+class Camera {
+  constructor() { this.pos = [0, 0, 0]; this.target = [0, 0, 0]; this.fov = 60; this.near = 0.1; }
+  update(w, h) {
+    const f = V.norm(V.sub(this.target, this.pos));
+    const r = V.norm(V.cross(f, [0, 1, 0]));
+    const u = V.cross(r, f);
+    this.f = f; this.r = r; this.u = u;
+    this.w = w; this.h = h;
+    this.focal = (h / 2) / Math.tan((this.fov * Math.PI / 180) / 2);
+  }
+  // world -> view space (x right, y up, z forward)
+  toView(p) {
+    const d = V.sub(p, this.pos);
+    return [V.dot(d, this.r), V.dot(d, this.u), V.dot(d, this.f)];
+  }
+  // view -> screen; returns null if behind near plane
+  project(v) {
+    if (v[2] < this.near) return null;
+    const s = this.focal / v[2];
+    return [this.w / 2 + v[0] * s, this.h / 2 - v[1] * s, v[2], s];
+  }
+}
+
+// Shade an RGB colour by a light factor
+function shade(rgb, k, alpha) {
+  const r = Math.min(255, rgb[0] * k) | 0, g = Math.min(255, rgb[1] * k) | 0, b = Math.min(255, rgb[2] * k) | 0;
+  return alpha === undefined ? `rgb(${r},${g},${b})` : `rgba(${r},${g},${b},${alpha})`;
+}
+
+// ============================================================
+//  scene — geometry builders
+// ============================================================
+// Box: returns 6 quad faces (outward CCW when seen from outside)
+function makeBox(cx, cy, cz, sx, sy, sz, color, glow) {
+  const x0 = cx - sx/2, x1 = cx + sx/2, y0 = cy - sy/2, y1 = cy + sy/2, z0 = cz - sz/2, z1 = cz + sz/2;
+  const P = [
+    [x0,y0,z0],[x1,y0,z0],[x1,y1,z0],[x0,y1,z0],
+    [x0,y0,z1],[x1,y0,z1],[x1,y1,z1],[x0,y1,z1],
+  ];
+  const idx = [
+    [0,3,2,1], // -z
+    [4,5,6,7], // +z
+    [0,4,7,3], // -x
+    [1,2,6,5], // +x
+    [3,7,6,2], // +y
+    [0,1,5,4], // -y
+  ];
+  return idx.map(q => ({ verts: q.map(i => P[i]), color, glow }));
+}
+
+// Octahedron: 8 triangles, local coords (built each frame by transform)
+const OCTA_V = [[1,0,0],[-1,0,0],[0,1.6,0],[0,-1.6,0],[0,0,1],[0,0,-1]];
+const OCTA_F = [[2,4,0],[2,0,5],[2,5,1],[2,1,4],[3,0,4],[3,5,0],[3,1,5],[3,4,1]];
+
+const STRUCT_COLOR = [70, 80, 150];
+const EDGE_COLOR = '#4ff3ff';
+const staticFaces = [
+  ...makeBox(0, 0.25, 0, 8.0, 0.5, 5.0, [55, 60, 120], '#3ad8ff'),     // tier 1
+  ...makeBox(0, 0.75, 0, 6.0, 0.5, 3.6, [65, 70, 140], '#b56bff'),     // tier 2
+  ...makeBox(-2.1, 3.0, 0, 0.8, 4.0, 0.8, STRUCT_COLOR, '#4ff3ff'),     // left pillar
+  ...makeBox( 2.1, 3.0, 0, 0.8, 4.0, 0.8, STRUCT_COLOR, '#4ff3ff'),     // right pillar
+  ...makeBox(0, 5.35, 0, 5.4, 0.7, 1.1, [80, 70, 150], '#ff4fd8'),       // lintel
+  ...makeBox(0, 5.95, 0, 2.2, 0.5, 0.9, [95, 75, 160], '#ffd24f'),       // crown cap
+];
+// staticFaces.length === 36
+
+const PORTAL_CENTER = [0, 3.0, 0];
+const CRYSTAL_COLORS = [[80,240,255],[200,110,255],[255,80,210],[255,210,80],[90,255,170],[120,150,255]];
+
+// Stars on a big sphere
+const STAR_COUNT = 180;
+const stars = [];
+for (let i = 0; i < STAR_COUNT; i++) {
+  const u = Math.random() * 2 - 1, th = Math.random() * Math.PI * 2, r = 80;
+  const s = Math.sqrt(1 - u*u);
+  stars.push({ p: [Math.cos(th) * s * r, Math.abs(u) * r * 0.9 + 2, Math.sin(th) * s * r],
+               phase: Math.random() * Math.PI * 2, speed: 0.8 + Math.random() * 2.5, size: 0.6 + Math.random() * 1.4,
+               hue: Math.random() < 0.3 ? 290 : 190 });
+}
+
+// Rising particles
+const PART_COUNT = 110;
+const parts = [];
+function spawnParticle(p, initial) {
+  const a = Math.random() * Math.PI * 2, rad = Math.random() * 3.2;
+  p.x = Math.cos(a) * rad; p.z = Math.sin(a) * rad * 0.6;
+  p.y = initial ? 1 + Math.random() * 6 : 1.0;
+  p.vy = 0.6 + Math.random() * 1.2;
+  p.life = 0; p.max = 3 + Math.random() * 4;
+  p.hue = Math.random() < 0.5 ? 185 : 300 + Math.random() * 30;
+  p.sway = Math.random() * Math.PI * 2;
+}
+for (let i = 0; i < PART_COUNT; i++) { const p = {}; spawnParticle(p, true); parts.push(p); }
+
+// ============================================================
+//  app — render loop, HUD
+// ============================================================
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const cam = new Camera();
+let W = 0, H = 0, DPR = 1;
+
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+const state = { paused: false, orbit: true, speed: 1, t: 0, camAngle: 0.6 };
+const $ = id => document.getElementById(id);
+const pauseBtn = $('pauseBtn'), orbitBtn = $('orbitBtn'), speedEl = $('speed'), spdVal = $('spdVal');
+pauseBtn.onclick = () => { state.paused = !state.paused; pauseBtn.textContent = state.paused ? 'Play' : 'Pause'; pauseBtn.classList.toggle('on', state.paused); };
+orbitBtn.onclick = () => { state.orbit = !state.orbit; orbitBtn.textContent = state.orbit ? 'Orbit ON' : 'Orbit OFF'; orbitBtn.classList.toggle('on', state.orbit); };
+speedEl.oninput = () => { state.speed = parseFloat(speedEl.value); spdVal.textContent = state.speed.toFixed(2); };
+$('resetBtn').onclick = () => {
+  state.t = 0; state.camAngle = 0.6; state.speed = 1; speedEl.value = 1; spdVal.textContent = '1.00';
+  if (state.paused) pauseBtn.click();
+  if (!state.orbit) orbitBtn.click();
+  parts.forEach(p => spawnParticle(p, true));
+};
+
+const LIGHT = V.norm([0.4, 0.8, 0.5]);
+
+// Draw a projected polygon list (painter-sorted)
+function drawPolys(polys) {
+  polys.sort((a, b) => b.depth - a.depth);
+  ctx.lineJoin = 'round';
+  for (const p of polys) {
+    ctx.beginPath();
+    ctx.moveTo(p.pts[0][0], p.pts[0][1]);
+    for (let i = 1; i < p.pts.length; i++) ctx.lineTo(p.pts[i][0], p.pts[i][1]);
+    ctx.closePath();
+    ctx.fillStyle = p.fill;
+    ctx.fill();
+    ctx.strokeStyle = p.stroke;
+    ctx.lineWidth = p.lw;
+    ctx.shadowColor = p.stroke; ctx.shadowBlur = p.blur;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+}
+
+// Build a renderable polygon from world-space vertices (with back-face culling)
+function pushPoly(out, verts, color, glow, ambient, alpha, cull = true) {
+  const n = V.norm(V.cross(V.sub(verts[1], verts[0]), V.sub(verts[2], verts[0])));
+  let cx = 0, cy = 0, cz = 0;
+  for (const v of verts) { cx += v[0]; cy += v[1]; cz += v[2]; }
+  const k = verts.length; const c = [cx/k, cy/k, cz/k];
+  if (cull && V.dot(n, V.sub(cam.pos, c)) <= 0) return 0;
+  const pts = [];
+  for (const v of verts) { const s = cam.project(cam.toView(v)); if (!s) return 0; pts.push(s); }
+  const diff = Math.max(0, V.dot(n, LIGHT));
+  const light = ambient + diff * 0.75;
+  out.push({ pts, depth: cam.toView(c)[2], fill: shade(color, light, alpha), stroke: glow, lw: 1.4, blur: 10 });
+  return 1;
+}
+
+function drawGrid(t) {
+  const size = 30, step = 1.5, y = 0;
+  const scroll = (t * 0.6) % step;
+  ctx.lineWidth = 1;
+  const line = (a, b, alpha) => {
+    let va = cam.toView(a), vb = cam.toView(b);
+    if (va[2] < cam.near && vb[2] < cam.near) return;
+    // clip to near plane
+    if (va[2] < cam.near || vb[2] < cam.near) {
+      const tt = (cam.near - va[2]) / (vb[2] - va[2]);
+      const m = [va[0] + (vb[0]-va[0])*tt, va[1] + (vb[1]-va[1])*tt, cam.near];
+      if (va[2] < cam.near) va = m; else vb = m;
+    }
+    const pa = cam.project(va), pb = cam.project(vb);
+    ctx.strokeStyle = `rgba(80,200,255,${alpha})`;
+    ctx.beginPath(); ctx.moveTo(pa[0], pa[1]); ctx.lineTo(pb[0], pb[1]); ctx.stroke();
+  };
+  for (let i = -size; i <= size + 0.001; i += step) {
+    const z = i + scroll;
+    const fade = Math.max(0, 1 - Math.abs(z) / size);
+    line([-size, y, z], [size, y, z], 0.45 * fade);
+    const fx = Math.max(0, 1 - Math.abs(i) / size);
+    line([i, y, -size], [i, y, size], 0.35 * fx);
+  }
+  // floor glow under portal
+  const g = cam.project(cam.toView([0, 0, 0]));
+  if (g) {
+    const rad = 7 * g[3];
+    const grd = ctx.createRadialGradient(g[0], g[1], 0, g[0], g[1], rad);
+    grd.addColorStop(0, 'rgba(120,80,255,0.35)'); grd.addColorStop(1, 'rgba(120,80,255,0)');
+    ctx.fillStyle = grd; ctx.beginPath(); ctx.ellipse(g[0], g[1], rad, rad * 0.45, 0, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+function drawStars(t) {
+  for (const s of stars) {
+    const pr = cam.project(cam.toView(s.p));
+    if (!pr) continue;
+    const tw = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(t * s.speed + s.phase));
+    ctx.fillStyle = `hsla(${s.hue},90%,85%,${tw})`;
+    ctx.beginPath(); ctx.arc(pr[0], pr[1], s.size * (0.6 + tw * 0.6), 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+// Portal rings: projected circles as polylines
+function ringPoints(radius, tiltX, spinY, n) {
+  const pts = [];
+  for (let i = 0; i <= n; i++) {
+    const a = (i / n) * Math.PI * 2;
+    let p = [Math.cos(a) * radius, Math.sin(a) * radius, 0];
+    p = rotX(p, tiltX); p = rotY(p, spinY);
+    pts.push([p[0] + PORTAL_CENTER[0], p[1] + PORTAL_CENTER[1], p[2] + PORTAL_CENTER[2]]);
+  }
+  return pts;
+}
+function strokeWorldPath(pts, color, width, blur, dash) {
+  ctx.beginPath();
+  let started = false;
+  for (const p of pts) {
+    const s = cam.project(cam.toView(p));
+    if (!s) { started = false; continue; }
+    if (!started) { ctx.moveTo(s[0], s[1]); started = true; } else ctx.lineTo(s[0], s[1]);
+  }
+  ctx.strokeStyle = color; ctx.lineWidth = width; ctx.shadowColor = color; ctx.shadowBlur = blur;
+  if (dash) ctx.setLineDash(dash);
+  ctx.stroke(); ctx.setLineDash([]); ctx.shadowBlur = 0;
+}
+
+function drawPortal(t) {
+  const c = cam.project(cam.toView(PORTAL_CENTER));
+  if (!c) return;
+  const s = c[3];
+  // core vortex
+  const R = 1.55 * s;
+  const pulse = 1 + 0.06 * Math.sin(t * 3);
+  const g = ctx.createRadialGradient(c[0], c[1], 0, c[0], c[1], R * pulse);
+  g.addColorStop(0, 'rgba(255,255,255,0.95)');
+  g.addColorStop(0.18, 'rgba(140,240,255,0.85)');
+  g.addColorStop(0.55, 'rgba(170,80,255,0.55)');
+  g.addColorStop(0.85, 'rgba(255,60,200,0.25)');
+  g.addColorStop(1, 'rgba(255,60,200,0)');
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(c[0], c[1], R * pulse, 0, Math.PI * 2); ctx.fill();
+  // swirl arms
+  ctx.lineWidth = 1.5;
+  for (let k = 0; k < 4; k++) {
+    ctx.beginPath();
+    for (let i = 0; i <= 40; i++) {
+      const f = i / 40, a = t * 2 + k * Math.PI / 2 + f * 4;
+      const r = f * R * 0.95;
+      const x = c[0] + Math.cos(a) * r, y = c[1] + Math.sin(a) * r;
+      i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+    }
+    ctx.strokeStyle = k % 2 ? 'rgba(255,120,240,0.5)' : 'rgba(120,240,255,0.5)';
+    ctx.stroke();
+  }
+  // counter-rotating rings
+  strokeWorldPath(ringPoints(1.75, 0.25 * Math.sin(t * 0.7), t * 0.9, 64), '#4ff3ff', 3, 18, [14, 8]);
+  strokeWorldPath(ringPoints(2.0, Math.PI / 2 + 0.3 * Math.cos(t * 0.5), -t * 1.3, 64), '#ff4fd8', 2.5, 18, [6, 10]);
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+function drawParticles(dt, t) {
+  ctx.globalCompositeOperation = 'lighter';
+  for (const p of parts) {
+    if (dt > 0) {
+      p.y += p.vy * dt; p.life += dt;
+      if (p.life > p.max || p.y > 9) spawnParticle(p, false);
+    }
+    const x = p.x + Math.sin(t * 1.5 + p.sway) * 0.15;
+    const pr = cam.project(cam.toView([x, p.y, p.z]));
+    if (!pr) continue;
+    const lf = 1 - p.life / p.max;
+    const size = Math.max(0.8, 0.06 * pr[3]);
+    ctx.fillStyle = `hsla(${p.hue},100%,70%,${0.85 * lf})`;
+    ctx.beginPath(); ctx.arc(pr[0], pr[1], size, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+let last = performance.now(), fpsAcc = 0, fpsFrames = 0;
+const fpsEl = $('fps'), polysEl = $('polys'), partsEl = $('parts');
+
+function frame(now) {
+  const rawDt = Math.min(0.05, (now - last) / 1000); last = now;
+  fpsAcc += rawDt; fpsFrames++;
+  if (fpsAcc >= 0.5) { fpsEl.textContent = Math.round(fpsFrames / fpsAcc); fpsAcc = 0; fpsFrames = 0; }
+
+  const dt = state.paused ? 0 : rawDt * state.speed;
+  state.t += dt;
+  if (state.orbit) state.camAngle += dt * 0.25;
+  const t = state.t;
+
+  // orbiting camera
+  const camR = 15, camY = 5.5 + Math.sin(t * 0.3) * 1.2;
+  cam.pos = [Math.sin(state.camAngle) * camR, camY, Math.cos(state.camAngle) * camR];
+  cam.target = [0, 2.8, 0];
+  cam.update(W, H);
+
+  ctx.clearRect(0, 0, W, H);
+  drawStars(t);
+  drawGrid(t);
+
+  // Collect solids: static boxes + crystals
+  const polys = [];
+  for (const f of staticFaces) pushPoly(polys, f.verts, f.color, f.glow, 0.35, 1);
+
+  // Six orbiting octahedral crystals
+  for (let i = 0; i < 6; i++) {
+    const a = t * 0.6 + i * Math.PI / 3;
+    const cx = Math.cos(a) * 3.6, cz = Math.sin(a) * 3.6;
+    const cy = 3.0 + Math.sin(t * 1.4 + i) * 0.6;
+    const spin = t * 1.8 + i;
+    const sc = 0.32;
+    const wv = OCTA_V.map(v => { let p = rotY(rotX([v[0]*sc, v[1]*sc, v[2]*sc], 0.3), spin); return [p[0]+cx, p[1]+cy, p[2]+cz]; });
+    const col = CRYSTAL_COLORS[i];
+    const glow = shade(col, 1.1);
+    for (const f of OCTA_F) pushPoly(polys, f.map(j => wv[j]), col, glow, 0.55, 0.92);
+  }
+
+  // Portal drawn between back half and front half of the scene for decent occlusion
+  const portalDepth = cam.toView(PORTAL_CENTER)[2];
+  polys.sort((a, b) => b.depth - a.depth);
+  const back = polys.filter(p => p.depth >= portalDepth);
+  const front = polys.filter(p => p.depth < portalDepth);
+  drawPolys(back);
+  drawPortal(t);
+  drawPolys(front);
+  drawParticles(dt, t);
+
+  polysEl.textContent = staticFaces.length + 6 * OCTA_F.length; // 36 + 48 = 84
+  partsEl.textContent = PART_COUNT;
+
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

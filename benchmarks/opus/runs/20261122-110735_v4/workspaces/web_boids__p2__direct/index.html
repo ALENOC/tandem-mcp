@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Boids – Simulazione di stormo</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #070b14; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #e6edf7; }
+  canvas { display: block; position: fixed; inset: 0; width: 100vw; height: 100vh; cursor: crosshair; background: #070b14; }
+  .glass {
+    position: fixed;
+    background: rgba(255, 255, 255, 0.07);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 16px;
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+    user-select: none;
+  }
+  #hud { top: 16px; left: 16px; padding: 14px 18px; min-width: 190px; }
+  #hud h1 { font-size: 14px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #8fb8ff; margin-bottom: 8px; }
+  .row { display: flex; justify-content: space-between; gap: 18px; font-size: 14px; line-height: 1.7; }
+  .row span:last-child { font-variant-numeric: tabular-nums; font-weight: 600; }
+  #controls { bottom: 16px; left: 50%; transform: translateX(-50%); padding: 12px 16px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; max-width: calc(100vw - 32px); }
+  button {
+    font: inherit; font-size: 14px; font-weight: 600; color: #e6edf7;
+    background: rgba(255, 255, 255, 0.10); border: 1px solid rgba(255, 255, 255, 0.22);
+    border-radius: 10px; padding: 8px 16px; cursor: pointer; transition: background .15s, transform .1s;
+    min-width: 84px;
+  }
+  button:hover { background: rgba(255, 255, 255, 0.2); }
+  button:active { transform: scale(0.96); }
+  button:focus-visible, input:focus-visible { outline: 2px solid #8fb8ff; outline-offset: 2px; }
+  #playBtn.playing { background: rgba(120, 170, 255, 0.28); }
+  label { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+  input[type=range] { width: 140px; accent-color: #8fb8ff; cursor: pointer; }
+  #speedLabel { font-variant-numeric: tabular-nums; min-width: 38px; display: inline-block; font-weight: 600; }
+  #hint { position: fixed; top: 16px; right: 16px; padding: 10px 14px; font-size: 13px; color: #b9c7dd; }
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+
+<div id="hud" class="glass" aria-live="polite">
+  <h1>Boids</h1>
+  <div class="row"><span>FPS</span><span id="fps">0</span></div>
+  <div class="row"><span>Boids</span><span id="count">0</span></div>
+  <div class="row"><span>Velocità</span><span id="speedHud">1.0×</span></div>
+  <div class="row"><span>Stato</span><span id="state">In pausa</span></div>
+</div>
+
+<div id="hint" class="glass">Clic sul canvas per aggiungere un boid</div>
+
+<div id="controls" class="glass">
+  <button id="playBtn" type="button" aria-label="Play">▶ Play</button>
+  <button id="stepBtn" type="button">Step</button>
+  <button id="resetBtn" type="button">Reset</button>
+  <label for="speed">Velocità
+    <input id="speed" type="range" min="0.5" max="3" step="0.1" value="1">
+    <span id="speedLabel">1.0×</span>
+  </label>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var INITIAL_COUNT = 60;
+  var MAX_BOIDS = 1500;
+  var BASE_SPEED = 2.2;     // px per frame a velocità 1x (riferimento 60fps)
+  var MAX_FORCE = 0.06;
+  var PERCEPTION = 55;
+  var SEPARATION_DIST = 22;
+  var W_SEP = 1.6, W_ALI = 1.0, W_COH = 0.85;
+
+  var canvas = document.getElementById("canvas");
+  var ctx = canvas.getContext("2d");
+  var fpsEl = document.getElementById("fps");
+  var countEl = document.getElementById("count");
+  var speedHudEl = document.getElementById("speedHud");
+  var stateEl = document.getElementById("state");
+  var playBtn = document.getElementById("playBtn");
+  var stepBtn = document.getElementById("stepBtn");
+  var resetBtn = document.getElementById("resetBtn");
+  var speedInput = document.getElementById("speed");
+  var speedLabel = document.getElementById("speedLabel");
+
+  var width = 0, height = 0, dpr = 1;
+  var boids = [];
+  var running = false;
+  var speedMult = 1;
+
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    width = window.innerWidth;
+    height = window.innerHeight;
+    canvas.width = Math.max(1, Math.floor(width * dpr));
+    canvas.height = Math.max(1, Math.floor(height * dpr));
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    for (var i = 0; i < boids.length; i++) {
+      var b = boids[i];
+      if (b.x > width) b.x = Math.random() * width;
+      if (b.y > height) b.y = Math.random() * height;
+    }
+    draw();
+  }
+
+  function makeBoid(x, y) {
+    var a = Math.random() * Math.PI * 2;
+    var s = BASE_SPEED * (0.6 + Math.random() * 0.4);
+    return { x: x, y: y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, hue: 195 + Math.random() * 50 };
+  }
+
+  function reset() {
+    boids = [];
+    var margin = 40;
+    for (var i = 0; i < INITIAL_COUNT; i++) {
+      boids.push(makeBoid(
+        margin + Math.random() * Math.max(1, width - margin * 2),
+        margin + Math.random() * Math.max(1, height - margin * 2)
+      ));
+    }
+    updateHud();
+    draw();
+  }
+
+  function limit(vx, vy, max) {
+    var m2 = vx * vx + vy * vy;
+    if (m2 > max * max) { var m = Math.sqrt(m2); return [vx / m * max, vy / m * max]; }
+    return [vx, vy];
+  }
+
+  // Un passo di simulazione; dt in unità di frame a 60fps
+  function update(dt) {
+    var maxSpeed = BASE_SPEED * speedMult;
+    var minSpeed = maxSpeed * 0.45;
+    var force = MAX_FORCE * speedMult;
+    var p2 = PERCEPTION * PERCEPTION, s2 = SEPARATION_DIST * SEPARATION_DIST;
+    var n = boids.length;
+    var ax = new Float32Array(n), ay = new Float32Array(n);
+
+    // Griglia spaziale per i vicini
+    var cell = PERCEPTION;
+    var cols = Math.max(1, Math.ceil(width / cell));
+    var rows = Math.max(1, Math.ceil(height / cell));
+    var grid = new Map();
+    for (var i = 0; i < n; i++) {
+      var cx = Math.min(cols - 1, Math.max(0, Math.floor(boids[i].x / cell)));
+      var cy = Math.min(rows - 1, Math.max(0, Math.floor(boids[i].y / cell)));
+      var key = cy * cols + cx;
+      var arr = grid.get(key);
+      if (!arr) { arr = []; grid.set(key, arr); }
+      arr.push(i);
+    }
+
+    for (i = 0; i < n; i++) {
+      var b = boids[i];
+      var sepX = 0, sepY = 0, aliX = 0, aliY = 0, cohX = 0, cohY = 0, count = 0, sepCount = 0;
+      var bcx = Math.floor(b.x / cell), bcy = Math.floor(b.y / cell);
+      for (var oy = -1; oy <= 1; oy++) {
+        for (var ox = -1; ox <= 1; ox++) {
+          var gx = (bcx + ox + cols) % cols, gy = (bcy + oy + rows) % rows;
+          var list = grid.get(gy * cols + gx);
+          if (!list) continue;
+          for (var k = 0; k < list.length; k++) {
+            var j = list[k];
+            if (j === i) continue;
+            var o = boids[j];
+            var dx = o.x - b.x, dy = o.y - b.y;
+            // distanza toroidale
+            if (dx > width / 2) dx -= width; else if (dx < -width / 2) dx += width;
+            if (dy > height / 2) dy -= height; else if (dy < -height / 2) dy += height;
+            var d2 = dx * dx + dy * dy;
+            if (d2 < p2 && d2 > 0) {
+              aliX += o.vx; aliY += o.vy;
+              cohX += dx; cohY += dy;
+              count++;
+              if (d2 < s2) { sepX -= dx / d2; sepY -= dy / d2; sepCount++; }
+            }
+          }
+        }
+      }
+      var fx = 0, fy = 0, r, m;
+      if (count > 0) {
+        // Allineamento
+        m = Math.hypot(aliX, aliY);
+        if (m > 0) {
+          r = limit(aliX / m * maxSpeed - b.vx, aliY / m * maxSpeed - b.vy, force);
+          fx += r[0] * W_ALI; fy += r[1] * W_ALI;
+        }
+        // Coesione
+        cohX /= count; cohY /= count;
+        m = Math.hypot(cohX, cohY);
+        if (m > 0) {
+          r = limit(cohX / m * maxSpeed - b.vx, cohY / m * maxSpeed - b.vy, force);
+          fx += r[0] * W_COH; fy += r[1] * W_COH;
+        }
+      }
+      if (sepCount > 0) {
+        m = Math.hypot(sepX, sepY);
+        if (m > 0) {
+          r = limit(sepX / m * maxSpeed - b.vx, sepY / m * maxSpeed - b.vy, force * 1.5);
+          fx += r[0] * W_SEP; fy += r[1] * W_SEP;
+        }
+      }
+      ax[i] = fx; ay[i] = fy;
+    }
+
+    for (i = 0; i < n; i++) {
+      b = boids[i];
+      b.vx += ax[i] * dt; b.vy += ay[i] * dt;
+      var sp = Math.hypot(b.vx, b.vy);
+      if (sp > maxSpeed) { b.vx = b.vx / sp * maxSpeed; b.vy = b.vy / sp * maxSpeed; }
+      else if (sp < minSpeed) {
+        if (sp === 0) { var a = Math.random() * Math.PI * 2; b.vx = Math.cos(a); b.vy = Math.sin(a); sp = 1; }
+        b.vx = b.vx / sp * minSpeed; b.vy = b.vy / sp * minSpeed;
+      }
+      b.x += b.vx * dt; b.y += b.vy * dt;
+      if (b.x < 0) b.x += width; else if (b.x >= width) b.x -= width;
+      if (b.y < 0) b.y += height; else if (b.y >= height) b.y -= height;
+    }
+  }
+
+  function draw() {
+    ctx.fillStyle = "#070b14";
+    ctx.fillRect(0, 0, width, height);
+    var size = 7;
+    for (var i = 0; i < boids.length; i++) {
+      var b = boids[i];
+      var ang = Math.atan2(b.vy, b.vx);
+      var c = Math.cos(ang), s = Math.sin(ang);
+      ctx.beginPath();
+      ctx.moveTo(b.x + c * size * 1.6, b.y + s * size * 1.6);
+      ctx.lineTo(b.x - c * size + s * size * 0.75, b.y - s * size - c * size * 0.75);
+      ctx.lineTo(b.x - c * size * 0.45, b.y - s * size * 0.45);
+      ctx.lineTo(b.x - c * size - s * size * 0.75, b.y - s * size + c * size * 0.75);
+      ctx.closePath();
+      ctx.fillStyle = "hsl(" + b.hue.toFixed(0) + ",90%,68%)";
+      ctx.fill();
+    }
+  }
+
+  function updateHud() {
+    countEl.textContent = String(boids.length);
+    var sTxt = speedMult.toFixed(1) + "×";
+    speedHudEl.textContent = sTxt;
+    speedLabel.textContent = sTxt;
+    stateEl.textContent = running ? "In esecuzione" : "In pausa";
+  }
+
+  function setRunning(r) {
+    running = r;
+    if (running) {
+      playBtn.textContent = "❚❚ Pause";
+      playBtn.setAttribute("aria-label", "Pause");
+      playBtn.classList.add("playing");
+    } else {
+      playBtn.textContent = "▶ Play";
+      playBtn.setAttribute("aria-label", "Play");
+      playBtn.classList.remove("playing");
+    }
+    updateHud();
+  }
+
+  // Loop principale
+  var lastTime = performance.now();
+  var fpsFrames = 0, fpsTime = lastTime;
+  function frame(now) {
+    var elapsed = now - lastTime;
+    lastTime = now;
+    fpsFrames++;
+    if (now - fpsTime >= 500) {
+      fpsEl.textContent = String(Math.round(fpsFrames * 1000 / (now - fpsTime)));
+      fpsFrames = 0; fpsTime = now;
+    }
+    if (running) {
+      var dt = Math.min(Math.max(elapsed, 0) / (1000 / 60), 3);
+      update(dt);
+    }
+    draw();
+    requestAnimationFrame(frame);
+  }
+
+  // Eventi
+  playBtn.addEventListener("click", function () { setRunning(!running); });
+  stepBtn.addEventListener("click", function () {
+    if (running) setRunning(false);
+    update(1);
+    draw();
+  });
+  resetBtn.addEventListener("click", function () { reset(); });
+  speedInput.addEventListener("input", function () {
+    var v = parseFloat(speedInput.value);
+    if (!isFinite(v)) v = 1;
+    speedMult = Math.min(3, Math.max(0.5, v));
+    updateHud();
+  });
+  canvas.addEventListener("click", function (e) {
+    if (boids.length >= MAX_BOIDS) return;
+    var rect = canvas.getBoundingClientRect();
+    boids.push(makeBoid(e.clientX - rect.left, e.clientY - rect.top));
+    updateHud();
+    draw();
+  });
+  window.addEventListener("keydown", function (e) {
+    if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "BUTTON")) return;
+    if (e.code === "Space") { e.preventDefault(); setRunning(!running); }
+  });
+  window.addEventListener("resize", resize);
+
+  resize();
+  reset();
+  setRunning(false);
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

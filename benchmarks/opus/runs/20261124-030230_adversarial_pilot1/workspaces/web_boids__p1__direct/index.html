@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Boids – Simulazione di stormo</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #070b14; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #e6edf7; }
+  #canvas { display: block; position: fixed; inset: 0; width: 100vw; height: 100vh; background: #070b14; cursor: crosshair; }
+  .glass {
+    position: fixed;
+    background: rgba(255, 255, 255, 0.07);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 16px;
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+  }
+  #hud { top: 16px; left: 16px; padding: 14px 18px; min-width: 190px; user-select: none; }
+  #hud h1 { font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; color: #8fb4ff; margin-bottom: 8px; }
+  .row { display: flex; justify-content: space-between; gap: 16px; font-size: 14px; line-height: 1.7; }
+  .row span:last-child { font-variant-numeric: tabular-nums; font-weight: 600; color: #fff; }
+  #controls { bottom: 18px; left: 50%; transform: translateX(-50%); padding: 12px 16px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+  button {
+    font: inherit; font-size: 14px; font-weight: 600; color: #e6edf7;
+    background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.22);
+    border-radius: 10px; padding: 8px 16px; cursor: pointer; transition: background 0.15s, transform 0.1s;
+  }
+  button:hover { background: rgba(255, 255, 255, 0.2); }
+  button:active { transform: scale(0.96); }
+  button:focus-visible, input:focus-visible { outline: 2px solid #8fb4ff; outline-offset: 2px; }
+  #playBtn { min-width: 84px; background: rgba(96, 165, 250, 0.25); border-color: rgba(96, 165, 250, 0.5); }
+  label { font-size: 14px; display: flex; align-items: center; gap: 8px; }
+  input[type="range"] { width: 140px; accent-color: #60a5fa; cursor: pointer; }
+  #speedOut { min-width: 38px; font-variant-numeric: tabular-nums; font-weight: 600; }
+  #hint { top: 16px; right: 16px; padding: 10px 14px; font-size: 13px; color: #b8c6dd; user-select: none; }
+</style>
+</head>
+<body>
+<canvas id="canvas" aria-label="Simulazione Boids"></canvas>
+
+<div id="hud" class="glass" aria-live="polite">
+  <h1>Boids</h1>
+  <div class="row"><span>FPS</span><span id="fps">0</span></div>
+  <div class="row"><span>Boids</span><span id="count">0</span></div>
+  <div class="row"><span>Velocità</span><span id="speedHud">1.0×</span></div>
+  <div class="row"><span>Stato</span><span id="state">In pausa</span></div>
+</div>
+
+<div id="hint" class="glass">Click sul canvas per aggiungere un boid</div>
+
+<div id="controls" class="glass">
+  <button id="playBtn" type="button" aria-label="Play">▶ Play</button>
+  <button id="stepBtn" type="button">Step</button>
+  <button id="resetBtn" type="button">Reset</button>
+  <label for="speed">Velocità
+    <input id="speed" type="range" min="0.5" max="3.0" step="0.1" value="1.0">
+    <span id="speedOut">1.0×</span>
+  </label>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var INITIAL_COUNT = 60;
+  var MAX_SPEED = 3.2;
+  var MIN_SPEED = 1.2;
+  var MAX_FORCE = 0.06;
+  var PERCEPTION = 55;
+  var SEPARATION_DIST = 22;
+  var W_SEP = 1.6, W_ALI = 1.0, W_COH = 0.85;
+  var EDGE_MARGIN = 60;
+
+  var canvas = document.getElementById("canvas");
+  var ctx = canvas.getContext("2d");
+  var fpsEl = document.getElementById("fps");
+  var countEl = document.getElementById("count");
+  var speedHudEl = document.getElementById("speedHud");
+  var stateEl = document.getElementById("state");
+  var playBtn = document.getElementById("playBtn");
+  var stepBtn = document.getElementById("stepBtn");
+  var resetBtn = document.getElementById("resetBtn");
+  var speedInput = document.getElementById("speed");
+  var speedOut = document.getElementById("speedOut");
+
+  var width = 0, height = 0, dpr = 1;
+  var boids = [];
+  var running = false;
+  var speed = 1.0;
+
+  function resize() {
+    dpr = Math.max(1, window.devicePixelRatio || 1);
+    width = window.innerWidth;
+    height = window.innerHeight;
+    canvas.width = Math.floor(width * dpr);
+    canvas.height = Math.floor(height * dpr);
+    canvas.style.width = width + "px";
+    canvas.style.height = height + "px";
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    for (var i = 0; i < boids.length; i++) {
+      var b = boids[i];
+      if (b.x > width) b.x = Math.random() * width;
+      if (b.y > height) b.y = Math.random() * height;
+    }
+    if (!running) draw();
+  }
+
+  function Boid(x, y) {
+    var a = Math.random() * Math.PI * 2;
+    var s = MIN_SPEED + Math.random() * (MAX_SPEED - MIN_SPEED);
+    this.x = x; this.y = y;
+    this.vx = Math.cos(a) * s; this.vy = Math.sin(a) * s;
+    this.hue = 190 + Math.random() * 50;
+  }
+
+  function addBoid(x, y) { boids.push(new Boid(x, y)); updateHud(); }
+
+  function reset() {
+    boids = [];
+    for (var i = 0; i < INITIAL_COUNT; i++) {
+      boids.push(new Boid(Math.random() * width, Math.random() * height));
+    }
+    updateHud();
+    draw();
+  }
+
+  function limit(vx, vy, max) {
+    var m = Math.sqrt(vx * vx + vy * vy);
+    if (m > max && m > 0) { return [vx / m * max, vy / m * max]; }
+    return [vx, vy];
+  }
+
+  function steerTowards(b, tx, ty) {
+    var m = Math.sqrt(tx * tx + ty * ty);
+    if (m === 0) return [0, 0];
+    var dx = tx / m * MAX_SPEED - b.vx;
+    var dy = ty / m * MAX_SPEED - b.vy;
+    return limit(dx, dy, MAX_FORCE);
+  }
+
+  function update(dt) {
+    var n = boids.length;
+    var pr2 = PERCEPTION * PERCEPTION, sd2 = SEPARATION_DIST * SEPARATION_DIST;
+    var ax = new Float32Array(n), ay = new Float32Array(n);
+    for (var i = 0; i < n; i++) {
+      var b = boids[i];
+      var aliX = 0, aliY = 0, cohX = 0, cohY = 0, sepX = 0, sepY = 0, cnt = 0, sepCnt = 0;
+      for (var j = 0; j < n; j++) {
+        if (i === j) continue;
+        var o = boids[j];
+        var dx = o.x - b.x, dy = o.y - b.y;
+        var d2 = dx * dx + dy * dy;
+        if (d2 < pr2) {
+          aliX += o.vx; aliY += o.vy;
+          cohX += o.x; cohY += o.y;
+          cnt++;
+          if (d2 < sd2 && d2 > 0) {
+            sepX -= dx / d2; sepY -= dy / d2;
+            sepCnt++;
+          }
+        }
+      }
+      var fx = 0, fy = 0, s;
+      if (cnt > 0) {
+        s = steerTowards(b, aliX / cnt, aliY / cnt);
+        fx += s[0] * W_ALI; fy += s[1] * W_ALI;
+        s = steerTowards(b, cohX / cnt - b.x, cohY / cnt - b.y);
+        fx += s[0] * W_COH; fy += s[1] * W_COH;
+      }
+      if (sepCnt > 0) {
+        s = steerTowards(b, sepX, sepY);
+        fx += s[0] * W_SEP; fy += s[1] * W_SEP;
+      }
+      // Soft edge avoidance
+      var turn = 0.12;
+      if (b.x < EDGE_MARGIN) fx += turn * (1 - b.x / EDGE_MARGIN);
+      if (b.x > width - EDGE_MARGIN) fx -= turn * (1 - (width - b.x) / EDGE_MARGIN);
+      if (b.y < EDGE_MARGIN) fy += turn * (1 - b.y / EDGE_MARGIN);
+      if (b.y > height - EDGE_MARGIN) fy -= turn * (1 - (height - b.y) / EDGE_MARGIN);
+      ax[i] = fx; ay[i] = fy;
+    }
+    for (var k = 0; k < n; k++) {
+      var p = boids[k];
+      p.vx += ax[k] * dt; p.vy += ay[k] * dt;
+      var m = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
+      if (m > MAX_SPEED) { p.vx = p.vx / m * MAX_SPEED; p.vy = p.vy / m * MAX_SPEED; }
+      else if (m < MIN_SPEED && m > 0) { p.vx = p.vx / m * MIN_SPEED; p.vy = p.vy / m * MIN_SPEED; }
+      else if (m === 0) { p.vx = MIN_SPEED; }
+      p.x += p.vx * dt; p.y += p.vy * dt;
+      // Hard wrap fallback
+      if (p.x < -10) p.x = width + 10; else if (p.x > width + 10) p.x = -10;
+      if (p.y < -10) p.y = height + 10; else if (p.y > height + 10) p.y = -10;
+    }
+  }
+
+  function draw() {
+    ctx.fillStyle = "#070b14";
+    ctx.fillRect(0, 0, width, height);
+    for (var i = 0; i < boids.length; i++) {
+      var b = boids[i];
+      var ang = Math.atan2(b.vy, b.vx);
+      ctx.save();
+      ctx.translate(b.x, b.y);
+      ctx.rotate(ang);
+      ctx.beginPath();
+      ctx.moveTo(9, 0);
+      ctx.lineTo(-6, 4.5);
+      ctx.lineTo(-3, 0);
+      ctx.lineTo(-6, -4.5);
+      ctx.closePath();
+      ctx.fillStyle = "hsl(" + b.hue + ", 90%, 65%)";
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  function updateHud() {
+    countEl.textContent = String(boids.length);
+    var t = speed.toFixed(1) + "×";
+    speedHudEl.textContent = t;
+    speedOut.textContent = t;
+    stateEl.textContent = running ? "In esecuzione" : "In pausa";
+    playBtn.textContent = running ? "❚❚ Pause" : "▶ Play";
+    playBtn.setAttribute("aria-label", running ? "Pause" : "Play");
+  }
+
+  // Loop
+  var lastTime = performance.now();
+  var fpsFrames = 0, fpsTime = lastTime;
+  function frame(now) {
+    var elapsed = now - lastTime;
+    lastTime = now;
+    if (elapsed > 100) elapsed = 100;
+    if (running) {
+      var dt = (elapsed / 16.667) * speed;
+      // substep for stability at high speeds
+      var steps = Math.max(1, Math.ceil(dt));
+      for (var i = 0; i < steps; i++) update(dt / steps);
+      draw();
+    }
+    fpsFrames++;
+    if (now - fpsTime >= 500) {
+      fpsEl.textContent = String(Math.round(fpsFrames * 1000 / (now - fpsTime)));
+      fpsFrames = 0; fpsTime = now;
+    }
+    requestAnimationFrame(frame);
+  }
+
+  // Events
+  playBtn.addEventListener("click", function () { running = !running; updateHud(); });
+  stepBtn.addEventListener("click", function () {
+    if (running) { running = false; }
+    update(speed);
+    draw();
+    updateHud();
+  });
+  resetBtn.addEventListener("click", function () { reset(); });
+  speedInput.addEventListener("input", function () {
+    var v = parseFloat(speedInput.value);
+    if (!isFinite(v)) v = 1;
+    speed = Math.min(3, Math.max(0.5, v));
+    updateHud();
+  });
+  canvas.addEventListener("click", function (e) {
+    var r = canvas.getBoundingClientRect();
+    addBoid(e.clientX - r.left, e.clientY - r.top);
+    if (!running) draw();
+  });
+  window.addEventListener("resize", resize);
+
+  resize();
+  reset();
+  updateHud();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Visualizzatore di algoritmi di ordinamento</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --panel: #1a1d27;
+    --text: #e6e6e6;
+    --muted: #8a93a6;
+    --bar: #4a90e2;
+    --compare: #f5a623;
+    --swap: #e94e77;
+    --sorted: #2ecc71;
+    --border: #2a2f3d;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: #0f1117;
+    color: #e6e6e6;
+    font-family: system-ui, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 16px 40px;
+  }
+  h1 {
+    font-size: 1.4rem;
+    font-weight: 600;
+    margin: 0 0 4px;
+    text-align: center;
+  }
+  .subtitle {
+    color: var(--muted);
+    font-size: 0.9rem;
+    margin: 0 0 20px;
+    text-align: center;
+  }
+  .panel {
+    background: #1a1d27;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    padding: 16px;
+    width: 100%;
+    max-width: 960px;
+  }
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 16px;
+  }
+  .controls .group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  button, select {
+    font-family: inherit;
+    font-size: 0.95rem;
+    color: var(--text);
+    background: #232838;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 14px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, transform 0.05s;
+  }
+  button:hover:not(:disabled) { background: #2c3346; border-color: #3a4258; }
+  button:active:not(:disabled) { transform: translateY(1px); }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  select {
+    appearance: none;
+    -webkit-appearance: none;
+    padding-right: 28px;
+    background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+      linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+    background-position: calc(100% - 14px) 55%, calc(100% - 9px) 55%;
+    background-size: 5px 5px, 5px 5px;
+    background-repeat: no-repeat;
+  }
+  .speed-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .speed-group label { color: var(--muted); font-size: 0.9rem; white-space: nowrap; }
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 140px;
+    height: 6px;
+    border-radius: 3px;
+    background: #2a2f3d;
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--bar);
+    border: 2px solid #0f1117;
+    box-shadow: 0 0 6px rgba(74, 144, 226, 0.6);
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--bar);
+    border: 2px solid #0f1117;
+  }
+  .speed-val {
+    min-width: 34px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    color: var(--text);
+    font-size: 0.9rem;
+  }
+  .status-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 16px;
+    font-size: 0.95rem;
+  }
+  .status-row .stat {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .status-row .stat .label { color: var(--muted); }
+  .status-row .stat .value {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    min-width: 24px;
+    text-align: center;
+  }
+  #status {
+    font-weight: 600;
+    padding: 4px 12px;
+    border-radius: 6px;
+    background: #232838;
+    border: 1px solid var(--border);
+  }
+  #status.done { color: var(--sorted); border-color: rgba(46, 204, 113, 0.4); }
+  #status.running { color: var(--compare); }
+  #bars {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    width: 100%;
+    max-width: 960px;
+    height: 360px;
+    margin: 0 auto;
+    padding: 0 4px;
+  }
+  .bar {
+    flex: 1 1 0;
+    min-width: 0;
+    background: var(--bar);
+    border-radius: 2px 2px 0 0;
+    transition: height 0.12s ease, background 0.12s ease;
+    position: relative;
+  }
+  .bar.compare { background: var(--compare); }
+  .bar.swap { background: var(--swap); }
+  .bar.sorted { background: var(--sorted); }
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    justify-content: center;
+    margin-top: 16px;
+    font-size: 0.85rem;
+    color: var(--muted);
+  }
+  .legend .item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .legend .swatch {
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    display: inline-block;
+  }
+</style>
+</head>
+<body>
+  <h1>Visualizzatore di algoritmi di ordinamento</h1>
+  <p class="subtitle">Bubble sort, Insertion sort e Quick sort su 40 valori casuali</p>
+
+  <div class="panel">
+    <div class="controls">
+      <button id="play" type="button">Play</button>
+      <button id="step" type="button">Step</button>
+      <button id="reset" type="button">Reset</button>
+      <div class="group">
+        <select id="algo">
+          <option value="bubble" selected>Bubble sort</option>
+          <option value="insertion">Insertion sort</option>
+          <option value="quick">Quick sort</option>
+        </select>
+      </div>
+      <div class="speed-group">
+        <label for="speed">Velocità</label>
+        <input id="speed" type="range" min="1" max="100" value="50">
+        <span class="speed-val" id="speedVal">50</span>
+      </div>
+    </div>
+
+    <div class="status-row">
+      <span id="status">In pausa</span>
+      <span class="stat"><span class="label">Confronti:</span><span class="value" id="comparisons">0</span></span>
+      <span class="stat"><span class="label">Scambi:</span><span class="value" id="swaps">0</span></span>
+    </div>
+
+    <div id="bars"></div>
+
+    <div class="legend">
+      <span class="item"><span class="swatch" style="background:#4a90e2"></span>Normale</span>
+      <span class="item"><span class="swatch" style="background:#f5a623"></span>Confronto</span>
+      <span class="item"><span class="swatch" style="background:#e94e77"></span>Scambio</span>
+      <span class="item"><span class="swatch" style="background:#2ecc71"></span>Ordinato</span>
+    </div>
+  </div>
+
+<script>
+(function () {
+  'use strict';
+
+  var N = 40;
+  var MIN = 5, MAX = 100;
+
+  var barsEl = document.getElementById('bars');
+  var playBtn = document.getElementById('play');
+  var stepBtn = document.getElementById('step');
+  var resetBtn = document.getElementById('reset');
+  var algoSel = document.getElementById('algo');
+  var speedInput = document.getElementById('speed');
+  var speedVal = document.getElementById('speedVal');
+  var statusEl = document.getElementById('status');
+  var comparisonsEl = document.getElementById('comparisons');
+  var swapsEl = document.getElementById('swaps');
+
+  var state = {
+    values: [],
+    comparisons: 0,
+    swaps: 0,
+    playing: false,
+    algorithm: 'bubble',
+    done: false,
+    sortedCount: 0
+  };
+
+  var gen = null;
+  var timer = null;
+  var barEls = [];
+
+  function randArray() {
+    var a = [];
+    for (var i = 0; i < N; i++) {
+      a.push(MIN + Math.floor(Math.random() * (MAX - MIN + 1)));
+    }
+    return a;
+  }
+
+  function buildBars() {
+    barsEl.innerHTML = '';
+    barEls = [];
+    for (var i = 0; i < N; i++) {
+      var b = document.createElement('div');
+      b.className = 'bar';
+      barsEl.appendChild(b);
+      barEls.push(b);
+    }
+  }
+
+  function render() {
+    for (var i = 0; i < N; i++) {
+      var el = barEls[i];
+      el.style.height = state.values[i] + '%';
+      el.className = 'bar' + (state.sorted[i] ? ' sorted' : '');
+    }
+    comparisonsEl.textContent = String(state.comparisons);
+    swapsEl.textContent = String(state.swaps);
+    updateStatus();
+  }
+
+  function updateStatus() {
+    if (state.done) {
+      statusEl.textContent = 'Ordinato!';
+      statusEl.className = 'done';
+    } else if (state.playing) {
+      statusEl.textContent = 'In esecuzione';
+      statusEl.className = 'running';
+    } else {
+      statusEl.textContent = 'In pausa';
+      statusEl.className = '';
+    }
+  }
+
+  function updateButtons() {
+    playBtn.textContent = state.playing ? 'Pause' : 'Play';
+    playBtn.disabled = state.done;
+    stepBtn.disabled = state.done;
+  }
+
+  function delayMs() {
+    var v = parseInt(speedInput.value, 10);
+    if (isNaN(v)) v = 50;
+    var d = Math.round(1000 - v * 9.9);
+    if (d < 10) d = 10;
+    return d;
+  }
+
+  function markCompare(i, j) {
+    if (i != null && i >= 0 && i < N) barEls[i].classList.add('compare');
+    if (j != null && j >= 0 && j < N) barEls[j].classList.add('compare');
+  }
+
+  function markSwap(i, j) {
+    if (i != null && i >= 0 && i < N) barEls[i].classList.add('swap');
+    if (j != null && j >= 0 && j < N) barEls[j].classList.add('swap');
+  }
+
+  function markSorted(i) {
+    if (i == null || i < 0 || i >= N) return;
+    if (!state.sorted[i]) {
+      state.sorted[i] = true;
+      state.sortedCount++;
+    }
+  }
+
+  function markSortedRange(a, b) {
+    for (var i = a; i <= b; i++) markSorted(i);
+  }
+
+  function clearHighlights() {
+    for (var i = 0; i < N; i++) {
+      barEls[i].classList.remove('compare');
+      barEls[i].classList.remove('swap');
+    }
+  }
+
+  function swapValues(i, j) {
+    var t = state.values[i];
+    state.values[i] = state.values[j];
+    state.values[j] = t;
+  }
+
+  function doStep() {
+    if (state.done || !gen) return;
+    clearHighlights();
+    var r = gen.next();
+    if (r.done) {
+      finish();
+      return;
+    }
+    var a = r.value;
+    state.comparisons++;
+    if (a.swap) state.swaps++;
+    render();
+    markCompare(a.i, a.j);
+    if (a.swap) markSwap(a.i, a.j);
+  }
+
+  function finish() {
+    state.done = true;
+    state.playing = false;
+    gen = null;
+    if (timer) { clearTimeout(timer); timer = null; }
+    for (var i = 0; i < N; i++) markSorted(i);
+    clearHighlights();
+    render();
+    updateButtons();
+  }
+
+  function tick() {
+    if (!state.playing || state.done) return;
+    doStep();
+    if (state.playing && !state.done) {
+      timer = setTimeout(tick, delayMs());
+    }
+  }
+
+  function play() {
+    if (state.done) return;
+    if (state.playing) return;
+    state.playing = true;
+    updateButtons();
+    updateStatus();
+    timer = setTimeout(tick, delayMs());
+  }
+
+  function pause() {
+    if (!state.playing) return;
+    state.playing = false;
+    if (timer) { clearTimeout(timer); timer = null; }
+    updateButtons();
+    updateStatus();
+  }
+
+  function resetAll(newValues) {
+    if (timer) { clearTimeout(timer); timer = null; }
+    state.playing = false;
+    state.done = false;
+    state.comparisons = 0;
+    state.swaps = 0;
+    state.sorted = [];
+    state.sortedCount = 0;
+    state.values = newValues || randArray();
+    gen = makeGenerator(state.algorithm, state.values);
+    clearHighlights();
+    render();
+    updateButtons();
+  }
+
+  function makeGenerator(name, arr) {
+    if (name === 'insertion') return insertionGen(arr);
+    if (name === 'quick') return quickGen(arr);
+    return bubbleGen(arr);
+  }
+
+  // Each yield = exactly one comparison. The generator mutates the array
+  // itself (swap/shift) before yielding, and marks sorted bars directly.
+  function swapIn(a, i, j) { var t = a[i]; a[i] = a[j]; a[j] = t; }
+
+  function* bubbleGen(a) {
+    var n = a.length;
+    for (var i = 0; i < n - 1; i++) {
+      var swapped = false;
+      for (var j = 0; j < n - 1 - i; j++) {
+        var sw = a[j] > a[j + 1];
+        if (sw) { swapIn(a, j, j + 1); swapped = true; }
+        yield { i: j, j: j + 1, swap: sw };
+      }
+      markSorted(n - 1 - i);
+      if (!swapped) return;
+    }
+  }
+
+  function* insertionGen(a) {
+    var n = a.length;
+    for (var i = 1; i < n; i++) {
+      var j = i;
+      while (j > 0) {
+        var sw = a[j - 1] > a[j];
+        if (sw) swapIn(a, j - 1, j);
+        yield { i: j - 1, j: j, swap: sw };
+        if (!sw) break;
+        j--;
+      }
+    }
+  }
+
+  function* quickGen(a) {
+    var stack = [[0, a.length - 1]];
+    while (stack.length) {
+      var r = stack.pop(), lo = r[0], hi = r[1];
+      if (lo > hi) continue;
+      if (lo === hi) { markSorted(lo); continue; }
+      var pivot = a[hi], i = lo - 1;
+      for (var j = lo; j < hi; j++) {
+        var lt = a[j] < pivot;
+        var sw = false;
+        if (lt) { i++; if (i !== j) { swapIn(a, i, j); sw = true; } }
+        yield { i: sw ? i : j, j: sw ? j : hi, swap: sw };
+      }
+      var p = i + 1;
+      if (p !== hi) { swapIn(a, p, hi); state.swaps++; }
+      markSorted(p);
+      stack.push([p + 1, hi]);
+      stack.push([lo, p - 1]);
+    }
+  }
+
+  // ---- event wiring ----
+
+  playBtn.addEventListener('click', function () {
+    if (state.playing) pause(); else play();
+  });
+
+  stepBtn.addEventListener('click', function () {
+    if (state.playing) pause();
+    doStep();
+  });
+
+  resetBtn.addEventListener('click', function () {
+    resetAll();
+  });
+
+  algoSel.addEventListener('change', function () {
+    state.algorithm = algoSel.value;
+    resetAll();
+  });
+
+  speedInput.addEventListener('input', function () {
+    speedVal.textContent = speedInput.value;
+  });
+
+  // ---- public API ----
+  window.app = {
+    get values() { return state.values; },
+    get comparisons() { return state.comparisons; },
+    get swaps() { return state.swaps; },
+    get playing() { return state.playing; },
+    get algorithm() { return state.algorithm; },
+    get done() { return state.done; },
+    get sortedCount() { return state.sortedCount; },
+    step: doStep,
+    reset: function () { resetAll(); },
+    play: play,
+    pause: pause
+  };
+
+  // ---- init ----
+  state.sorted = [];
+  state.values = randArray();
+  buildBars();
+  gen = makeGenerator(state.algorithm, state.values);
+  render();
+  updateButtons();
+})();
+</script>
+</body>
+</html>

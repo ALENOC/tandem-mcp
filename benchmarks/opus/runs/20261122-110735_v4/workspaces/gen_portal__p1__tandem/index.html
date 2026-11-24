@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>NEON PORTAL 3D</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #05010f;
+  }
+  #c {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    display: block;
+    background: #05010f;
+  }
+  #hud {
+    position: fixed;
+    top: 16px;
+    left: 16px;
+    padding: 14px 18px;
+    border-radius: 14px;
+    background: rgba(20,10,50,0.35);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(0,240,255,0.35);
+    box-shadow: 0 0 24px rgba(255,43,214,0.25);
+    font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color: #cfe8ff;
+    z-index: 10;
+    user-select: none;
+    min-width: 210px;
+  }
+  #title {
+    font-size: 18px;
+    font-weight: bold;
+    letter-spacing: 3px;
+    background: linear-gradient(90deg, #00f0ff, #ff2bd6);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+    margin-bottom: 8px;
+  }
+  .stat {
+    line-height: 1.5;
+    white-space: pre;
+  }
+  #controls {
+    margin-top: 10px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+  }
+  button {
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(0,240,255,0.5);
+    color: #cfe8ff;
+    border-radius: 8px;
+    padding: 6px 12px;
+    font: inherit;
+    cursor: pointer;
+    transition: background 0.15s ease, box-shadow 0.15s ease;
+  }
+  button:hover {
+    background: rgba(0,240,255,0.2);
+    box-shadow: 0 0 12px rgba(0,240,255,0.4);
+  }
+  button:active {
+    background: rgba(0,240,255,0.32);
+  }
+  #speedrow {
+    margin-top: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  #speed {
+    width: 120px;
+    accent-color: #00f0ff;
+    cursor: pointer;
+  }
+  #speedval {
+    min-width: 34px;
+    text-align: right;
+    color: #00f0ff;
+  }
+</style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+  <div id="hud">
+    <div id="title">NEON PORTAL 3D</div>
+    <div id="fps" class="stat">FPS: 0</div>
+    <div id="polys" class="stat">POLYS: 0</div>
+    <div id="parts" class="stat">PARTS: 110</div>
+    <div id="controls">
+      <button id="pause">Pause</button>
+      <button id="orbit">Orbit ON</button>
+      <button id="reset">Reset</button>
+    </div>
+    <div id="speedrow">
+      <input type="range" id="speed" min="0" max="3" step="0.1" value="1">
+      <span id="speedval">1.0x</span>
+    </div>
+  </div>
+  <script src="engine3d.js"></script>
+  <script src="scene.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

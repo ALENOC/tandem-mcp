@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Visualizzatore di Algoritmi di Ordinamento</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --text: #e6e6e6;
+    --panel: #1a1d27;
+    --bar-normal: #4a90e2;
+    --bar-compare: #f5a623;
+    --bar-swap: #e74c3c;
+    --bar-sorted: #2ecc71;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  .wrap {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 16px;
+  }
+  h1 {
+    font-size: 1.3rem;
+    text-align: center;
+    margin: 8px 0 16px;
+    font-weight: 600;
+  }
+  #bars {
+    height: 400px;
+    width: 100%;
+    max-width: 900px;
+    margin: 0 auto;
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    background: var(--panel);
+    border-radius: 8px;
+    padding: 8px;
+  }
+  .bar {
+    flex: 1 1 0;
+    min-width: 0;
+    background: var(--bar-normal);
+    border-radius: 2px 2px 0 0;
+    transition: height 0.05s linear;
+  }
+  .bar.compare { background: var(--bar-compare); }
+  .bar.swap { background: var(--bar-swap); }
+  .bar.sorted { background: var(--bar-sorted); }
+  #status {
+    text-align: center;
+    min-height: 1.4em;
+    margin: 10px 0;
+    font-weight: 600;
+    color: var(--bar-sorted);
+  }
+  .panel {
+    background: var(--panel);
+    border-radius: 8px;
+    padding: 14px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+    justify-content: center;
+  }
+  .panel button, .panel select {
+    font: inherit;
+    color: var(--text);
+    background: #232735;
+    border: 1px solid #2f3446;
+    border-radius: 6px;
+    padding: 8px 14px;
+    cursor: pointer;
+  }
+  .panel button:hover { background: #2b3040; }
+  .panel button:active { transform: translateY(1px); }
+  .panel select { cursor: pointer; }
+  .counter {
+    font-size: 0.95rem;
+    white-space: nowrap;
+  }
+  .counter span { font-weight: 700; }
+  .speed {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  input[type="range"] { accent-color: var(--bar-normal); }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Visualizzatore di Algoritmi di Ordinamento</h1>
+    <div id="bars"></div>
+    <div id="status"></div>
+    <div class="panel">
+      <button id="play">Play</button>
+      <button id="step">Step</button>
+      <button id="reset">Reset</button>
+      <select id="algo">
+        <option value="bubble">Bubble sort</option>
+        <option value="insertion">Insertion sort</option>
+        <option value="quick">Quick sort</option>
+      </select>
+      <span class="counter">Confronti: <span id="comparisons">0</span></span>
+      <span class="counter">Scambi: <span id="swaps">0</span></span>
+      <label class="speed">Velocità <input id="speed" type="range" min="1" max="100" value="50"></label>
+    </div>
+  </div>
+<script>
+(function () {
+  "use strict";
+
+  var N = 40;
+  var barsEl = document.getElementById("bars");
+  var playBtn = document.getElementById("play");
+  var stepBtn = document.getElementById("step");
+  var resetBtn = document.getElementById("reset");
+  var algoSel = document.getElementById("algo");
+  var speedEl = document.getElementById("speed");
+  var compEl = document.getElementById("comparisons");
+  var swapEl = document.getElementById("swaps");
+  var statusEl = document.getElementById("status");
+
+  var app = {
+    array: [],
+    comparisons: 0,
+    swaps: 0,
+    playing: false,
+    done: false,
+    algorithm: "bubble"
+  };
+
+  var gen = null;
+  var pending = null;
+  var sortedMark = [];
+  var timer = null;
+  var bars = [];
+
+  function randomArray() {
+    var a = [];
+    for (var i = 0; i < N; i++) {
+      a.push(5 + Math.floor(Math.random() * 96));
+    }
+    return a;
+  }
+
+  function buildBars() {
+    barsEl.innerHTML = "";
+    bars = [];
+    for (var i = 0; i < N; i++) {
+      var b = document.createElement("div");
+      b.className = "bar";
+      barsEl.appendChild(b);
+      bars.push(b);
+    }
+  }
+
+  function render() {
+    for (var i = 0; i < N; i++) {
+      bars[i].style.height = app.array[i] + "%";
+    }
+  }
+
+  function clearHighlights() {
+    for (var i = 0; i < N; i++) {
+      bars[i].className = sortedMark[i] ? "bar sorted" : "bar";
+    }
+  }
+
+  function markSorted() {
+    for (var i = 0; i < N; i++) {
+      bars[i].className = "bar sorted";
+    }
+  }
+
+  function updateCounters() {
+    compEl.textContent = String(app.comparisons);
+    swapEl.textContent = String(app.swaps);
+  }
+
+  function setPlayLabel() {
+    playBtn.textContent = app.playing ? "Pause" : "Play";
+  }
+
+  function delay() {
+    var s = parseInt(speedEl.value, 10);
+    if (isNaN(s) || s < 1) s = 1;
+    return 1000 / s;
+  }
+
+  function stopTimer() {
+    if (timer !== null) {
+      clearTimeout(timer);
+      timer = null;
+    }
+  }
+
+  function schedule() {
+    stopTimer();
+    if (app.playing && !app.done) {
+      timer = setTimeout(tick, delay());
+    }
+  }
+
+  function tick() {
+    timer = null;
+    if (!app.playing || app.done) return;
+    step();
+    schedule();
+  }
+
+  function finishSort() {
+    app.done = true;
+    app.playing = false;
+    stopTimer();
+    setPlayLabel();
+    markSorted();
+    statusEl.textContent = "Ordinato!";
+  }
+
+  function apply(v) {
+    if (v.type === "swap") {
+      app.swaps++;
+      bars[v.i].className = "bar swap";
+      bars[v.j].className = "bar swap";
+    } else if (v.type === "move") {
+      app.swaps++;
+      bars[v.i].className = "bar swap";
+      bars[v.j].className = "bar swap";
+    } else if (v.type === "sorted") {
+      for (var k = 0; k < v.idx.length; k++) {
+        sortedMark[v.idx[k]] = true;
+        if (bars[v.idx[k]].className === "bar") bars[v.idx[k]].className = "bar sorted";
+      }
+    }
+  }
+
+  // One step = exactly one comparison plus the swaps/moves that follow it.
+  function step() {
+    if (app.done) return;
+    if (!gen) {
+      gen = makeGenerator(app.algorithm, app.array);
+    }
+    var r = pending || gen.next();
+    pending = null;
+    clearHighlights();
+    // events before the first comparison (e.g. sorted marks)
+    while (!r.done && r.value.type !== "compare") {
+      apply(r.value);
+      r = gen.next();
+    }
+    if (r.done) {
+      gen = null;
+      finishSort();
+      render();
+      updateCounters();
+      return;
+    }
+    app.comparisons++;
+    bars[r.value.i].className = "bar compare";
+    bars[r.value.j].className = "bar compare";
+    // consume the swaps/moves caused by this comparison
+    r = gen.next();
+    while (!r.done && r.value.type !== "compare") {
+      apply(r.value);
+      r = gen.next();
+    }
+    if (r.done) {
+      gen = null;
+      render();
+      updateCounters();
+      finishSort();
+      return;
+    }
+    pending = r;
+    render();
+    updateCounters();
+  }
+
+  function reset() {
+    stopTimer();
+    app.playing = false;
+    app.done = false;
+    app.comparisons = 0;
+    app.swaps = 0;
+    app.array = randomArray();
+    gen = null;
+    pending = null;
+    sortedMark = [];
+    buildBars();
+    render();
+    clearHighlights();
+    updateCounters();
+    setPlayLabel();
+    statusEl.textContent = "";
+  }
+
+  function runToEnd() {
+    while (!app.done) {
+      step();
+    }
+  }
+
+  function makeGenerator(kind, arr) {
+    if (kind === "bubble") return bubble(arr);
+    if (kind === "insertion") return insertion(arr);
+    return quick(arr);
+  }
+
+  function* bubble(a) {
+    var n = a.length;
+    for (var i = 0; i < n - 1; i++) {
+      var swapped = false;
+      for (var j = 0; j < n - 1 - i; j++) {
+        yield { type: "compare", i: j, j: j + 1 };
+        if (a[j] > a[j + 1]) {
+          var t = a[j];
+          a[j] = a[j + 1];
+          a[j + 1] = t;
+          swapped = true;
+          yield { type: "swap", i: j, j: j + 1 };
+        }
+      }
+      yield { type: "sorted", idx: [n - 1 - i] };
+      if (!swapped) break;
+    }
+  }
+
+  function* insertion(a) {
+    var n = a.length;
+    yield { type: "sorted", idx: [0] };
+    for (var i = 1; i < n; i++) {
+      var j = i;
+      while (j > 0) {
+        yield { type: "compare", i: j - 1, j: j };
+        if (a[j - 1] > a[j]) {
+          var t = a[j - 1];
+          a[j - 1] = a[j];
+          a[j] = t;
+          yield { type: "move", i: j - 1, j: j };
+          j--;
+        } else {
+          break;
+        }
+      }
+      yield { type: "sorted", idx: [i] };
+    }
+  }
+
+  function* quick(a) {
+    var n = a.length;
+    function* part(lo, hi) {
+      var pivot = a[hi];
+      var i = lo - 1;
+      for (var k = lo; k < hi; k++) {
+        yield { type: "compare", i: k, j: hi };
+        if (a[k] < pivot) {
+          i++;
+          if (i !== k) {
+            var t = a[i];
+            a[i] = a[k];
+            a[k] = t;
+            yield { type: "swap", i: i, j: k };
+          }
+        }
+      }
+      if (i + 1 !== hi) {
+        var t2 = a[i + 1];
+        a[i + 1] = a[hi];
+        a[hi] = t2;
+        yield { type: "swap", i: i + 1, j: hi };
+      }
+      return i + 1;
+    }
+    function* qs(lo, hi) {
+      if (lo > hi) return;
+      if (lo === hi) {
+        yield { type: "sorted", idx: [lo] };
+        return;
+      }
+      var p = yield* part(lo, hi);
+      yield { type: "sorted", idx: [p] };
+      yield* qs(lo, p - 1);
+      yield* qs(p + 1, hi);
+    }
+    yield* qs(0, n - 1);
+  }
+
+  playBtn.addEventListener("click", function () {
+    if (app.done) return;
+    app.playing = !app.playing;
+    setPlayLabel();
+    schedule();
+  });
+
+  stepBtn.addEventListener("click", function () {
+    if (app.done) return;
+    step();
+  });
+
+  resetBtn.addEventListener("click", function () {
+    reset();
+  });
+
+  algoSel.addEventListener("change", function () {
+    app.algorithm = algoSel.value;
+    reset();
+  });
+
+  speedEl.addEventListener("input", function () {
+    if (app.playing && !app.done) {
+      schedule();
+    }
+  });
+
+  window.app = app;
+  app.step = step;
+  app.reset = reset;
+  app.runToEnd = runToEnd;
+
+  reset();
+})();
+</script>
+</body>
+</html>
