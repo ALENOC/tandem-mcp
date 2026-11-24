@@ -89,13 +89,16 @@ Modulo & Compito\\
 \end{itemize}
 
 \section{Risparmio misurato}
-Con Opus 5.5 come orchestratore e il profilo autonomo (serie benchmark 4.1.0, quattro compiti medi e grandi, quattro
-coppie bilanciate ciascuno), Tandem ha ridotto la spesa cloud totale del 57\% e il costo per successo del 61\%
-(\$0,217 contro \$0,556), con il 67\% di token di output in meno (esclusi due incidenti infrastrutturali nel
-run finale: 10/15 successi per braccio, -61\% totale e per successo, -72\% token di output). Il tempo mediano
-è sceso da 25 a 19 minuti (40--45\% in meno per chiamata locale) e la soglia 40 FPS ha portato i portali 3D
-da 4--20 FPS a 38--60 FPS. Le modifiche sotto le 30 righe restano dirette (+10\% in 4.0.0). Modello locale:
-Qwen3.8 27B IQ3\_S su GPU AMD Radeon RX 6800 serie (16 GB). Dettagli: \code{docs/BENCHMARKS.md} e
-\url{https://alenoc.github.io/tandem-mcp/}.
+Con Opus 5.5 come orchestratore e il profilo autonomo (campagna 4.2.0 \code{v4_2}, cinque compiti, tre coppie
+bilanciate ciascuno, 15 tentativi per braccio), entrambi i bracci hanno ottenuto 10/15 risultati nel budget e Tandem
+ha ridotto la spesa cloud totale e il costo per successo del 53\% (\$0,202 contro \$0,429), con il 68\% di token di
+output in meno (-49\% per successo escludendo uno stallo API cloud di 82 minuti sul braccio diretto). I compiti medi
+e grandi hanno risparmiato dal 22\% al 51\% per successo e l'unico portale 3D funzionante è quello di Tandem; la
+correzione di 5 righe costa l'8\% in più e resta diretta. Il tempo mediano di Tandem sui compiti comuni è sceso da
+25 min (4.0.0) a 19 min (4.1.0) a 16 min, ancora circa 12 volte più lento del diretto. Tutte le pagine Tandem
+promosse girano a 60 FPS. Il VLM locale ha revisionato 7 pagine (2 segnalazioni, entrambe falsi positivi) e Opus ha
+inviato 3 suggerimenti visivi dopo aver visto lo screenshot della ricevuta. Modello locale: Qwen3.8 27B IQ3\_S con
+\code{mmproj-F16} (\code{type=vlm}, contesto 40.960 token) su GPU AMD Radeon RX 6800 serie (16 GB). Dettagli:
+\code{docs/BENCHMARKS.md} e \url{https://alenoc.github.io/tandem-mcp/}.
 
 \end{document}

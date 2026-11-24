@@ -1,28 +1,24 @@
 "use strict";
 
 const TASKS = {
+  py_discount: { name: "5-line bug fix", kind: "Python edit",
+    why: "3/3 on both arms; Tandem costs 8% more on an edit this small (10% in 4.0.0), so the guide routes edits under about 30 lines direct." },
   py_cron: { name: "Cron parser module with tests", kind: "Python module",
-    why: "3/4 successes each (Direct lost 1 to a 74-minute API stall; Tandem lost 1 to a 141 s slow test suite before TANDEM_SLOW_CHECK_S=30 was added)." },
+    why: "Tandem lost pair 2: the local job ran out of time twice (the job_continue hint opened a second window), then Opus patched the file itself, 31 minutes over budget." },
   web_boids: { name: "Boids web simulation", kind: "Web page",
-    why: "4/4 successes on both arms, both at 60 FPS; Tandem cuts cloud cost per success in half." },
+    why: "3/3 on both arms, all at 60 FPS. Pair 2 Tandem ended blocked on a broken check in Opus's contract, but the local page passes. The 2 local VLM strikes (pair 1) were false positives." },
   gen_orbital: { name: "Orbital web simulation", kind: "Web page",
-    why: "Two Tandem artifacts passed the evaluator but ran over budget on orchestrator checks; final Tandem Orbital hit a GPU reset and fell back to Opus. Three Direct attempts missed an intermittent browser check." },
+    why: "1/3 on both arms; the evaluator's interaction checks fail most pages of both arms. Direct pair 1 lost 82 minutes to a cloud API stall (its page passes). Opus sent 2 visual hints after seeing the screenshot." },
   gen_portal: { name: "3D neon portal (4 files)", kind: "3D web app",
-    why: "2/4 successes on both arms. The 40 FPS gate lifted slow Tandem portals from 3–4 FPS to 60 FPS in confirm (38–39 vs 40 FPS in final), at 78% lower cloud cost per success." },
+    why: "No Direct portal passed (interactions or visual). Tandem pair 2 passed at 60 FPS after one visual hint; pair 1 got stuck and Opus patched it (still failing, 12 FPS)." },
 };
-const ORDER = ["py_cron", "web_boids", "gen_orbital", "gen_portal"];
-const RUN_TAG = (run) => {
-  if (!run) return "";
-  if (run.includes("pilot1")) return "pilot · ";
-  if (run.includes("confirm")) return "confirm · ";
-  if (run.includes("final")) return "final · ";
-  return "";
-};
+const ORDER = ["py_discount", "py_cron", "web_boids", "gen_orbital", "gen_portal"];
+const RUN_TAG = () => "";
 const DEMOS = {
-  orbital: { d: "orbital/direct", t: "orbital/tandem", cd: "pilot p1 · passed", ct: "confirm p2 · passed",
-    note: "Both pass all three evaluations and run at 60 FPS. Direct adds extra visual polish (tapered trails and usage hint); Tandem finished in 11 min for $0.15 cloud." },
-  portal: { d: "portal/direct", t: "portal/tandem", cd: "final p1 · failed (interactions)", ct: "final p1 · passed",
-    note: "Same final 4.1.0 pair. Direct has neon wireframe edges and a full cross-grid (40 FPS at 1280x800) but fails interactions; Tandem passes all three evaluations (38–39 FPS at 1280x800) for $0.11 cloud." },
+  orbital: { d: "orbital/direct", t: "orbital/tandem", cd: "pair 3 · passed · $0.30 · 86 s", ct: "pair 3 · passed · $0.16 · 14 min",
+    note: "Same pair, the only one where both arms pass. Both run at 60 FPS. Direct adds polish not asked for (glow halos, ringed planet, usage hint); Tandem is plainer, with a HUD fixed by one Opus hint after the screenshot." },
+  portal: { d: "portal/direct", t: "portal/tandem", cd: "pair 2 · failed (interactions) · $0.59 · 134 s", ct: "pair 2 · passed · $0.15 · 40 min",
+    note: "Same pair; Tandem pair 2 is the only portal of either arm that passed. Both run at 60 FPS. Direct's scene is richer and fills the frame but fails interactions; Tandem's is correct but small and plain." },
 };
 // pages render at a desktop size and are scaled down; a phone gets a smaller virtual size so the controls stay legible
 const viewW = (stage) => (stage.clientWidth < 560 ? 760 : 1280);
@@ -58,16 +54,17 @@ function renderKpis(data) {
     c.append(el("div", "big" + (neutral ? " neutral" : ""), big), el("div", "lbl", lbl), el("div", "det", det));
     box.append(c);
   }
-  $("#note-punctual").innerHTML = `<b>Trade-off and caveats:</b> 4.1.0 cut local per-call time by ~40–45% and dropped median task time from 25 min to 19 min, but Tandem is still ~13x slower than direct (~7–39 min median vs ~1–2.5 min). Excluding two infrastructure incidents in the final run (a GPU reset on Tandem Orbital and a 74-minute API stall on Direct Cron): 10/15 successes each, $0.205 vs $0.521 (-61%, -72% output tokens). Small edits (&lt;30 lines) stay direct (+10% in 4.0.0).`;
+  $("#note-punctual").innerHTML = `<b>Trade-off and caveats:</b> Tandem is about 12x slower (median 11 to 33 min against 1 to 2.5 min on medium and large tasks). Small edits cost 8% more and stay direct. Without the 82-minute API stall on Direct Orbital: $0.202 vs $0.394 (-49%). The late Tandem Cron counted under "ignoring budget" was patched by Opus after the local job ran out of time; Tandem Portal pair 1 was also patched by Opus and still failed. 3 pairs per task: a 1-success gap is not decisive.`;
 }
 
 function renderTasks(data) {
   const box = $("#task-cards");
   for (const id of ORDER) {
     const s = data.summary[id], info = TASKS[id];
-    const metric = (a) => s[a].cost_usd_per_success ?? s[a].cost_usd_total / s[a].attempts;
-    const max = Math.max(metric("direct"), metric("tandem"));
+    // when one arm has no success, compare both arms per attempt, never per success against per attempt
     const perAttempt = s.direct.cost_usd_per_success == null || s.tandem.cost_usd_per_success == null;
+    const metric = (a) => perAttempt ? s[a].cost_usd_total / s[a].attempts : s[a].cost_usd_per_success;
+    const max = Math.max(metric("direct"), metric("tandem"));
     const delta = perAttempt ? metric("tandem") / metric("direct") - 1 : s.tandem_vs_direct_per_success;
     const c = el("article", "task");
     const h = el("h3");
@@ -80,7 +77,7 @@ function renderTasks(data) {
       r.append(el("span", "who " + (arm === "direct" ? "arm-d" : "arm-t"), arm === "direct" ? "Direct" : "Tandem"));
       const bar = el("div", "bar"); const fill = el("i"); fill.style.width = (metric(arm) / max * 100).toFixed(1) + "%";
       bar.append(fill); r.append(bar);
-      const cost = a.cost_usd_per_success == null ? `<b>${usd(metric(arm))}</b> per attempt` : `<b>${usd(a.cost_usd_per_success)}</b> per success`;
+      const cost = perAttempt ? `<b>${usd(metric(arm))}</b> per attempt` + (a.cost_usd_per_success == null ? "" : ` (${usd(a.cost_usd_per_success)} per success)`) : `<b>${usd(a.cost_usd_per_success)}</b> per success`;
       r.append(el("div", "meta", `<span>${cost}</span><span>${a.successes}/${a.attempts} ok</span><span>median ${dur(a.median_wall_seconds)}</span>`));
       c.append(r);
     }
@@ -111,6 +108,9 @@ function renderAttempts(data, filter) {
     c.append(el("div", "top", `<span>${TASKS[a.task].name.split(" (")[0]} · ${RUN_TAG(a.run)}p${a.pair} · <span class="${a.arm === "direct" ? "arm-d" : "arm-t"}">${a.arm}</span></span><span class="st ${st[0]}">${st[1]}</span>`));
     let dl = `<dt>Cloud cost</dt><dd>${usd(a.cost_usd)}</dd><dt>Time</dt><dd>${dur(a.wall_seconds)}</dd><dt>Cloud output</dt><dd>${k(a.output_tokens)} tok</dd>`;
     if (a.arm === "tandem") dl += `<dt>Local tokens</dt><dd>${k(a.local_tokens)}</dd>`;
+    if (a.arm === "tandem" && a.local_jobs && a.local_jobs.length) dl += `<dt>Local job</dt><dd>${a.local_jobs.join(", ")}</dd>`;
+    if (a.hints) dl += `<dt>Opus hints</dt><dd>${a.hints}</dd>`;
+    if (a.visual_review && a.visual_review.length) dl += `<dt>VLM review</dt><dd>${a.visual_review.join(", ")}${a.visual_strikes ? ` (${a.visual_strikes} strikes)` : ""}</dd>`;
     if (a.failed_checks.length) dl += `<dt>Failed</dt><dd>${a.failed_checks.join(", ")}</dd>`;
     c.append(el("dl", "", dl));
     box.append(c);

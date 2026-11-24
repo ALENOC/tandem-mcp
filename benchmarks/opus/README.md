@@ -17,13 +17,13 @@ cd benchmarks/opus
 
 # Render real-time comparison GIFs from the chosen workspaces:
 node render_gifs.mjs \
-  runs/<run_dir>/workspaces/gen_portal__p1__direct gifs/portal_direct.gif \
-  runs/<run_dir>/workspaces/gen_portal__p1__tandem gifs/portal_tandem.gif \
-  runs/<run_dir>/workspaces/gen_orbital__p1__direct gifs/orbital_direct.gif \
-  runs/<run_dir>/workspaces/gen_orbital__p1__tandem gifs/orbital_tandem.gif
+  runs/<run_dir>/workspaces/gen_portal__p2__direct gifs/portal_direct.gif \
+  runs/<run_dir>/workspaces/gen_portal__p2__tandem gifs/portal_tandem.gif \
+  runs/<run_dir>/workspaces/gen_orbital__p3__direct gifs/orbital_direct.gif \
+  runs/<run_dir>/workspaces/gen_orbital__p3__tandem gifs/orbital_tandem.gif
 
 # Build the GitHub Pages site from the new report:
-../../.venv/bin/python ../../scripts/build_site.py ../../_site --report REEVAL_4_2.json
+../../.venv/bin/python ../../scripts/build_site.py ../../_site
 ```
 
 `run_pair.py` flags for Tandem 4.2.0+:
@@ -35,6 +35,7 @@ node render_gifs.mjs \
 
 | Run | Tandem code | What it is |
 | --- | --- | --- |
+| `runs/20261124-174810_v4_2` | 4.2.0 | **4.2.0 campaign**, 5 tasks x 3 pairs with local VLM review and screenshot receipts, report `REEVAL_4_2.json` (GIFs and site demos: Portal pair 2, Orbital pair 3) |
 | `runs/20261124-103103_adversarial_final` | 4.1.0 (round 3) | **4.1.0 final run**, 4 tasks x 1 pair, report `REEVAL_FINAL.json` (combined in `REEVAL_4_1.json`) |
 | `runs/20261124-052842_adversarial_confirm` | 4.1.0 (rounds 1+2) | **4.1.0 confirmation run**, 4 tasks x 2 pairs, report `REEVAL_CONFIRM.json` (combined in `REEVAL_4_1.json`) |
 | `runs/20261124-030230_adversarial_pilot1` | 4.1.0 (round 1) | **4.1.0 pilot run**, 4 tasks x 1 pair, report `REEVAL_PILOT1.json` (combined in `REEVAL_4_1.json`) |

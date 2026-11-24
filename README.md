@@ -47,27 +47,29 @@ In short: without a server, the agent still reads and writes everything the loca
 
 ## Does it save cloud tokens?
 
-Yes, on medium and large work. With **Opus 5.5** as the orchestrator in Claude Code and the autonomous profile (Tandem **4.1.0** series), Opus writes a contract once. Tandem's local model then writes the code and repairs it against the checks, with no cloud call, and Opus gets back one line. Across four medium and large tasks, four counterbalanced pairs each (16 attempts per arm), Tandem cut the total cloud bill by **57%** and the cost per successful result by **61%** (`$0.217` against `$0.556`), using **67% fewer output tokens** (excluding two infrastructure incidents in the final run, one per arm: **10/15** successes each, **-61%** total and per success, **-72%** output tokens).
+Yes, on medium and large work. With **Opus 5.5** as the orchestrator in Claude Code and the autonomous profile (Tandem **4.2.0**), Opus writes a contract once. Tandem's local model then writes the code and repairs it against the checks, with no cloud call, and Opus gets back one line plus, on web work, a 1280x800 screenshot. In a fresh campaign of five tasks, three counterbalanced pairs each (15 attempts per arm), both arms delivered **10/15** results inside the budget, and Tandem cut the total cloud bill and the cost per successful result by **53%** (`$0.202` against `$0.429`), using **68% fewer output tokens**.
 
 | Task | Direct | With Tandem | Cloud cost per success |
 | --- | --- | --- | ---: |
-| Cron parser module with tests | $0.441 · 3/4 · 97 s | $0.173 · 3/4 · 19 min | **-61%** |
-| Boids web simulation | $0.232 · 4/4 · 67 s | $0.117 · 4/4 · 7 min | **-50%** |
-| Orbital web simulation | $1.195 · 1/4 · 81 s | $0.470 · 2/4 · 39 min | **-61%** |
-| 3D neon portal (4 files) | $1.056 · 2/4 · 2.4 min | $0.232 · 2/4 · 23 min | **-78%** |
-| **All 16 attempts** | **$5.56 · 10/16** | **$2.39 · 11/16** | **-61%** |
-| **Without 2 infra incidents (15)** | **$5.21 · 10/15** | **$2.05 · 10/15** | **-61%** |
+| 5-line bug fix | $0.062 · 3/3 · 10 s | $0.067 · 3/3 · 2 min | **+8%** |
+| Cron parser module with tests | $0.268 · 3/3 · 60 s | $0.210 · 2/3 · 26 min | **-22%** |
+| Boids web simulation | $0.205 · 3/3 · 54 s | $0.127 · 3/3 · 11 min | **-38%** |
+| Orbital web simulation | $0.951 · 1/3 · 86 s | $0.467 · 1/3 · 12 min | **-51%** |
+| 3D neon portal (4 files) | no success · 0/3 · 2.5 min | $0.548 · 1/3 · 33 min | Direct 0/3 |
+| **All 15 attempts** | **$4.29 · 10/15 · $0.429** | **$2.02 · 10/15 · $0.202** | **-53%** |
 
-Each cell gives the cost per success (list prices, failed attempts counted), the successes inside the time budget and the median time. The 16 pairs span the three progressive 4.1.0 runs (`pilot1`, `confirm`, `final`) on the exact same independent evaluators as 4.0.0.
+Each cell gives the cost per success (list prices, failed attempts counted), the successes inside the time budget and the median time. Run `20261124-174810_v4_2`, report [`REEVAL_4_2.json`](benchmarks/opus/REEVAL_4_2.json), evaluated three times per artifact by the same independent evaluators as 4.0.0 and 4.1.0 (identical SHA-256).
 
 The trade-offs:
 
-- **Small edits do not pay:** in the 4.0.0 baseline (`v3`, 3 pairs), a 5-line bug fix cost **+10%** (`$0.050` against `$0.046`). Tandem tells Opus to do edits under about 30 lines itself.
-- **Time:** 4.1.0 cut local per-call time by ~40–45% and dropped the median task time from 25 min to 19 min (0 cut-off replies vs 36 in v3/v4), but a Tandem result still takes ~7–39 minutes median against ~1–2.5 minutes direct.
-- **Sample size and incidents:** with 4 pairs per task, a 1- or 2-success gap is not statistically decisive. The final run had one infrastructure incident per arm (a GPU reset during Tandem Orbital, where Opus wrote the page itself, and a 74-minute API stall during Direct Cron); both the raw 16-attempt and clean 15-attempt totals are shown above.
-- **Finish:** the 40 FPS web-check gate closed the runtime performance gap (55–60 FPS in pilot/confirm; 38–39 FPS vs 40 direct on the heavier final portal, up from 4–20 FPS in 4.0.0). Visual polish remains stronger on the direct path: the local model builds what the contract asks for and little more.
+- **Small edits do not pay:** the 5-line fix cost **+8%** with Tandem (`+10%` in 4.0.0). Tandem tells Opus to do edits under about 30 lines itself.
+- **Time:** a Tandem result takes a median of 11 to 33 minutes on medium and large tasks, against 1 to 2.5 minutes direct. On the four tasks shared with earlier versions the Tandem median went from 25 min (4.0.0) to 19 min (4.1.0) to 16 min (4.2.0).
+- **Not every loss is visible in the totals:** two Tandem attempts ended with Opus patching the files itself after the local job failed (Cron pair 2, out of time; Portal pair 1, stuck). Both still failed and are counted as failures. Cron pair 2 also ran 31 minutes over budget because `job_continue` opened a second full local time window.
+- **Incident:** one Direct attempt (Orbital pair 1) hit an 82-minute cloud API stall and ran over budget; its page passes the evaluator. Without it, Direct is `$0.394` per success (10/14) and Tandem still saves **49%**.
+- **Sample size:** with 3 pairs per task, a 1-success gap is not statistically decisive.
+- **Visual review:** the local VLM reviewed 7 of the 9 Tandem web pages and raised 2 strikes, both false positives (see [BENCHMARKS](docs/BENCHMARKS.md#visual-review-and-screenshots)). After seeing the attached screenshot, Opus sent 3 visual `job_continue` hints (HUD labels, HUD overflow, portal grid and rings), at $0.02 to $0.04 of extra cloud cost each. All Tandem web pages that passed run at 60 FPS at 1280x800. Direct pages still have more visual polish.
 
-Test machine: Intel Core i9-9900K, AMD Radeon RX 6800 series GPU with 16 GB VRAM, LM Studio 0.4.28 (Vulkan) running `Qwen3.8-27B-UD-IQ3_S` fully on the GPU with a 65,536-token context. [Full hardware and model settings](docs/BENCHMARKS.md#test-machine-and-local-model)
+Test machine: Intel Core i9-9900K, AMD Radeon RX 6800 series GPU with 16 GB VRAM, LM Studio (llama.cpp Vulkan runtime 2.82.0) running `Qwen3.8-27B-UD-IQ3_S` with `mmproj-F16.gguf` (loaded as `type=vlm`, so the same model also does the visual review) fully on the GPU with a 40,960-token context. [Full hardware and model settings](docs/BENCHMARKS.md#test-machine-and-local-model)
 
 [All results, method and earlier iterations](docs/BENCHMARKS.md) · [Interactive comparison, also on mobile](https://alenoc.github.io/tandem-mcp/)
 
@@ -75,33 +77,35 @@ Test machine: Intel Core i9-9900K, AMD Radeon RX 6800 series GPU with 16 GB VRAM
 
 <table>
   <tr>
-    <th width="50%">Direct (final, pair 1)</th>
-    <th width="50%">With Tandem (final, pair 1)</th>
+    <th width="50%">Direct (v4_2, pair 2)</th>
+    <th width="50%">With Tandem (v4_2, pair 2)</th>
   </tr>
   <tr>
     <td><img src="benchmarks/opus/gifs/portal_direct.gif" width="100%" alt="3D portal written directly by Opus"></td>
     <td><img src="benchmarks/opus/gifs/portal_tandem.gif" width="100%" alt="3D portal written by the local model through Tandem"></td>
   </tr>
   <tr>
-    <td align="center">$0.36 cloud · 97 s · failed (interactions)</td>
-    <td align="center">$0.11 cloud · 22 min · passed</td>
+    <td align="center">$0.59 cloud · 134 s · failed (interactions) · 60 FPS</td>
+    <td align="center">$0.15 cloud · 40 min · passed · 60 FPS · 1 visual hint</td>
   </tr>
 </table>
+
+The only Tandem portal that passed, next to the Direct portal from the same pair (no Direct portal passed). Direct's scene is richer and fills the frame; Tandem's is correct but small and plain.
 
 ### Orbital simulation
 
 <table>
   <tr>
-    <th width="50%">Direct (pilot, pair 1)</th>
-    <th width="50%">With Tandem (confirm, pair 2)</th>
+    <th width="50%">Direct (v4_2, pair 3)</th>
+    <th width="50%">With Tandem (v4_2, pair 3)</th>
   </tr>
   <tr>
     <td><img src="benchmarks/opus/gifs/orbital_direct.gif" width="100%" alt="Orbital simulation written directly by Opus"></td>
     <td><img src="benchmarks/opus/gifs/orbital_tandem.gif" width="100%" alt="Orbital simulation written by the local model through Tandem"></td>
   </tr>
   <tr>
-    <td align="center">$0.31 cloud · 88 s · passed</td>
-    <td align="center">$0.15 cloud · 11 min · passed</td>
+    <td align="center">$0.30 cloud · 86 s · passed · 60 FPS</td>
+    <td align="center">$0.16 cloud · 14 min · passed · 60 FPS · 1 visual hint</td>
   </tr>
 </table>
 

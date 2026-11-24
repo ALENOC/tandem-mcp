@@ -15,14 +15,14 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 BENCH = REPO / "benchmarks" / "opus"
-DEFAULT_REPORT = BENCH / "REEVAL_4_1.json"
+DEFAULT_REPORT = BENCH / "REEVAL_4_2.json"
 RUNS = BENCH / "runs"
 # the pages shown live on the site, the same attempts as the GIFs
 DEFAULT_DEMOS = {
-    "orbital/direct": "20261124-030230_adversarial_pilot1/workspaces/gen_orbital__p1__direct",
-    "orbital/tandem": "20261124-052842_adversarial_confirm/workspaces/gen_orbital__p2__tandem",
-    "portal/direct": "20261124-103103_adversarial_final/workspaces/gen_portal__p1__direct",
-    "portal/tandem": "20261124-103103_adversarial_final/workspaces/gen_portal__p1__tandem",
+    "orbital/direct": "20261124-174810_v4_2/workspaces/gen_orbital__p3__direct",
+    "orbital/tandem": "20261124-174810_v4_2/workspaces/gen_orbital__p3__tandem",
+    "portal/direct": "20261124-174810_v4_2/workspaces/gen_portal__p2__direct",
+    "portal/tandem": "20261124-174810_v4_2/workspaces/gen_portal__p2__tandem",
 }
 BUDGETS = {"py_discount": 900, "py_cron": 2400, "web_boids": 2400, "gen_orbital": 2400, "gen_portal": 4200}
 
@@ -47,7 +47,8 @@ def main() -> int:
         "run": a["run"], "task": a["task"], "arm": a["arm"], "pair": a["pair"], "success": a["success"],
         "timed_out": a["timed_out"], "cost_usd": a["cost_usd"], "wall_seconds": a["wall_seconds"],
         "output_tokens": a["usage"].get("output_tokens"), "local_tokens": a["local_tokens"],
-        "failed_checks": a["failed_checks"],
+        "failed_checks": a["failed_checks"], "local_jobs": a.get("local_jobs", []), "hints": a.get("hints", 0),
+        "visual_strikes": a.get("visual_strikes", 0), "visual_review": a.get("visual_review", []),
     } for a in report["attempts"]]
     data = {"reevaluated_at": report["reevaluated_at"], "repeats": report["repeats"], "rule": report["rule"],
             "budgets": BUDGETS, "summary": report["summary"], "attempts": attempts}
