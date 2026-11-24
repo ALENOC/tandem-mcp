@@ -50,6 +50,8 @@ class Fake:
                 if fake.reject and ('tools' in body and not fake.tools or 'response_format' in body and not fake.schema):
                     return self.send({'error': {'message': 'unsupported parameter'}}, 400)
                 item = fake.answer(body)
+                if item.get('status'):                           # a scripted server failure: {'status': 400, 'error': ...}
+                    return self.send({'error': item.get('error')}, item['status'])
                 message = {'role': 'assistant', 'content': item.get('content', '')}
                 if fake.think and message['content']:
                     message['content'] = '<think>\nLet me think {"tool": "nope"} about it.\n</think>\n\n' + message['content']

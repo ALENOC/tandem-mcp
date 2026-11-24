@@ -39,10 +39,16 @@ try:
     )
     ok(spec is not None and spec['require_animation'] is True, f'bad spec: {spec}')
 
-    # 1. Historical direct portal passes web_check (0 JS errors, animated canvas)
+    # 1. Historical direct portal runs with 0 JS errors and an animated canvas; it draws only a few frames per
+    #    second (a glow with shadowBlur on every shape), which the frame rate check reports with its cause
     if ws_direct.is_dir():
-        rc_d, out_d = web_check.run(ws_direct, spec)
+        rc_d, out_d = web_check.run(ws_direct, spec, perf='warn')
         ok(rc_d == 0 and '0 JS errors' in out_d and 'animated=True' in out_d, f'direct failed: {rc_d} {out_d}')
+        info_d = {}
+        rc_s, out_s = web_check.run(ws_direct, spec, info=info_d)
+        if (info_d.get('perf') or {}).get('fps', 60) < web_check.min_fps():
+            ok(rc_s == 1 and info_d['perf_failed'] and 'frame rate:' in out_s and 'with shadowBlur turned off' in out_s,
+               f'slow page must fail on its frame rate with the measured cause: {rc_s} {out_s}')
 
     # 2. Historical Tandem portal fails web_check with TypeError at scene.js:293:31
     if ws_tandem.is_dir():
@@ -183,6 +189,61 @@ try:
     )
     rc_i, out_i = web_check.run(proj_inert, {'preferred_entry': 'index.html', 'require_animation': True}, timeout_s=20)
     ok(rc_i == 1, f'static canvas with inert Play button must fail, got rc={rc_i}: {out_i}')
+
+    # 9. Frame rate: a page whose frames take 45 ms each (a busy loop: the same on every machine) fails with the
+    #    measured rate; in warn mode it passes and says so; a fast page passes and reports its rate
+    anim = {'preferred_entry': 'index.html', 'require_animation': True}
+
+    def page(name, work_ms, readout=''):
+        d = tmp / name
+        d.mkdir()
+        (d / 'index.html').write_text(
+            '<!doctype html><body style="margin:0;background:#000"><canvas id="c" width="300" height="150"></canvas>'
+            f'<div id="hud">{readout}</div>'
+            '<script>const ctx=c.getContext("2d");let x=0;'
+            f'function f(){{const t=performance.now();while(performance.now()-t<{work_ms}){{}}'
+            'ctx.clearRect(0,0,300,150);x=(x+3)%300;ctx.fillStyle="#0ff";ctx.fillRect(x,50,20,20);requestAnimationFrame(f);}'
+            'requestAnimationFrame(f);</script></body>', encoding='utf-8')
+        return d
+
+    slow_page = page('proj_slow', 45)
+    info_s = {}
+    rc_s, out_s = web_check.run(slow_page, anim, timeout_s=40, info=info_s)
+    fps_s = (info_s.get('perf') or {}).get('fps')
+    ok(rc_s == 1 and info_s.get('perf_failed') and fps_s is not None and fps_s < 30 and 'frame rate:' in out_s
+       and 'Keep the same look' in out_s, f'slow page must fail on its frame rate: {rc_s} {info_s} {out_s}')
+    rc_w, out_w = web_check.run(slow_page, anim, timeout_s=40, perf='warn')
+    ok(rc_w == 0 and 'not enforced any more' in out_w, f'warn mode reports the frame rate without failing: {rc_w} {out_w}')
+    info_f = {}
+    rc_f, out_f = web_check.run(page('proj_fast', 0, 'FPS: <span id="fps">60</span>'), anim, timeout_s=40, info=info_f)
+    ok(rc_f == 0 and not info_f.get('perf_failed') and 'fps=' in out_f and (info_f['perf'].get('shown') == 60),
+       f'fast page passes and its readout is read: {rc_f} {info_f} {out_f}')
+    rc_r, out_r = web_check.run(page('proj_readout', 0, 'Speed 1.0x | FPS: 7'), anim, timeout_s=40)
+    ok(rc_r == 1 and 'the FPS readout shows 7' in out_r, f'a readout far from the measured rate fails: {rc_r} {out_r}')
+    rc_n, out_n = web_check.run(page('proj_label', 0, '<span>60 FPS</span> <span>1.0x</span>'), anim, timeout_s=40)
+    ok(rc_n == 0, f'the number next to the word is the readout, not the one after it: {rc_n} {out_n}')
+    os.environ['TANDEM_WEB_MIN_FPS'] = '0'
+    try:
+        rc_o, out_o = web_check.run(slow_page, anim, timeout_s=40)
+        ok(rc_o == 0 and 'fps=' not in out_o, f'TANDEM_WEB_MIN_FPS=0 turns the frame rate check off: {rc_o} {out_o}')
+    finally:
+        os.environ.pop('TANDEM_WEB_MIN_FPS', None)
+
+    # 10. In a job the frame rate goes back to the executor twice; then it is reported, not enforced, and the
+    #     receipt says so in one line
+    from tandem_mcp import server  # noqa: E402
+    fake_p = SlowFake(delay_s=0.01)
+    engine.connect(url=fake_p.url)
+    fake_p.script = [('finish', {'summary': 'done'})] * 3
+    (store.JOBS / 'job-slow-page').mkdir(parents=True, exist_ok=True)
+    t_slow = agent.Task('job-slow-page', store.JOBS / 'job-slow-page', 'Make the canvas animation in index.html smooth',
+                        sandbox.Workspace(str(page('proj_slow_job', 45)), ['index.html'], [], []),
+                        verify=['test -f index.html'], max_steps=8, max_repairs=3, baseline=False)
+    state_p = t_slow.run()
+    ok(state_p == 'verified' and t_slow.repairs == 2 and t_slow.perf_strikes == 2,
+       f'two frame rate repairs, then accepted: {state_p} repairs={t_slow.repairs} strikes={t_slow.perf_strikes}')
+    receipt = server._auto_receipt('job-slow-page')
+    ok('ACCEPTED' in receipt and 'Note: the page draws' in receipt, f'the receipt names the frame rate: {receipt}')
 
     print(f'{checks} checks, 0 failures')
 finally:

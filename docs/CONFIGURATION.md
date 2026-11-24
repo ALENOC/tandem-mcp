@@ -41,6 +41,7 @@ All settings are controlled via environment variables read by the `tandem-mcp` s
 | `TANDEM_LEDGER_KEEP_DAYS` | Days of ledger lines kept (`0`: all) | `180` |
 | `TANDEM_PROFILE` | `lean`: fewer tools, short schemas, compact receipts. `autonomous`: 4 tools, `delegate` blocks until the local model has met every check, one-line receipts | full profile |
 | `TANDEM_JOB_SECONDS` | Time budget of an autonomous job: the local model repairs until every check passes or this runs out | `3600` |
+| `TANDEM_SLOW_CHECK_S` | A check that passes but runs longer than this, and three times longer than before the work, goes back to the executor once with the output line after its longest silence; `0` turns it off | `30` |
 | `TANDEM_MAX_REPAIRS` | Most repair rounds of an autonomous job | `20` |
 | `TANDEM_MAX_STEPS` | Most executor steps of an autonomous job | `160` |
 | `TANDEM_PROGRESS_SECONDS` | Interval of the MCP progress notifications sent while an autonomous job runs, so the client does not abort a silent tool | `30` |
@@ -48,9 +49,11 @@ All settings are controlled via environment variables read by the `tandem-mcp` s
 | `TANDEM_HOST_MANAGED` | `1`: `delegate` returns the job ID at once and a local host process waits, with no cloud polling | off |
 | `TANDEM_HOST_TIMEOUT` | Local timeout of the host-managed runner (`host_runner.py --timeout`, seconds) | `1800` |
 | `TANDEM_WAIT_SECONDS` | Default wait of a lean `delegate` call (seconds, capped at `1500`) | `150` |
-| `TANDEM_COMPACT_WRITES` | `1`: older `write_file` bodies are replaced by a short stub in the executor context (the full history stays in `messages.json`) | `1` |
+| `TANDEM_COMPACT_WRITES` | `1`: a `write_file` body is replaced by a short stub in the executor context once the file changes again or the context passes 60% of its budget, and stays replaced (the full history stays in `messages.json`) | `1` |
+| `TANDEM_REPLY_TOKENS` | Most tokens of one executor reply: a whole file plus the reasoning a thinking model writes first. A reply cut off by this budget is asked again once with a larger one, within the context | `12000` |
 | `TANDEM_COMPACT_RECEIPT` | `1`: host-managed receipts lead with `VERDICT:` and keep only the evidence needed for review | `1` |
 | `TANDEM_WEB_CHECK` | `1`: run the built-in Chromium runtime and animation check on web deliverables | `1` |
+| `TANDEM_WEB_MIN_FPS` | Frames per second an animated page must reach in the web check (headless Chromium, 1280x800). A slower page goes back to the executor with the measured cause, at most twice and not in the last quarter of the job time; after that the frame rate is only reported in the receipt. `0` turns the check off | `40` |
 | `TANDEM_CHROME` | Path to the Chromium or Chrome binary used by the web check | auto-detected |
 | `TANDEM_MIN_LOCAL_SUCCESS` | Least estimated local success rate of a task family for `auto_route` to delegate a write (used after 3 finished jobs) | `0.6` |
 

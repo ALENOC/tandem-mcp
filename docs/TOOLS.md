@@ -79,9 +79,10 @@ A verify command of the form `tandem:ui_test {json}` is not run in the shell: Ta
 Top-level keys: `entry` (default `index.html`), `wait_ms` (default `1000`), `viewport` `[w, h]`, `allow_errors`. JavaScript errors fail the test unless `allow_errors` is `true`. A scenario must assert something, not only act. A failed step is reported to the executor with its observed value, so it is repaired locally at no cloud cost.
 
 #### Built-in web check
-Every web deliverable also gets `tandem:web_check`: startup with 0 JavaScript errors and, for animations, a moving canvas. Two generic rules are added:
+Every web deliverable also gets `tandem:web_check`: startup with 0 JavaScript errors and, for animations, a moving canvas. Three generic rules are added:
 - **Reset restores the initial state:** when the page animates at load and Pause stops it, Pause followed by Reset must bring the motion back. A constraint saying that Reset keeps the paused state turns this rule off.
 - **No overexposure on dark themes:** when the goal or constraints ask for a dark, neon, night or space look, more than 5% near-white pixels in the central part of the canvas fails the check.
+- **Frame rate:** an animated page must draw at least `TANDEM_WEB_MIN_FPS` (40) frames per second at 1280x800, counted with `requestAnimationFrame` over 2 s, and an FPS readout on the page must be within a factor of two of that rate. A slow page goes back to the executor with the measured cause (the share of time spent drawing, script functions with at least 5% of the CPU profile, and the frame rate with `shadowBlur` or `filter` turned off in a fresh load). It goes back twice at most and never in the last quarter of the job time; after that the frame rate is only reported, and the `ACCEPTED` receipt names it in one line.
 
 ### `delegate_many`
 Run a dependency-ordered DAG of delegated tasks (`BatchTaskSpec` items).
@@ -146,5 +147,7 @@ Add, list, or remove standing rules for a project scope (or `*` globally).
 ## Job States
 
 `running`, `verified`, `unverified`, `checks_failed`, `blocked`, `stuck`, `out_of_steps`, `out_of_time`, `stopped`, `not_evaluated`, `error`, `rolled_back`, `partial_rollback`, `partial` (batch).
+
+`stuck` means the executor went in circles: four replies in a row without a tool call, the same call five times with the same result, three finishes in a row that changed no file while the same checks failed, or three in a row with the same failing lines after changes that did not fix them. The receipt says which. After a failure repeated at two finishes or more, a `FAILED` receipt advises fixing the lines directly rather than `job_continue`. An `error` receipt gives the error; when the job failed before it saved a conversation it advises delegating again, since there is nothing to continue.
 
 `not_evaluated` means a check could not run because a prerequisite was missing (for example no Chromium for the web check, exit code `2`). The job ends without repair attempts and is never reported as `verified`.

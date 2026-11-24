@@ -86,6 +86,83 @@ OUT_CAP = 6000
 DONE = ('verified', 'unverified')
 
 
+def _env_int(name, default, lo, hi):
+    try:
+        return max(lo, min(int(os.environ.get(name, default)), hi))
+    except (TypeError, ValueError):
+        return default
+
+
+# Room for one reply of the executor: a whole page of code plus the reasoning a thinking model writes before it.
+# A smaller cap cuts such a reply off, and the whole generation is then lost.
+REPLY_TOKENS = _env_int('TANDEM_REPLY_TOKENS', 12000, 1024, 65536)
+HOT_TEMPERATURE = 0.7          # for the replies after a call repeated three times: a near greedy model loops
+SHRINK_TO = 0.7                # a conversation past its budget is cut down to this share of it, in one go
+SAME_FAILURES = 3              # finishes in a row with the same failure that end a job, even after changes
+
+
+def slow_check_seconds():
+    """A check that passes but runs longer than this goes back to the executor once (0: never)."""
+    try:
+        return max(0.0, float(os.environ.get('TANDEM_SLOW_CHECK_S', 30)))
+    except ValueError:
+        return 30.0
+STATE_MARK = '\n\nState of the work, kept by the server:'
+
+
+def _size(messages):
+    """Characters of a conversation, its call arguments included."""
+    return sum(len(str(m.get('content', ''))) + len(json.dumps(m.get('tool_calls', ''))) for m in messages)
+
+
+# A line that names a failure: a failed step of a browser test, a test runner's FAIL or ERROR line, pytest's
+# E lines, a traceback, an exception or assertion message.
+FAIL_LINE = re.compile(r'^\s*(?:BAD\b|FAIL|ERROR\b|not ok\b|E\s)|Traceback \(most recent|\w(?:Error|Exception)\b')
+
+
+def _failure_key(tail):
+    """A failure as the repeat rule compares it: its failing lines word for word, the rest up to its numbers
+    (timings, counts, line numbers). A failing value that changes is a different failure: the change touched it."""
+    tail = str(tail or '')
+    return '\n'.join(ln for ln in tail.splitlines() if FAIL_LINE.search(ln)), re.sub(r'\d+', 'N', tail)
+
+
+def _focus(out, cap=1500):
+    """The output of a check cut to cap characters. Its end is kept, as before, and so are the lines that
+    name a failure even when they come earlier: a long list of passing steps must never push the one
+    failing step out of what the model and the receipt show."""
+    out = (out or '').strip()
+    if len(out) <= cap:
+        return out
+    lines = out.splitlines()
+    width = min(400, max(120, cap // 2))            # a failing line is shown up to this many characters
+    marked, size = [], 0
+    for i, line in enumerate(lines):
+        if FAIL_LINE.search(line):
+            cost = min(len(line), width) + 1
+            if marked and size + cost > cap // 2:
+                break
+            marked.append(i)
+            size += cost
+    if not marked:
+        return out[-cap:]
+    kept = set(marked)
+    for i in range(len(lines) - 1, -1, -1):
+        if i in kept:
+            continue
+        if size + len(lines[i]) + 1 > cap - 8:
+            break
+        kept.add(i)
+        size += len(lines[i]) + 1
+    shown, last = [], -1
+    for i in sorted(kept):
+        if i != last + 1:
+            shown.append('...')
+        shown.append(lines[i][:width] if i in marked else lines[i])
+        last = i
+    return '\n'.join(shown)
+
+
 def text_call(content):
     """A tool call written as text: {"tool": .., "args": ..} or the {"name": .., "arguments": ..}
     form some chat templates print. Returns (name, args) or None."""
@@ -421,8 +498,67 @@ def _compact_writes_enabled():
 
 _COMPACT_STUB_RE = re.compile(r'^\[compacted (?:persisted write_file|write_file output)\b')
 
-def _compact_messages_view(messages, keep_recent=2):
-    """Build a reversible compacted copy of messages for model inference, preserving original audit history."""
+
+def _norm_rel(path):
+    """A workspace path as the executor wrote it, in one comparable form."""
+    rel = str(path or '').strip().replace('\\', '/')
+    while rel.startswith('./'):
+        rel = rel[2:]
+    return rel
+
+
+def _json_call(content):
+    """(name, args) of a tool call stored as a JSON reply, else None. Both the 'args' and 'arguments' keys."""
+    try:
+        obj = json.loads(str(content or ''))
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(obj, dict) or not isinstance(obj.get('tool'), str):
+        return None
+    args = obj.get('args', obj.get('arguments'))
+    return (obj['tool'], args) if isinstance(args, dict) else None
+
+
+def _file_events(messages, upto):
+    """Successful write_file and replace_in_file calls in messages[:upto], in order, as (key, tool, path).
+    The key of a native call is its id; a call given as a JSON reply is keyed by the index of that reply."""
+    results = {}
+    for m in messages[:upto]:
+        if m.get('role') == 'tool' and m.get('tool_call_id'):
+            results[m['tool_call_id']] = str(m.get('content') or '')
+    events = []
+    for idx, m in enumerate(messages[:upto]):
+        if m.get('role') != 'assistant':
+            continue
+        if m.get('tool_calls'):
+            for tc in m['tool_calls']:
+                fn = tc.get('function') or {}
+                name = fn.get('name')
+                if name not in ('write_file', 'replace_in_file'):
+                    continue
+                out = results.get(tc.get('id'))
+                if out is None or not out.startswith('written' if name == 'write_file' else 'replaced'):
+                    continue
+                try:
+                    path = json.loads(fn.get('arguments') or '{}').get('path')
+                except (ValueError, AttributeError):
+                    continue
+                events.append((tc.get('id'), name, _norm_rel(path)))
+            continue
+        found = _json_call(m.get('content'))
+        if not found or found[0] not in ('write_file', 'replace_in_file') or idx + 1 >= upto:
+            continue
+        nxt = str(messages[idx + 1].get('content') or '')
+        word = 'written' if found[0] == 'write_file' else 'replaced'
+        if messages[idx + 1].get('role') == 'user' and nxt.startswith(f'Result of {found[0]}:\n{word}'):
+            events.append((f'json:{idx}', found[0], _norm_rel(found[1].get('path'))))
+    return events
+
+
+def _compact_messages_view(messages, keep_recent=2, only=None):
+    """Build a reversible compacted copy of messages for model inference, preserving original audit history.
+    With only, compact just the writes whose key is in it (see _file_events); without, every write before the
+    last keep_recent messages."""
     if not _compact_writes_enabled() or len(messages) <= keep_recent:
         return messages, set()
 
@@ -468,12 +604,9 @@ def _compact_messages_view(messages, keep_recent=2):
         if m.get('role') == 'assistant' and not m.get('tool_calls') and nxt.get('role') == 'user':
             nxt_c = str(nxt.get('content') or '')
             if nxt_c.startswith('Result of write_file:\n') and 'ERROR' not in nxt_c[:40]:
-                try:
-                    obj = json.loads(str(m.get('content') or ''))
-                except Exception:
-                    continue
-                args = obj.get('arguments') if isinstance(obj, dict) else None
-                if isinstance(obj, dict) and obj.get('tool') == 'write_file' and isinstance(args, dict):
+                found = _json_call(m.get('content'))
+                if found and found[0] == 'write_file':
+                    args = found[1]
                     body = str(args.get('content') or '')
                     if len(body) >= 400:
                         path = str(args.get('path') or '')
@@ -482,6 +615,9 @@ def _compact_messages_view(messages, keep_recent=2):
                         sha8 = hashlib.sha256(raw_b).hexdigest()[:8]
                         json_pair_meta[idx] = (idx + 1, path, lines_cnt, len(raw_b), sha8)
 
+    if only is not None:
+        succeeded_ids = {i for i in succeeded_ids if i in only}
+        json_pair_meta = {i: v for i, v in json_pair_meta.items() if f'json:{i}' in only}
     json_user_indices = {v[0]: v[1:] for v in json_pair_meta.values()}
 
     for idx, m in enumerate(messages):
@@ -526,7 +662,7 @@ def _compact_messages_view(messages, keep_recent=2):
             _, path, lines_cnt, nbytes, sha8 = json_pair_meta[idx]
             compacted_paths.add(path.lstrip('./'))
             obj = json.loads(str(m.get('content') or ''))
-            obj['arguments'] = {
+            obj['args' if 'args' in obj else 'arguments'] = {
                 'path': path,
                 'content': f'[compacted persisted write_file: {path}, lines 1..{lines_cnt}, sha256={sha8}; use read_file(path, start, end) to inspect]',
             }
@@ -580,6 +716,17 @@ class Task:
         self.log = []
         self.mute = 0                      # replies in a row that were not a tool call
         self.seen, self.worst = {}, ('', 0)   # identical calls with identical results, and the most repeated
+        self.compact_ids = set()           # earlier writes the model now sees as a placeholder (never shown whole again)
+        self.evidence_items = []           # evidence items that matched the files, kept from one finish to the next
+        self.perf_strikes = 0              # browser checks failed only on the frame rate
+        self.heat = 0                      # replies left at a higher temperature, after a call repeated three times
+        self.ctx_tokens = 0                # context length of the model, once known
+        self.shrinks = 0                   # times old results were cut to fit the context
+        self.last_fail = None              # files and failures at the last finish that was not accepted
+        self.stale = 0                     # finishes in a row that changed no file and failed the same way
+        self.last_told, self.same = None, 0   # the failure shown at the last finish, and finishes in a row showing it
+        self.slow_warned = False           # a slow passing check was sent back once already
+        self.slow = []                     # checks that passed slowly at the accepted finish: (command, seconds)
         self.t0 = time.time()
 
     def _remaining_seconds(self):
@@ -734,7 +881,8 @@ class Task:
                             self._written_cache = wcache
                         wcache[self.ws.rel(p)] = hashlib.sha256(body_text.encode('utf-8', errors='replace')).hexdigest()
                         return f'{header}\n{numbered}'
-                    return f'{header}\n{numbered[:cap]}\n[truncated at {cap} chars; read remaining lines if needed]'
+                    return (f'{header}\n{numbered[:cap]}\n[numbered lines cut at {cap} chars: the whole content is in your '
+                            f'write_file call above; read_file a range only if you need its line numbers]')
                 return header
         if name == 'run':
             if not self.ws.allow_run:
@@ -893,6 +1041,44 @@ class Task:
     def _tracked_rels(self):
         return sorted(set(self.journal) | set(self.journal_bin) | set(self.touched))
 
+    def _work_hash(self):
+        """A digest of the files the job changed, to tell a finish that changed nothing since the last one."""
+        digest = hashlib.sha256()
+        for rel in self._tracked_rels():
+            digest.update(rel.encode('utf-8', 'replace') + b'\0')
+            try:
+                digest.update((self.ws.root / rel).read_bytes())
+            except OSError:
+                digest.update(b'\0missing\0')
+        return digest.hexdigest()
+
+    def _slow_checks(self, checks):
+        """Checks that passed but ran past the slow limit, and far longer than they did before the work."""
+        limit = slow_check_seconds()
+        if not limit:
+            return []
+        before = {c.get('command'): float(c.get('seconds') or 0) for c in self.before or []}
+        return [c for c in checks if c.get('exit') == 0 and 'seconds' in c
+                and float(c['seconds']) > max(limit, 3 * before.get(c.get('command'), 0.0))]
+
+    @staticmethod
+    def _slow_report(slow):
+        parts = []
+        for c in slow:
+            secs = float(c['seconds'])
+            gap, line = (c.get('gap') or [0, None])[:2]
+            where = ''
+            if float(gap or 0) >= 0.5 * secs:
+                where = (f' Most of it ({float(gap):.0f} s) passed before this line of its output: {str(line)[:200]!r}.'
+                         if line else f' Most of it ({float(gap):.0f} s) passed after the last line it printed.')
+            parts.append(f'`{str(c["command"])[:200]}` took {secs:.0f} s.{where}')
+        return ('All checks pass, but they are slow: ' + ' '.join(parts) + '\n'
+                'A check like this normally ends in a few seconds. This much time usually means code that steps one value '
+                'at a time through a huge range, a search that stops only at a far limit, a sleep, or work repeated that '
+                'could be done once. Find that path in your code and make it fast (compute the result directly, or detect '
+                'at once the case that has no result), then call finish again. If the time goes to a tool you cannot '
+                'change (a compiler, an install, a download), call finish again without changes and say so in the summary.')
+
     def diff(self, only=''):
         out = []
         snapshot = store.read_json(self.folder / 'snapshot.json') if self.touched else None
@@ -1031,7 +1217,8 @@ class Task:
                 check_timeout = 900 if rem is None else max(1.0, min(900.0, rem))
                 nonce = secrets.token_hex(8)
                 proof_path = None
-                extra_env = {'TANDEM_VERIFY_NONCE': nonce}
+                # unbuffered Python output: each line reaches the pipe when printed, so a slow part shows where it is
+                extra_env = {'TANDEM_VERIFY_NONCE': nonce, 'PYTHONUNBUFFERED': '1'}
                 if not use_jail:
                     fd, proof_path = tempfile.mkstemp(prefix='tandem_proof_', suffix='.json')
                     os.close(fd)
@@ -1042,12 +1229,13 @@ class Task:
                         code, out = ui_test.run(command, self.ws.root, timeout_s=min(120.0, check_timeout))
                         entry = {'command': command, 'exit': code,
                                  'outcome': 'passed' if code == 0 else ('not_evaluated' if code == 2 else 'failed'),
-                                 'tail': out.strip()[-1500:]}
+                                 'tail': _focus(out, 1500)}
                         if code == 2:
                             entry['not_evaluated'] = True
                             entry['missing_prerequisite'] = out.strip()[:240]
                         results.append(entry)
                         continue
+                    timing = {}
                     code, out = sandbox.run(
                         command,
                         self.ws.root,
@@ -1057,6 +1245,7 @@ class Task:
                         strip_env=True,
                         stop_event=stop_ev,
                         extra_env=extra_env,
+                        timing=timing,
                     )
                     covered, obs_list = [], []
                     not_eval_reason = None
@@ -1093,18 +1282,22 @@ class Task:
                             'outcome': 'not_evaluated',
                             'not_evaluated': True,
                             'missing_prerequisite': not_eval_reason,
-                            'tail': out.strip()[-1500:],
+                            'tail': _focus(out, 1500),
                         }
                     else:
                         entry = {
                             'command': command,
                             'exit': code,
                             'outcome': 'passed' if code == 0 else 'failed',
-                            'tail': out.strip()[-1500:],
+                            'tail': _focus(out, 1500),
                         }
                         if code == 0 and covered:
                             entry['covers_constraints'] = covered
                             entry['observed'] = '; '.join(obs_list)
+                    if 'seconds' in timing:
+                        entry['seconds'] = timing['seconds']
+                        if timing.get('gaps'):
+                            entry['gap'] = list(timing['gaps'][0])
                     results.append(entry)
                 finally:
                     if proof_path:
@@ -1112,9 +1305,16 @@ class Task:
             if self.web_check_spec and not _is_stopped(self.job):
                 rem = self._remaining_seconds()
                 wc_timeout = 45.0 if rem is None else max(5.0, min(45.0, rem))
-                wcode, wout = web_check.run(self.ws.root, self.web_check_spec, timeout_s=wc_timeout)
+                # a slow page goes back to the executor twice at most, and never in the last quarter of the time:
+                # after that the frame rate is reported, not enforced
+                late = bool(self.max_seconds) and rem is not None and rem < 0.25 * self.max_seconds
+                perf = 'warn' if phase == 'baseline' or self.perf_strikes >= 2 or late else 'fail'
+                winfo = {}
+                wcode, wout = web_check.run(self.ws.root, self.web_check_spec, timeout_s=wc_timeout, perf=perf, info=winfo)
+                if phase != 'baseline' and winfo.get('perf_failed'):
+                    self.perf_strikes += 1
                 wc_outcome = 'passed' if wcode == 0 else ('not_evaluated' if wcode == 2 else 'failed')
-                wc_entry = {'command': 'tandem:web_check', 'exit': wcode, 'outcome': wc_outcome, 'tail': wout.strip()[-1500:]}
+                wc_entry = {'command': 'tandem:web_check', 'exit': wcode, 'outcome': wc_outcome, 'tail': _focus(wout, 1500)}
                 if wcode == 0:
                     wc_entry['observed'] = wout.strip()
                 elif wcode == 2:
@@ -1160,8 +1360,11 @@ class Task:
     def check_evidence(self, items):
         """Look up what the executor cites for each constraint. Returns what is missing, as text for
         the executor. A quote that is in the file shows where to look, it does not prove the constraint:
-        the orchestrator judges the cited line."""
+        the orchestrator judges the cited line. The items that matched are kept in evidence_items, so a
+        later finish needs to cite only what is still missing; every kept item is looked up again in the
+        files as they are then, and one whose line was edited away no longer counts."""
         found = {}
+        matched = []
         for item in items if isinstance(items, list) else []:
             if not isinstance(item, dict):
                 continue
@@ -1181,8 +1384,17 @@ class Task:
                     line = 0                             # a quote that spans lines
                 if line is not None:
                     found.setdefault(n, []).append({'path': rel, 'line': line, 'quote': str(item['quote']).strip()[:160]})
+                    matched.append({'constraint': n, 'path': rel, 'quote': str(item['quote'])})
             elif len(absent) >= 3 and absent not in _squash(text):
                 found.setdefault(n, []).append({'path': rel, 'absent': str(item['absent']).strip()[:160]})
+                matched.append({'constraint': n, 'path': rel, 'absent': str(item['absent'])})
+        kept, seen = [], set()
+        for item in matched:
+            key = (item['constraint'], item['path'], item.get('quote'), item.get('absent'))
+            if key not in seen:
+                seen.add(key)
+                kept.append(item)
+        self.evidence_items = kept[:4 * max(1, len(self.constraints))]
         self.evidence = found
         self.unproven = [n for n in range(1, len(self.constraints) + 1) if n not in found]
         return [f'Constraint {n} has no checked evidence: "{self.constraints[n - 1][:200]}". Make the files satisfy it, then give '
@@ -1565,6 +1777,7 @@ class Task:
         self.used = self.model or engine.default_model('delegate')
         self.native = bool(engine.caps(self.used)['tools'])
         context = engine.context_tokens(self.used)
+        self.ctx_tokens = int(context)
         self.budget = int(context * 0.6 * 3.2)
         notes = store.lessons(store.scope_of(self.ws.root))
         system = SYSTEM + ('' if self.native else TEXT_PROTOCOL)
@@ -1604,22 +1817,76 @@ class Task:
             if failing:
                 room = max(300, min(1200, self.budget // (6 * len(failing))))
                 user += '\n\nThe checks fail now. Their output:\n' + '\n'.join(
-                    f'$ {c["command"]}\nexit {c["exit"]}\n{c["tail"][-room:]}' for c in failing[:4])
+                    f'$ {c["command"]}\nexit {c["exit"]}\n{_focus(c["tail"], room)}' for c in failing[:4])
             else:
                 user += '\n\nThe checks pass now. Do the task and keep them passing.'
         return [{'role': 'system', 'content': system}, {'role': 'user', 'content': user}]
+
+    def _update_compaction(self, messages):
+        """Choose the earlier writes the model sees only as a placeholder. A write stays whole while it is what
+        the file holds: it is compacted once the file changes again (a later write_file or replace_in_file of
+        it), or for every write when the conversation passes 60% of its budget. A compacted write never comes
+        back whole, so the start of the conversation stays the same from one step to the next and the model
+        server reuses what it has already read."""
+        upto = len(messages) - 2
+        events = _file_events(messages, upto)
+        last = {}
+        for pos, (_, _, path) in enumerate(events):
+            last[path] = pos
+        for pos, (key, tool, path) in enumerate(events):
+            if tool == 'write_file' and last[path] > pos:
+                self.compact_ids.add(key)
+        if _size(messages) > 0.6 * self.budget:
+            self.compact_ids |= {key for key, tool, _ in events if tool == 'write_file'}
+
+    def _state_note(self):
+        """The state of the work, added to the end of each request and never stored: a model with a small
+        context still knows what it changed once old results are cut, and the stored conversation only
+        grows at its end."""
+        rows = [f'- {kind} {rel} (+{add} -{rem})' for rel, kind, add, rem in self.changes()]
+        if not rows and self.steps < 4:
+            return ''
+        return (STATE_MARK + '\n' + ('\n'.join(rows[:12]) if rows else '- no file changed yet') +
+                f'\n- step {self.steps}, repairs asked {self.repairs}. Do not redo a change listed here; call finish when the task is done.')
+
+    def _view(self, messages):
+        """What is sent to the model: the conversation with superseded writes compacted and the state of the
+        work at the end. Everything before the last message is the same as at the previous step."""
+        self._update_compaction(messages)
+        view, self._compacted_paths = _compact_messages_view(messages, only=self.compact_ids)
+        note = self._state_note()
+        if note and view and view[-1].get('role') in ('user', 'tool'):
+            view = list(view)
+            view[-1] = dict(view[-1], content=str(view[-1].get('content') or '') + note)
+        return view
+
+    def _room(self, view):
+        """Tokens of the context left after the prompt, or None when the context length is not known."""
+        return self.ctx_tokens - _size(view) // 3 - 512 if self.ctx_tokens else None
+
+    def _reply_tokens(self, view):
+        """Room for one reply: enough for a whole file and the reasoning before it, within the context."""
+        room = self._room(view)
+        return max(1024, REPLY_TOKENS if room is None else min(REPLY_TOKENS, room))
 
     def _turn(self, messages):
         """One reply of the executor, as a list of (call id or None, tool name, arguments or error text)."""
         rem = self._remaining_seconds()
         model = self.used or self.model or engine.default_model('delegate')
-        view_messages, self._compacted_paths = _compact_messages_view(messages)
+        view_messages = self._view(messages)
+        budget = self._reply_tokens(view_messages)
+        temperature = HOT_TEMPERATURE if self.heat > 0 else 0.1
+        self.heat = max(0, self.heat - 1)
         if self.native:
             tools = SPEC if self.ws.allow_run else [t for t in SPEC if t['function']['name'] != 'run']
-            reply, used = engine.chat(view_messages, tool='delegate', model=model, tools=tools, max_tokens=4000, timeout=rem)
+            reply, used = engine.chat(view_messages, tool='delegate', model=model, tools=tools, max_tokens=budget,
+                                      temperature=temperature, timeout=rem, retry_truncated=True,
+                                      budget_cap=self._room(view_messages))
         else:
             schema = CALL if engine.caps(model)['schema'] else None
-            reply, used = engine.chat(view_messages, tool='delegate', model=model, schema=schema, max_tokens=4000, timeout=rem)
+            reply, used = engine.chat(view_messages, tool='delegate', model=model, schema=schema, max_tokens=budget,
+                                      temperature=temperature, timeout=rem, retry_truncated=True,
+                                      budget_cap=self._room(view_messages))
         self.tokens += used['prompt'] + used['completion']
         if reply.calls:
             messages.append({'role': 'assistant', 'content': reply.content, 'tool_calls': [
@@ -1650,6 +1917,9 @@ class Task:
         summary, state, checks = '', 'out_of_steps', []
         limit = self.steps + extra_steps if extra_steps else self.max_steps
         half = self.steps + max(2, (limit - self.steps) // 2)
+        if len(messages) > 1 and STATE_MARK in str(messages[1].get('content') or ''):
+            # a conversation saved by an older version kept the state of the work inside the task message
+            messages[1]['content'] = str(messages[1]['content']).split(STATE_MARK)[0]
         while self.steps < limit:
             stop_ev = STOP.get(self.job)
             if _is_stopped(self.job):
@@ -1659,7 +1929,6 @@ class Task:
                 state = 'out_of_time'
                 break
             self.steps += 1
-            self._pin(messages)
             self._shrink(messages)
             try:
                 calls = self._turn(messages)
@@ -1723,6 +1992,7 @@ class Task:
                     if self.seen[key] == 3:
                         result += ('\nNOTE: this is the third identical call with the same result. Change approach, '
                                    'or call finish with blocked true and say what stops you.')
+                        self.heat = 2                    # sample the next replies less greedily, out of the loop
                 self.log.append({'step': self.steps, 'tool': name,
                                  'args': {k: (v if len(str(v)) < 200 else str(v)[:200] + '...') for k, v in args.items()},
                                  'result': result[:300]})
@@ -1754,18 +2024,61 @@ class Task:
                 if c.get('outcome', 'passed' if c.get('exit') == 0 else 'failed') == 'failed'
                 and not c.get('not_evaluated')
             ]
-            unproven = self.check_evidence(finished.get('evidence')) if self.require_proof and self.constraints else []
+            unproven = []
+            if self.require_proof and self.constraints:
+                given = finished.get('evidence') if isinstance(finished.get('evidence'), list) else []
+                unproven = self.check_evidence(given + self.evidence_items)   # earlier evidence, checked again
             if not failed and not broken and not bent and not unproven:
                 if not_eval:
                     state = 'not_evaluated'
                     break
+                # a check that passes only after a long run (a brute-force loop, a sleep) goes back once, with the line
+                # of its output that came after the longest silence; never late in the time or the steps
+                slow = self._slow_checks(checks)
+                rem = self._remaining_seconds()
+                late = bool(self.max_seconds) and rem is not None and rem < 0.25 * self.max_seconds
+                if slow and not self.slow_warned and not late and self.steps + 3 <= limit and self.repairs < self.max_repairs:
+                    self.slow_warned = True
+                    self.repairs += 1
+                    messages.append({'role': 'user', 'content': self._slow_report(slow)})
+                    continue
+                self.slow = [[c['command'], c['seconds']] for c in slow]
                 state = 'verified' if checks else 'unverified'
+                break
+            # a finish that changed no file since the last one, and failed in the same checks: the third in a row
+            # ends the job, since the next would only fail again (a model that does not see what to fix, or a check
+            # that cannot pass); the orchestrator then gets the failing lines at once instead of after the time limit
+            fail_now = (self._work_hash(), tuple(sorted(c['command'] for c in failed)),
+                        tuple(rel for rel, _ in broken), tuple(bent), tuple(unproven))
+            self.stale = self.stale + 1 if fail_now == self.last_fail else 0
+            self.last_fail = fail_now
+            # the same failure after changes that did not touch it: the third in a row ends the job too (in the saved
+            # benchmark runs no job passed after three such failures in a row)
+            told = (tuple(sorted((c['command'], _failure_key(c.get('tail'))) for c in failed)),
+                    tuple(why for _, why in broken), tuple(bent), tuple(unproven))
+            self.same = self.same + 1 if told == self.last_told else 1
+            self.last_told = told
+            if self.stale >= 2 or self.same >= SAME_FAILURES:
+                state, summary = 'stuck', (
+                    'finished three times in a row without changing a file, and the same checks failed each time'
+                    if self.stale >= 2 else
+                    f'the same checks failed the same way at {self.same} finishes in a row, after changes that did not '
+                    'fix them')
                 break
             if self.repairs >= self.max_repairs:
                 state = 'checks_failed'
                 break
             self.repairs += 1
             report = []
+            if self.stale:
+                report.append('Nothing changed since your last finish and the same checks failed again. Another finish '
+                              'without a change gets the same result and ends the job. Change the code that the failing '
+                              'line below tests; if it cannot pass, call finish with blocked true and say why.')
+            elif self.same == SAME_FAILURES - 1:
+                report.append(f'This is finish {self.same} in a row with exactly the same failure: your changes did not '
+                              'touch its cause. The next finish with this failure ends the job. Read the failing line '
+                              'below again and change what it tests; if it cannot pass, call finish with blocked true and '
+                              'say why.')
             if bent:
                 report.append('You changed files that belong to the checks; they were put back: ' + ', '.join(bent) +
                               '. Fix the code, never the check.')
@@ -1773,12 +2086,15 @@ class Task:
             report += [f'$ {c["command"]}\nexit {c["exit"]}\n{c["tail"]}' for c in failed]
             report += self._error_context_snippets(failed)
             report += unproven
+            kept = ('The evidence you gave that matches the files is kept and checked again at the next finish: give '
+                    'evidence only for a constraint listed here as missing, or for a line you change.\n'
+                    if self.evidence_items else '')
             messages.append({'role': 'user', 'content':
                              'The work is not accepted yet. Fix the cause and call finish again.\n'
                              'Prefer targeted replace_in_file edits when the error points to a specific line or small function; '
                              'rewrite a whole file with write_file only if its structure is fundamentally broken. '
                              'Do not re-read unchanged files whose numbered lines are already in your context.\n'
-                             + '\n'.join(report)})
+                             + kept + '\n'.join(report)})
         self.restore_guard()
         self._record_post_state()
         store.write_json(self.folder / 'messages.json', messages)
@@ -1788,35 +2104,25 @@ class Task:
     def run(self):
         return self.loop(self.opening())
 
-    def _pin(self, messages):
-        """Keep the state of the work in the task message, where the shrinking never reaches: a
-        model with a small context forgets what it did once the old results are cut."""
-        mark = '\n\nState of the work, kept by the server:'
-        task = messages[1]
-        base = str(task['content']).split(mark)[0]
-        rows = [f'- {kind} {rel} (+{add} -{rem})' for rel, kind, add, rem in self.changes()]
-        if not rows and self.steps < 4:
-            return
-        note = mark + '\n' + ('\n'.join(rows[:12]) if rows else '- no file changed yet')
-        note += f'\n- step {self.steps}, repairs asked {self.repairs}. Do not redo a change listed here; call finish when the task is done.'
-        if task['content'] != base + note:
-            task['content'] = base + note
-
     def _shrink(self, messages):
         """Old tool results are cut first when the conversation outgrows the context, then the
-        long arguments of old calls. The last messages are kept whole as long as there is room."""
-        def size():
-            return sum(len(str(m.get('content', ''))) + len(json.dumps(m.get('tool_calls', ''))) for m in messages)
-
+        long arguments of old calls. The last messages are kept whole as long as there is room.
+        A cut changes the conversation where the model server has it cached, so it is done rarely and
+        in one go: past the budget, down to SHRINK_TO of it."""
+        if _size(messages) <= self.budget:
+            return
+        target = int(self.budget * SHRINK_TO)
+        self.shrinks += 1
+        self._written_cache = {}           # the numbered lines of a write may be among what is cut
         for keep in (6, 2):
             recent = {id(m) for m in messages[-keep:]}
             for m in self.outputs:
-                if size() <= self.budget:
+                if _size(messages) <= target:
                     return
                 if id(m) not in recent and len(m['content']) > 200:
                     m['content'] = m['content'][:45] + ' [older output dropped]'
             for m in messages[2:-keep]:
-                if size() <= self.budget:
+                if _size(messages) <= target:
                     return
                 for c in m.get('tool_calls') or []:
                     if len(c['function']['arguments']) > 300:
@@ -1850,10 +2156,13 @@ class Task:
                     verify=self.verify, constraints=self.constraints, model=self.model, used=self.used, max_steps=self.max_steps,
                     max_repairs=self.max_repairs, max_seconds=self.max_seconds,
                     protocol='native tool calls' if self.native else 'JSON replies',
-                    before=[{'command': c['command'], 'exit': c['exit']} for c in self.before], weak=weak,
+                    before=[{k: c[k] for k in ('command', 'exit', 'seconds') if k in c} for c in self.before], weak=weak,
                     protected=sorted(self.ws.protected), restored=self.restored, touched=sorted(self.touched),
                     created_dirs=sorted(self.created_dirs), require_proof=self.require_proof,
                     evidence={str(n): rows for n, rows in self.evidence.items()}, unproven=self.unproven,
+                    evidence_items=self.evidence_items, compact_ids=sorted(self.compact_ids),
+                    perf_strikes=self.perf_strikes, shrinks=self.shrinks, same_failures=self.same,
+                    slow_warned=self.slow_warned, slow=self.slow,
                     backup_status=backup_status, unbacked_files=unbacked_files,
                     syntax=self.syntax, changes=self.changes(),
                     tried=[f'{e["tool"]} {json.dumps(e["args"])[:90]} -> {e["result"][:90]}' for e in self.log[-4:]],
@@ -2007,7 +2316,13 @@ def resume(job, hint, extra_steps=15):
         task.take_guard()
         task.take_snapshot()
         task.native = data.get('protocol') != 'JSON replies'
-        task.budget = int(engine.context_tokens(task.used) * 0.6 * 3.2)
+        task.ctx_tokens = int(engine.context_tokens(task.used))
+        task.budget = int(task.ctx_tokens * 0.6 * 3.2)
+        task.evidence_items = [i for i in data.get('evidence_items') or [] if isinstance(i, dict)]
+        task.compact_ids = set(data.get('compact_ids') or [])
+        task.perf_strikes = int(data.get('perf_strikes') or 0)
+        task.slow_warned = bool(data.get('slow_warned'))
+        task.shrinks = int(data.get('shrinks') or 0)
         task.outputs = [m for m in messages if m['role'] == 'tool' or str(m.get('content', '')).startswith('Result of ')]
         messages.append({'role': 'user', 'content': 'The senior engineer looked at your work and says:\n' + hint.strip() +
                          '\nGo on from where you stopped and call finish when it is done.'})

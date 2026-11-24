@@ -120,9 +120,9 @@ AUTONOMOUS_GUIDE = '''Tandem (autonomous): a free local model writes and checks 
   Give goal, write_globs, atomic constraints with exact names, values and colors, and verify_commands that fail
   until done: an inline test or script, or for a web page a tandem:ui_test. Require a window.app object with named
   fields; assert effects with js steps. Test only what was asked, under 20 steps, no time-window asserts.
-- The local model does only what the contract says: write it in the user's language (UI text too) and, for UI,
-  state the palette, layout and finish you would give it yourself.
-- delegate blocks until every check passes (up to an hour) and costs you nothing while it waits.
+- The local model does only what the contract says: write it in the user's language, keep the request's labels
+  verbatim, and for UI state the palette, layout and finish you would give it yourself.
+- delegate blocks until all checks pass (max 1 hour); waiting costs you nothing.
 - ACCEPTED is final: answer the user in one or two sentences. Do not read files, rerun checks or open diffs.
 - FAILED lists what still fails: job_continue(hint) once. If the check itself is wrong, tell the user.
   Never edit files blind. Smaller edits: do them yourself.'''
@@ -1278,24 +1278,46 @@ def _auto_receipt(job):
             store.write_job(job, data)
             store.log('feedback', kind='feedback', job=job, accepted=True, auto=True, state='verified',
                       model=data.get('used') or data.get('model') or 'default')
+        slow = next((str(c.get('tail')) for c in checks if c.get('command') == 'tandem:web_check'
+                     and 'not enforced any more:' in str(c.get('tail'))), '')
+        note = f' Note: {slow.split("not enforced any more:", 1)[1].strip()[:160]}' if slow else ''
+        for command, seconds in (data.get('slow') or [])[:2]:
+            note += f' Note: `{str(command)[:80]}` passes but takes {float(seconds):.0f} s.'
         return sandbox.redact_secrets(
             f'job {job}: ACCEPTED. {len(checks)} checks and {len(data.get("constraints") or [])} constraints verified '
-            f'locally ({data.get("repairs", 0)} local repairs). Changed: {files}. Nothing else to do.')
+            f'locally ({data.get("repairs", 0)} local repairs). Changed: {files}. Nothing else to do.{note}')
     if state == 'running':
         return f'job {job}: still running after the wait. Call job_status({job!r}) once.'
     lines = [f'job {job}: FAILED ({state}) after {data.get("repairs", 0)} local repairs, {int(data.get("seconds") or 0)} s.']
+    if state in ('stuck', 'blocked', 'error') and data.get('summary'):
+        said = {'stuck': 'stopped', 'blocked': 'the local model says', 'error': 'error'}[state]
+        lines.append(f'- {said}: {str(data["summary"])[:300]}')
     for c in checks:
         if c.get('exit') == 0:
             continue
         tail = str(c.get('tail') or '')
         if ui_test.is_ui_test(c.get('command', '')):
-            tail = '\n'.join(ln for ln in tail.splitlines() if 'BAD' in ln)
-        lines.append(f'- {ui_test.label(c.get("command", ""))}: {tail.strip()[-600:]}')
+            tail = '\n'.join(ln for ln in tail.splitlines() if 'BAD' in ln) or tail
+        lines.append(f'- {ui_test.label(c.get("command", ""))}: {agent._focus(tail, 600)}')
     for item in (data.get('unproven') or [])[:6]:
         lines.append(f'- no evidence: {str(item)[:160]}')
     if bad_syntax:
         lines.append(f'- syntax errors: {bad_syntax}')
-    lines.append(f'Changed: {files}. job_continue({job!r}, hint) sends it on locally; job_rollback({job!r}) undoes it.')
+    same = int(data.get('same_failures') or 0)
+    if state == 'error' and not store.read_json(store.JOBS / job / 'messages.json'):
+        # the local run failed before it saved a conversation (in a benchmark run the GPU reset and the model
+        # server restarted under the first call): there is nothing to continue, and a new delegate is still cheap
+        lines.append(f'Changed: {files}. Nothing was saved to continue: delegate again (the local model server may have '
+                     'restarted), or do it yourself if it fails again.')
+    elif same >= 2 and state not in ('blocked', 'stopped'):
+        # a failure the local model repeated word for word: in the confirmation benchmark run a hint after one such
+        # failure bought 2,100 s more of the same failure, then the orchestrator fixed it with three shell commands
+        lines.append(f'Changed: {files}. The local model failed this the same way at its last {same} finishes, so a '
+                     'hint rarely helps: fix the failing lines above yourself, or the check if it is wrong (for example '
+                     f'it races the animation, or contradicts another check). job_continue({job!r}, hint) only with a '
+                     f'fact the local model lacks; job_rollback({job!r}) undoes it.')
+    else:
+        lines.append(f'Changed: {files}. job_continue({job!r}, hint) sends it on locally; job_rollback({job!r}) undoes it.')
     return sandbox.redact_secrets('\n'.join(lines))
 
 

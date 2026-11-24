@@ -164,8 +164,10 @@ ok(data['state'] == 'stuck' and data['steps'] == 9, 'a circle of two calls is no
 job, data = run('Fix it.', project(), TEST, [FIX[1], FIX[1], FIX[1], ('finish', {'summary': 'done'})], fake)
 log = store.read_json(store.JOBS / job / 'log.json')
 ok(data['state'] == 'verified' and 'this change is already made' in log[1]['result'], 'a change made twice is named as already made')
-ok('State of the work, kept by the server:\n- changed calc.py (+1 -1)' in fake.requests[-1]['messages'][1]['content'],
-   'the state of the work stays in the task message, out of reach of the context cut')
+ok('State of the work, kept by the server:\n- changed calc.py (+1 -1)' in fake.requests[-1]['messages'][-1]['content'],
+   'the state of the work ends the request, out of reach of the context cut')
+ok(all('State of the work' not in str(r['messages'][1]['content']) for r in fake.requests if len(r['messages']) > 1),
+   'the task message is never rewritten, so the model server keeps its cached prefix')
 
 job, data = run('Fix it.', project(), TEST, ['I am thinking.'] * 9, fake)
 ok(data['state'] == 'stuck' and data['steps'] == 4 and 'not a tool call' in data['summary'], 'a model that never calls a tool stops early')

@@ -272,9 +272,24 @@ def transient_error(exc):
     return _transient(exc.__cause__ or exc)
 
 
-def chat(messages, tool='chat', model='', max_tokens=2048, temperature=0.1, tools=None, schema=None, timeout=None):
+def _complete_calls(calls):
+    """True when every tool call has arguments that parse as a JSON object."""
+    for c in calls:
+        try:
+            if not isinstance(json.loads(c['arguments'] or '{}'), dict):
+                return False
+        except ValueError:
+            return False
+    return True
+
+
+def chat(messages, tool='chat', model='', max_tokens=2048, temperature=0.1, tools=None, schema=None, timeout=None,
+         retry_truncated=False, budget_cap=None):
     """One completion. Returns (Reply, usage). Reasoning is never returned as the answer: when
-    it eats the whole budget the call is repeated once with a larger one."""
+    it eats the whole budget the call is repeated once with a larger one. With retry_truncated, so is a
+    reply cut off by the budget that holds no complete tool call (a half written call or the words
+    before it): the server has the prompt cached, so the repeat costs the generation only. budget_cap bounds
+    the larger budget of a repeat (what is left of the context after the prompt)."""
     model = model or default_model()
     budget = max_tokens
     total = {'prompt': 0, 'completion': 0}
@@ -311,16 +326,27 @@ def chat(messages, tool='chat', model='', max_tokens=2048, temperature=0.1, tool
         used = {'prompt': getattr(usage, 'prompt_tokens', 0) or _estimate(messages),
                 'completion': getattr(usage, 'completion_tokens', 0) or len(raw) // 4}
         total = {k: total[k] + used[k] for k in total}
+        details = getattr(usage, 'completion_tokens_details', None)
+        reasoning = getattr(details, 'reasoning_tokens', None) if details is not None else None
         store.log(tool, kind='llm', model=model, prompt_tokens=used['prompt'], completion_tokens=used['completion'],
-                  seconds=round(time.time() - start, 2))
+                  seconds=round(time.time() - start, 2), finish=choice.finish_reason, max_tokens=budget,
+                  **({'reasoning_tokens': reasoning} if isinstance(reasoning, int) else {}))
         calls = [{'id': c.id or f'call_{n}', 'name': c.function.name, 'arguments': c.function.arguments or '{}'}
                  for n, c in enumerate(message.tool_calls or []) if getattr(c, 'function', None)]
         content = strip_think(raw)
-        if content or calls:
+        cut = (retry_truncated and choice.finish_reason == 'length' and attempt == 0
+               and not (calls and _complete_calls(calls)))
+        if (content or calls) and not cut:
             return Reply(content, calls, choice.finish_reason, thought), total
         if choice.finish_reason == 'length' and attempt == 0:
-            budget = min(budget * 3, 16000)
+            store.log(tool, kind='retry', model=model, attempt=1, error='reply cut off by the token budget',
+                      wait=0, max_tokens=budget)
+            budget = min(budget * 3, max(16000, budget * 2))
+            if budget_cap:
+                budget = max(max_tokens, min(budget, int(budget_cap)))
             continue
+        if content or calls:
+            return Reply(content, calls, choice.finish_reason, thought), total
         raise ExecutorError('the executor returned no answer (finish reason: %s)' % choice.finish_reason)
     raise ExecutorError('the executor returned no answer')
 

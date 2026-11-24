@@ -611,9 +611,11 @@ def _log_cap(default=64 * 1024 * 1024):
 
 
 def run(command, cwd, timeout=None, jail=False, allow_net=False, strip_env=None, max_output_bytes=None,
-        guard_symlinks=True, log_path=None, log_cap_bytes=None, stop_event=None, extra_env=None):
+        guard_symlinks=True, log_path=None, log_cap_bytes=None, stop_event=None, extra_env=None, timing=None):
     """Run a shell command, return (exit code, combined output). jail=True runs it inside the
-    operating system sandbox when there is one. Output kept in RAM is bounded to avoid OOM."""
+    operating system sandbox when there is one. Output kept in RAM is bounded to avoid OOM.
+    A dict passed as timing gets 'seconds' (the run time) and 'gaps': the longest silences of the
+    output, longest first, each as (seconds, the output line that ended it)."""
     # no bytecode files: a check run just before an edit must not leave a stale .pyc behind
     if timeout is None:
         timeout = _run_timeout()
@@ -650,14 +652,27 @@ def run(command, cwd, timeout=None, jail=False, allow_net=False, strip_env=None,
     log_cap = _log_cap() if log_cap_bytes is None else max(4096, int(log_cap_bytes))
     log_fh = open(log_path, 'wb') if log_path is not None else None
     log_written = 0
+    started = last_out = time.monotonic()
+    gaps, partial = [], b''
 
     def _drain():
-        nonlocal head_kept, tail_kept, total, log_written
+        nonlocal head_kept, tail_kept, total, log_written, last_out, partial
         assert proc.stdout is not None
         while True:
-            chunk = proc.stdout.read(65536)
+            # read1 returns what the pipe holds now, so the time a line arrives is the time it was written
+            chunk = proc.stdout.read1(65536) if hasattr(proc.stdout, 'read1') else proc.stdout.read(65536)
             if not chunk:
                 break
+            if timing is not None:
+                now = time.monotonic()
+                if now - last_out >= 0.5:
+                    nl = chunk.find(b'\n')
+                    gaps.append((now - last_out, (partial + (chunk if nl < 0 else chunk[:nl]))[-240:]))
+                    gaps.sort(key=lambda g: -g[0])
+                    del gaps[3:]
+                last_out = now
+                nl = chunk.rfind(b'\n')
+                partial = (partial + chunk)[-240:] if nl < 0 else chunk[nl + 1:][-240:]
             if log_fh is not None and log_written < log_cap:
                 take_log = chunk[:log_cap - log_written]
                 try:
@@ -728,7 +743,14 @@ def run(command, cwd, timeout=None, jail=False, allow_net=False, strip_env=None,
                 break
             except subprocess.TimeoutExpired:
                 continue
+    ended = time.monotonic()
     reader.join(timeout=2)
+    if timing is not None:
+        if ended - last_out >= 0.5:
+            gaps.append((ended - last_out, b''))     # silent from the last line printed until the end
+            gaps.sort(key=lambda g: -g[0])
+        timing['seconds'] = round(ended - started, 2)
+        timing['gaps'] = [(round(g, 1), line.decode('utf-8', errors='replace').strip()) for g, line in gaps[:3]]
     with buf_lock:
         head_b = b''.join(head)
         tail_b = b''.join(tail)

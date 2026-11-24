@@ -58,12 +58,13 @@ job = out.split()[1].rstrip(':')
 ok((store.read_job(job) or {}).get('accepted') is True, 'accepted on the orchestrator\'s behalf')
 ok('return 2' in (root / 'calc.py').read_text(), 'the work is on disk')
 
-# 2. the local model never fixes it: FAILED lists only the failing check, with the way on
+# 2. the local model never fixes it: FAILED lists only the failing check, with the way on. It finishes again and
+#    again without a change, so the job stops at the third such finish instead of using every repair
 root2 = project()
 fake.script = [('finish', {'summary': 'done', 'evidence': [{'constraint': 1, 'path': 'calc.py', 'quote': 'def val():'}]})] * 8
 out2 = server.auto_delegate(GOAL, str(root2), ['calc.py'], [f'{PY} test_calc.py'], constraints=['calc.py val() returns 2'])
-ok('FAILED (checks_failed) after 3 local repairs' in out2 and 'test_calc.py' in out2 and 'job_continue(' in out2,
-   f'failed receipt: {out2}')
+ok('FAILED (stuck) after 2 local repairs' in out2 and '- stopped: finished three times' in out2 and 'test_calc.py' in out2
+   and 'AssertionError' in out2 and 'job_continue(' in out2, f'failed receipt: {out2}')
 ok('ACCEPTED' not in out2 and len(out2) < 2500, 'failed receipt stays short')
 
 # 3. job_continue blocks too and can turn it into ACCEPTED

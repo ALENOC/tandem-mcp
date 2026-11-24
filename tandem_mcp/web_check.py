@@ -26,6 +26,21 @@ def enabled() -> bool:
     return val not in ("0", "false", "no", "off")
 
 
+def min_fps() -> int:
+    """Frames per second an animated page must reach in the headless browser (TANDEM_WEB_MIN_FPS, 0 = no check).
+    A page drawn with care reaches 60 there; one that cannot keep up looks choppy to every user."""
+    try:
+        return max(0, min(int(os.environ.get("TANDEM_WEB_MIN_FPS", "40")), 120))
+    except ValueError:
+        return 40
+
+
+# What makes a canvas frame slow, said so that the look stays the same: removing the glow is not the fix.
+_PERF_ADVICE = ("Keep the same look but make each frame cheaper: no shadowBlur or filter on many shapes per frame "
+                "(draw a glow once on an offscreen canvas and drawImage it), create gradients once instead of every "
+                "frame, no work for every pair of objects (use a grid), no getImageData inside the loop.")
+
+
 def find_chromium() -> str | None:
     """Locate Chromium/Chrome executable, honoring TANDEM_CHROME / CHROME overrides."""
     for env_key in ("TANDEM_CHROME", "CHROME"):
@@ -76,8 +91,11 @@ def _resolve_entry(ws_root: Path, spec: dict[str, Any]) -> str | None:
     return None
 
 
-def run(ws_root: str | Path, spec: dict[str, Any], timeout_s: float = 45.0) -> tuple[int, str]:
-    """Run Chromium probe against the workspace entry point. Returns (exit_code, concise_report)."""
+def run(ws_root: str | Path, spec: dict[str, Any], timeout_s: float = 45.0, perf: str = "fail",
+        info: dict[str, Any] | None = None) -> tuple[int, str]:
+    """Run Chromium probe against the workspace entry point. Returns (exit_code, concise_report).
+    perf 'fail': a frame rate under min_fps() fails the check; 'warn': it is only reported. info, when given,
+    receives the frame rate data and perf_failed (the frame rate failed the check)."""
     root = Path(ws_root).resolve()
     entry = _resolve_entry(root, spec)
     if not entry:
@@ -100,7 +118,8 @@ def run(ws_root: str | Path, spec: dict[str, Any], timeout_s: float = 45.0) -> t
     try:
         proc = subprocess.run(
             [node_bin, str(_PROBE_SCRIPT), str(root), entry, chrome_bin, "1" if require_anim else "0",
-             "1" if spec.get("dark_theme") else "0", "0" if spec.get("reset_check") is False else "1"],
+             "1" if spec.get("dark_theme") else "0", "0" if spec.get("reset_check") is False else "1",
+             str(min_fps()), "0" if perf == "warn" else "1"],
             capture_output=True,
             text=True,
             timeout=max(10.0, float(timeout_s)),
@@ -117,9 +136,17 @@ def run(ws_root: str | Path, spec: dict[str, Any], timeout_s: float = 45.0) -> t
             data = {}
 
     status = data.get("status")
+    perf_data = data.get("perf") or {}
+    if info is not None:
+        info["perf"] = perf_data
+        info["perf_failed"] = perf_data.get("status") == "failed"
+    fps_note = f", fps={perf_data['fps']}" if perf_data.get("fps") is not None else ""
     if proc.returncode == 0 and status == "passed":
+        warned = (f" Frame rate below the target, not enforced any more: {perf_data.get('reason')}."
+                  if perf_data.get("status") == "warned" else "")
         return 0, (f"OK: browser verified {entry} with 0 JS errors (canvas animated={data.get('animated')}, "
-                   f"reset={(data.get('resetCheck') or {}).get('status')}, exposure={(data.get('exposure') or {}).get('status')}).")
+                   f"reset={(data.get('resetCheck') or {}).get('status')}, exposure={(data.get('exposure') or {}).get('status')}"
+                   f"{fps_note}).{warned}")
     if status == "not_evaluated" or proc.returncode == 2:
         reason = data.get("reason") or (proc.stderr or "").strip() or "browser check unavailable"
         return 2, f"not_evaluated: {reason}"
@@ -143,6 +170,14 @@ def run(ws_root: str | Path, spec: dict[str, Any], timeout_s: float = 45.0) -> t
         sub = data.get(key) or {}
         if sub.get("status") == "failed":
             lines.append(f"  - {sub.get('reason')}.")
+    if perf_data.get("status") == "failed":
+        if perf_data.get("readout"):
+            lines.append(f"  - {perf_data.get('reason')}: count the frames over a window of time and divide by the "
+                         "seconds that passed.")
+        else:
+            hot = ", ".join(perf_data.get("hot") or [])
+            lines.append(f"  - frame rate: {perf_data.get('reason')}." + (f" Measured: {hot}." if hot else "")
+                         + f" {_PERF_ADVICE}")
     if len(lines) == 1:
         tail = (proc.stderr or proc.stdout or "").strip()[-300:]
         lines.append(f"  - probe exited {proc.returncode}: {tail}")

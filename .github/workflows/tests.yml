@@ -32,6 +32,8 @@ jobs:
         run: python tests/test_offline.py
       - name: Whole loop against a scripted server (no model)
         run: python tests/test_protocol.py
+      - name: Local loop, prefix cache, compaction, evidence, failing lines, stops, slow checks (no model)
+        run: python tests/test_local_loop.py
       - name: Lean profile against scripted server (no model)
         run: python tests/test_lean.py
       - name: Digest deadline and deterministic git-stat tests (B05, no model)

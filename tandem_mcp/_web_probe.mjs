@@ -54,7 +54,102 @@ function formatException(details, baseUrl) {
   return { message: firstLine, location: loc, raw: String(desc).slice(0, 400) };
 }
 
-async function runProbe(wsDir, entryRel, chromePath, requireAnim, darkTheme, resetWanted = true) {
+// Where the main thread spends its time while the page animates: script functions with at least 5% of the CPU
+// profiler samples, as "name (file:line) share%", and the share of native work outside scripts (drawing).
+async function hotSpots(call, baseUrl) {
+  try {
+    await call('Profiler.enable');
+    await call('Profiler.setSamplingInterval', { interval: 1000 });
+    await call('Profiler.start');
+    await sleep(1200);
+    const { profile } = await call('Profiler.stop');
+    const nodes = new Map((profile.nodes || []).map((n) => [n.id, n]));
+    const counts = new Map();
+    for (const id of profile.samples || []) counts.set(id, (counts.get(id) || 0) + 1);
+    const total = (profile.samples || []).length || 1;
+    const byPlace = new Map();
+    let native = 0;
+    for (const [id, n] of counts) {
+      const cf = nodes.get(id)?.callFrame || {};
+      const name = cf.functionName || '(anonymous)';
+      if (name === '(program)') { native += n; continue; }
+      if (name.startsWith('(')) continue;
+      let file = cf.url || '';
+      if (!file) continue;
+      if (file.startsWith(baseUrl)) file = file.slice(baseUrl.length);
+      const key = `${name} (${file}:${(cf.lineNumber ?? -1) + 1})`;
+      byPlace.set(key, (byPlace.get(key) || 0) + n);
+    }
+    const script = [...byPlace.entries()].filter(([, n]) => n / total >= 0.05).sort((a, b) => b[1] - a[1]).slice(0, 3)
+      .map(([k, n]) => `${k} ${Math.round((100 * n) / total)}%`);
+    return { script, nativeShare: Math.round((100 * native) / total) };
+  } catch (err) {
+    return { script: [], nativeShare: null };
+  }
+}
+
+// Frames per second while the page animates, counted with requestAnimationFrame over 2 s.
+async function countFrames(call) {
+  const res = await call('Runtime.evaluate', {
+    expression: `new Promise((resolve) => {
+      let n = 0, t0 = null, last = 0, long = 0, worst = 0;
+      const done = (now) => resolve({ fps: n && t0 !== null ? (n * 1000) / (now - t0) : 0, long, worst: Math.round(worst) });
+      const guard = setTimeout(() => done(performance.now()), 4000);
+      function frame(now) {
+        if (t0 === null) { t0 = now; last = now; }
+        else { n++; const d = now - last; if (d > 34) long++; if (d > worst) worst = d; last = now; }
+        if (now - t0 < 2000) requestAnimationFrame(frame); else { clearTimeout(guard); done(now); }
+      }
+      requestAnimationFrame(frame);
+    })`,
+    awaitPromise: true,
+    returnByValue: true,
+  });
+  return res.result?.value || { fps: 0, long: 0, worst: 0 };
+}
+
+// The frame rate, and the FPS the page itself shows, if it shows one.
+async function measurePerf(call, minFps) {
+  const r = await countFrames(call);
+  // the FPS the page shows: the smallest visible element whose text holds the word and a number
+  const shownRes = await call('Runtime.evaluate', {
+    expression: `(() => {
+      const els = Array.from(document.querySelectorAll('body *')).filter((el) => {
+        const t = (el.textContent || '').trim();
+        return t.length > 0 && t.length <= 40 && /fps/i.test(t) && el.getClientRects().length > 0;
+      }).sort((a, b) => a.textContent.length - b.textContent.length);
+      for (const el of els) {
+        const t = el.textContent.replace(/\\s+/g, ' ').trim();
+        const m = t.match(/(\\d+(?:\\.\\d+)?)\\s*fps\\b/i) || t.match(/\\bfps\\b\\s*[:=]?\\s*(\\d+(?:\\.\\d+)?)/i);
+        if (m) return Number(m[1]);
+      }
+      return null;
+    })()`,
+    returnByValue: true,
+  });
+  const fps = Math.round(r.fps);
+  const shown = typeof shownRes.result?.value === 'number' ? shownRes.result.value : null;
+  const out = { status: 'passed', fps, minFps, longFrames: r.long, worstFrameMs: r.worst, shown };
+  if (fps < minFps) {
+    out.status = 'failed';
+    out.slow = true;
+    out.reason = `the page draws ${fps} frames per second in headless Chromium at ${W}x${H}, it needs ${minFps} or more`;
+  } else if (shown !== null && fps >= 10 && (shown * 2 < fps || shown > fps * 2)) {
+    out.status = 'failed';
+    out.readout = true;
+    out.reason = `the FPS readout shows ${shown} while the page draws ${fps} frames per second`;
+  }
+  return out;
+}
+
+// Canvas features that are slow on many shapes, each turned off before the page loads to see what the frame rate
+// would be without it: the cause of a slow page, measured rather than guessed.
+const COSTLY = {
+  shadowBlur: `Object.defineProperty(CanvasRenderingContext2D.prototype, 'shadowBlur', { configurable: true, get() { return 0; }, set(v) {} });`,
+  filter: `Object.defineProperty(CanvasRenderingContext2D.prototype, 'filter', { configurable: true, get() { return 'none'; }, set(v) {} });`,
+};
+
+async function runProbe(wsDir, entryRel, chromePath, requireAnim, darkTheme, resetWanted = true, minFps = 0, perfFail = true) {
   if (!chromePath || !fs.existsSync(chromePath)) {
     return { status: 'not_evaluated', reason: `Chromium binary not found (${chromePath || 'unset'})` };
   }
@@ -185,6 +280,12 @@ async function runProbe(wsDir, entryRel, chromePath, requireAnim, darkTheme, res
       }
     }
 
+    // A page that animates must keep up: measured while it runs, before any control is touched.
+    let perf = { status: 'skipped' };
+    if (minFps > 0 && requireAnim && canvasSized && animated) {
+      perf = await measurePerf(call, minFps);
+    }
+
     // Generic control check: Reset must bring back the initial running state, even after Pause.
     // Only judged when the page animated on its own at load and Pause really stopped the canvas.
     let resetCheck = { status: 'skipped' };
@@ -256,9 +357,40 @@ async function runProbe(wsDir, entryRel, chromePath, requireAnim, darkTheme, res
         : { status: 'passed', whiteFraction: Number(frac.toFixed(4)) };
     }
 
+    // Why a page is slow: where the time goes, then each costly canvas feature turned off in a fresh load.
+    if (perf.slow) {
+      const where = await hotSpots(call, baseUrl);
+      const hints = [...where.script];
+      if (!where.script.length && where.nativeShare !== null && where.nativeShare >= 60) {
+        hints.push(`${where.nativeShare}% of the time is drawing on the canvas, not script`);
+      }
+      const errorsSoFar = [runtimeErrors.length, consoleErrors.length];
+      for (const [feature, js] of Object.entries(COSTLY)) {
+        const added = await call('Page.addScriptToEvaluateOnNewDocument', { source: js });
+        await call('Page.navigate', { url: `${baseUrl}${entryRel.replace(/^\/+/, '')}` });
+        await sleep(1100);
+        if (startedViaPlayButton) {
+          await call('Runtime.evaluate', {
+            expression: `(() => { const b = Array.from(document.querySelectorAll('button, [role="button"], input[type="button"]')).find((el) => /^[^a-z0-9]*(?:play|start|resume|avvia)(?:\\s*\\/\\s*pause)?$/i.test((el.innerText || el.textContent || el.value || el.getAttribute('aria-label') || '').trim())); if (b) b.click(); })()`,
+            returnByValue: true,
+          });
+          await sleep(250);
+        }
+        const without = Math.round((await countFrames(call)).fps);
+        await call('Page.removeScriptToEvaluateOnNewDocument', { identifier: added.identifier });
+        if (without >= minFps || without >= 1.5 * perf.fps + 5) {
+          hints.push(`with ${feature} turned off it draws ${without} frames per second`);
+        }
+      }
+      runtimeErrors.length = errorsSoFar[0];   // the trial loads are not the page as it ships
+      consoleErrors.length = errorsSoFar[1];
+      perf.hot = hints;
+    }
+    if (perf.status === 'failed' && !perfFail) perf.status = 'warned';
+
     const errorsOk = runtimeErrors.length === 0 && consoleErrors.length === 0;
     const animOk = !requireAnim || (canvasSized && animated);
-    const passed = errorsOk && animOk && resetCheck.status !== 'failed' && exposure.status !== 'failed';
+    const passed = errorsOk && animOk && resetCheck.status !== 'failed' && exposure.status !== 'failed' && perf.status !== 'failed';
 
     return {
       status: passed ? 'passed' : 'failed',
@@ -270,6 +402,7 @@ async function runProbe(wsDir, entryRel, chromePath, requireAnim, darkTheme, res
       startedViaPlayButton,
       resetCheck,
       exposure,
+      perf,
       canvasObserved: hasCanvas ? { w: s1.w, h: s1.h, cw: s1.cw, ch: s1.ch, nonZeroPixels: s1.nonZero, hashes: [s1.hash, s2.hash, s3.hash] } : null,
       runtimeErrors,
       consoleErrors,
@@ -283,12 +416,13 @@ async function runProbe(wsDir, entryRel, chromePath, requireAnim, darkTheme, res
   }
 }
 
-const [, , wsDir, entryRel, chromePath, reqAnim, darkArg, resetArg] = process.argv;
+const [, , wsDir, entryRel, chromePath, reqAnim, darkArg, resetArg, minFpsArg, perfArg] = process.argv;
 if (!wsDir || !entryRel) {
-  console.error('Usage: _web_probe.mjs <wsDir> <entryRel> <chromePath> <requireAnim:0|1>');
+  console.error('Usage: _web_probe.mjs <wsDir> <entryRel> <chromePath> <requireAnim:0|1> [dark:0|1] [reset:0|1] [minFps] [perfFail:0|1]');
   process.exit(2);
 }
-const out = await runProbe(path.resolve(wsDir), entryRel, chromePath || '', reqAnim === '1', darkArg === '1', resetArg !== '0');
+const out = await runProbe(path.resolve(wsDir), entryRel, chromePath || '', reqAnim === '1', darkArg === '1', resetArg !== '0',
+  Number(minFpsArg) > 0 ? Number(minFpsArg) : 0, perfArg !== '0');
 console.log(JSON.stringify(out));
 if (out.status === 'passed') process.exit(0);
 if (out.status === 'not_evaluated') process.exit(2);
