@@ -1,0 +1,1119 @@
+{
+  "reevaluated_at": "2026-11-24T23:28:34.650549+00:00",
+  "repeats": 3,
+  "rule": "success = every repetition passes and the attempt ended inside its budget",
+  "evaluator_sha256": {
+    "check_boids_behavioral.mjs": "3c887778fe8dbff980d7c92146993fb332a1c750d6a9f90918710271b9b16247",
+    "check_orbital_behavioral.mjs": "b9616a84e1daf484457700136c88edffb7b09f3f844fae509b8e811bd5b5a1f2",
+    "check_portal_behavioral.mjs": "d3bd364c628846ee4d0ac886250bfd926fa2ebf9474a5e6780fb13ff1f7690fb",
+    "check_portal_visual.mjs": "58be7b30dd17486ca1b21b76f78ddf82d636d975c66150d99fdc3c636884b10d",
+    "check_stars.mjs": "bf35a6a7f13dcdd45a7d41038c394a524ab594aab4d4cbc608a5246e7d55805d"
+  },
+  "summary": {
+    "gen_orbital": {
+      "direct": {
+        "attempts": 3,
+        "successes": 1,
+        "cost_usd_total": 0.9512,
+        "cost_usd_per_success": 0.9512,
+        "tokens_total": {
+          "input_tokens": 18,
+          "cache_creation_input_tokens": 42390,
+          "cache_read_input_tokens": 138352,
+          "output_tokens": 29215
+        },
+        "median_wall_seconds": 85.8,
+        "local_tokens_total": 0
+      },
+      "tandem": {
+        "attempts": 3,
+        "successes": 1,
+        "cost_usd_total": 0.4672,
+        "cost_usd_per_success": 0.4672,
+        "tokens_total": {
+          "input_tokens": 22,
+          "cache_creation_input_tokens": 31002,
+          "cache_read_input_tokens": 160601,
+          "output_tokens": 9347
+        },
+        "median_wall_seconds": 718.4,
+        "local_tokens_total": 342282
+      },
+      "tandem_vs_direct_per_success": -0.5088
+    },
+    "gen_portal": {
+      "direct": {
+        "attempts": 3,
+        "successes": 0,
+        "cost_usd_total": 1.732,
+        "cost_usd_per_success": null,
+        "tokens_total": {
+          "input_tokens": 52,
+          "cache_creation_input_tokens": 77582,
+          "cache_read_input_tokens": 607013,
+          "output_tokens": 49488
+        },
+        "median_wall_seconds": 148.5,
+        "local_tokens_total": 0
+      },
+      "tandem": {
+        "attempts": 3,
+        "successes": 1,
+        "cost_usd_total": 0.5479,
+        "cost_usd_per_success": 0.5479,
+        "tokens_total": {
+          "input_tokens": 34,
+          "cache_creation_input_tokens": 34727,
+          "cache_read_input_tokens": 298718,
+          "output_tokens": 10510
+        },
+        "median_wall_seconds": 1990.9,
+        "local_tokens_total": 1191205
+      }
+    },
+    "py_cron": {
+      "direct": {
+        "attempts": 3,
+        "successes": 3,
+        "cost_usd_total": 0.8049,
+        "cost_usd_per_success": 0.2683,
+        "tokens_total": {
+          "input_tokens": 26,
+          "cache_creation_input_tokens": 36807,
+          "cache_read_input_tokens": 185533,
+          "output_tokens": 23660
+        },
+        "median_wall_seconds": 59.9,
+        "local_tokens_total": 0
+      },
+      "tandem": {
+        "attempts": 3,
+        "successes": 2,
+        "cost_usd_total": 0.4196,
+        "cost_usd_per_success": 0.2098,
+        "tokens_total": {
+          "input_tokens": 26,
+          "cache_creation_input_tokens": 23463,
+          "cache_read_input_tokens": 205350,
+          "output_tokens": 9538
+        },
+        "median_wall_seconds": 1551.7,
+        "local_tokens_total": 1893504
+      },
+      "tandem_vs_direct_per_success": -0.218
+    },
+    "py_discount": {
+      "direct": {
+        "attempts": 3,
+        "successes": 3,
+        "cost_usd_total": 0.1855,
+        "cost_usd_per_success": 0.0618,
+        "tokens_total": {
+          "input_tokens": 18,
+          "cache_creation_input_tokens": 15001,
+          "cache_read_input_tokens": 116684,
+          "output_tokens": 2103
+        },
+        "median_wall_seconds": 9.9,
+        "local_tokens_total": 0
+      },
+      "tandem": {
+        "attempts": 3,
+        "successes": 3,
+        "cost_usd_total": 0.2009,
+        "cost_usd_per_success": 0.067,
+        "tokens_total": {
+          "input_tokens": 24,
+          "cache_creation_input_tokens": 15017,
+          "cache_read_input_tokens": 165990,
+          "output_tokens": 2372
+        },
+        "median_wall_seconds": 120.6,
+        "local_tokens_total": 48235
+      },
+      "tandem_vs_direct_per_success": 0.0841
+    },
+    "web_boids": {
+      "direct": {
+        "attempts": 3,
+        "successes": 3,
+        "cost_usd_total": 0.614,
+        "cost_usd_per_success": 0.2047,
+        "tokens_total": {
+          "input_tokens": 22,
+          "cache_creation_input_tokens": 25805,
+          "cache_read_input_tokens": 170435,
+          "output_tokens": 18667
+        },
+        "median_wall_seconds": 54.4,
+        "local_tokens_total": 0
+      },
+      "tandem": {
+        "attempts": 3,
+        "successes": 3,
+        "cost_usd_total": 0.3804,
+        "cost_usd_per_success": 0.1268,
+        "tokens_total": {
+          "input_tokens": 20,
+          "cache_creation_input_tokens": 24344,
+          "cache_read_input_tokens": 140851,
+          "output_tokens": 7868
+        },
+        "median_wall_seconds": 670.3,
+        "local_tokens_total": 251436
+      },
+      "tandem_vs_direct_per_success": -0.3806
+    }
+  },
+  "attempts": [
+    {
+      "run": "20261124-174810_v4_2",
+      "task": "py_discount",
+      "arm": "direct",
+      "pair": 1,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "timed_out": false,
+      "wall_seconds": 9.91,
+      "cost_usd": 0.0741782,
+      "usage": {
+        "input_tokens": 6,
+        "cache_creation_input_tokens": 6604,
+        "cache_read_input_tokens": 37211,
+        "output_tokens": 694
+      },
+      "num_turns": 4,
+      "tool_uses": [
+        "Bash",
+        "Edit",
+        "Bash"
+      ],
+      "local_tokens": 0,
+      "local_jobs": [],
+      "hints": 0,
+      "visual_strikes": 0,
+      "visual_review": []
+    },
+    {
+      "run": "20261124-174810_v4_2",
+      "task": "py_discount",
+      "arm": "tandem",
+      "pair": 1,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "timed_out": false,
+      "wall_seconds": 120.58,
+      "cost_usd": 0.0819164,
+      "usage": {
+        "input_tokens": 8,
+        "cache_creation_input_tokens": 6943,
+        "cache_read_input_tokens": 53202,
+        "output_tokens": 785
+      },
+      "num_turns": 4,
+      "tool_uses": [
+        "ToolSearch",
+        "mcp__tandem__delegate",
+        "Bash"
+      ],
+      "local_tokens": 14745,
+      "local_jobs": [
+        "verified"
+      ],
+      "hints": 0,
+      "visual_strikes": 0,
+      "visual_review": []
+    },
+    {
+      "run": "20261124-174810_v4_2",
+      "task": "py_discount",
+      "arm": "tandem",
+      "pair": 2,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "timed_out": false,
+      "wall_seconds": 134.83,
+      "cost_usd": 0.0585826,
+      "usage": {
+        "input_tokens": 8,
+        "cache_creation_input_tokens": 3948,
+        "cache_read_input_tokens": 56233,
+        "output_tokens": 786
+      },
+      "num_turns": 4,
+      "tool_uses": [
+        "ToolSearch",
+        "mcp__tandem__delegate",
+        "Bash"
+      ],
+      "local_tokens": 18735,
+      "local_jobs": [
+        "verified"
+      ],
+      "hints": 0,
+      "visual_strikes": 0,
+      "visual_review": []
+    },
+    {
+      "run": "20261124-174810_v4_2",
+      "task": "py_discount",
+      "arm": "direct",
+      "pair": 2,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "timed_out": false,
+      "wall_seconds": 9.62,
+      "cost_usd": 0.0515416,
+      "usage": {
+        "input_tokens": 6,
+        "cache_creation_input_tokens": 3770,
+        "cache_read_input_tokens": 40488,
+        "output_tokens": 663
+      },
+      "num_turns": 4,
+      "tool_uses": [
+        "Bash",
+        "Edit",
+        "Bash"
+      ],
+      "local_tokens": 0,
+      "local_jobs": [],
+      "hints": 0,
+      "visual_strikes": 0,
+      "visual_review": []
+    },
+    {
+      "run": "20261124-174810_v4_2",
+      "task": "py_discount",
+      "arm": "direct",
+      "pair": 3,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "timed_out": false,
+      "wall_seconds": 10.69,
+      "cost_usd": 0.059757000000000005,
+      "usage": {
+        "input_tokens": 6,
+        "cache_creation_input_tokens": 4627,
+        "cache_read_input_tokens": 38985,
+        "output_tokens": 746
+      },
+      "num_turns": 4,
+      "tool_uses": [
+        "Bash",
+        "Edit",
+        "Bash"
+      ],
+      "local_tokens": 0,
+      "local_jobs": [],
+      "hints": 0,
+      "visual_strikes": 0,
+      "visual_review": []
+    },
+    {
+      "run": "20261124-174810_v4_2",
+      "task": "py_discount",
+      "arm": "tandem",
+      "pair": 3,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "timed_out": false,
+      "wall_seconds": 105.46,
+      "cost_usd": 0.060371,
+      "usage": {
+        "input_tokens": 8,
+        "cache_creation_input_tokens": 4126,
+        "cache_read_input_tokens": 56555,
+        "output_tokens": 801
+      },
+      "num_turns": 4,
+      "tool_uses": [
+        "ToolSearch",
+        "mcp__tandem__delegate",
+        "Bash"
+      ],
+      "local_tokens": 14755,
+      "local_jobs": [
+        "verified"
+      ],
+      "hints": 0,
+      "visual_strikes": 0,
+      "visual_review": []
+    },
+    {
+      "run": "20261124-174810_v4_2",
+      "task": "py_cron",
+      "arm": "direct",
+      "pair": 1,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "timed_out": false,
+      "wall_seconds": 73.26,
+      "cost_usd": 0.2941074,
+      "usage": {
+        "input_tokens": 10,
+        "cache_creation_input_tokens": 12783,
+        "cache_read_input_tokens": 74717,
+        "output_tokens": 8843
+      },
+      "num_turns": 6,
+      "tool_uses": [
+        "Bash",
+        "Write",
+        "Bash",
+        "Write",
+        "Bash"
+      ],
+      "local_tokens": 0,
+      "local_jobs": [],
+      "hints": 0,
+      "visual_strikes": 0,
+      "visual_review": []
+    },
+    {
+      "run": "20261124-174810_v4_2",
+      "task": "py_cron",
+      "arm": "tandem",
+      "pair": 1,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "timed_out": false,
+      "wall_seconds": 1551.66,
+      "cost_usd": 0.112669,
+      "usage": {
+        "input_tokens": 6,
+        "cache_creation_input_tokens": 6624,
+        "cache_read_input_tokens": 40165,
+        "output_tokens": 2581
+      },
+      "num_turns": 3,
+      "tool_uses": [
+        "ToolSearch",
+        "mcp__tandem__delegate"
+      ],
+      "local_tokens": 194819,
+      "local_jobs": [
+        "verified"
+      ],
+      "hints": 0,
+      "visual_strikes": 0,
+      "visual_review": []
+    },
+    {
+      "run": "20261124-174810_v4_2",
+      "task": "py_cron",
+      "arm": "tandem",
+      "pair": 2,
+      "success": false,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "timed_out": true,
+      "wall_seconds": 4243.59,
+      "cost_usd": 0.20243139999999998,
+      "usage": {
+        "input_tokens": 14,
+        "cache_creation_input_tokens": 11436,
+        "cache_read_input_tokens": 123737,
+        "output_tokens": 4307
+      },
+      "num_turns": 7,
+      "tool_uses": [
+        "ToolSearch",
+        "mcp__tandem__delegate",
+        "mcp__tandem__job_continue",
+        "Bash",
+        "Bash",
+        "Bash"
+      ],
+      "local_tokens": 1310095,
+      "local_jobs": [
+        "out_of_time"
+      ],
+      "hints": 1,
+      "visual_strikes": 0,
+      "visual_review": []
+    },
+    {
+      "run": "20261124-174810_v4_2",
+      "task": "py_cron",
+      "arm": "direct",
+      "pair": 2,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "timed_out": false,
+      "wall_seconds": 59.88,
+      "cost_usd": 0.2632982,
+      "usage": {
+        "input_tokens": 8,
+        "cache_creation_input_tokens": 12964,
+        "cache_read_input_tokens": 54671,
+        "output_tokens": 7431
+      },
+      "num_turns": 5,
+      "tool_uses": [
+        "Bash",
+        "Write",
+        "Write",
+        "Bash"
+      ],
+      "local_tokens": 0,
+      "local_jobs": [],
+      "hints": 0,
+      "visual_strikes": 0,
+      "visual_review": []
+    },
+    {
+      "run": "20261124-174810_v4_2",
+      "task": "py_cron",
+      "arm": "direct",
+      "pair": 3,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "timed_out": false,
+      "wall_seconds": 58.14,
+      "cost_usd": 0.247461,
+      "usage": {
+        "input_tokens": 8,
+        "cache_creation_input_tokens": 11060,
+        "cache_read_input_tokens": 56145,
+        "output_tokens": 7386
+      },
+      "num_turns": 5,
+      "tool_uses": [
+        "Bash",
+        "Write",
+        "Write",
+        "Bash"
+      ],
+      "local_tokens": 0,
+      "local_jobs": [],
+      "hints": 0,
+      "visual_strikes": 0,
+      "visual_review": []
+    },
+    {
+      "run": "20261124-174810_v4_2",
+      "task": "py_cron",
+      "arm": "tandem",
+      "pair": 3,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "timed_out": false,
+      "wall_seconds": 1508.19,
+      "cost_usd": 0.10453760000000001,
+      "usage": {
+        "input_tokens": 6,
+        "cache_creation_input_tokens": 5403,
+        "cache_read_input_tokens": 41448,
+        "output_tokens": 2650
+      },
+      "num_turns": 3,
+      "tool_uses": [
+        "ToolSearch",
+        "mcp__tandem__delegate"
+      ],
+      "local_tokens": 388590,
+      "local_jobs": [
+        "verified"
+      ],
+      "hints": 0,
+      "visual_strikes": 0,
+      "visual_review": []
+    },
+    {
+      "run": "20261124-174810_v4_2",
+      "task": "web_boids",
+      "arm": "direct",
+      "pair": 1,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "timed_out": false,
+      "wall_seconds": 45.76,
+      "cost_usd": 0.1984396,
+      "usage": {
+        "input_tokens": 6,
+        "cache_creation_input_tokens": 8763,
+        "cache_read_input_tokens": 43658,
+        "output_tokens": 5979
+      },
+      "num_turns": 3,
+      "tool_uses": [
+        "Write",
+        "Bash"
+      ],
+      "local_tokens": 0,
+      "local_jobs": [],
+      "hints": 0,
+      "visual_strikes": 0,
+      "visual_review": []
+    },
+    {
+      "run": "20261124-174810_v4_2",
+      "task": "web_boids",
+      "arm": "tandem",
+      "pair": 1,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "timed_out": false,
+      "wall_seconds": 806.41,
+      "cost_usd": 0.1221706,
+      "usage": {
+        "input_tokens": 6,
+        "cache_creation_input_tokens": 8173,
+        "cache_read_input_tokens": 40113,
+        "output_tokens": 2437
+      },
+      "num_turns": 3,
+      "tool_uses": [
+        "ToolSearch",
+        "mcp__tandem__delegate"
+      ],
+      "local_tokens": 99533,
+      "local_jobs": [
+        "verified"
+      ],
+      "hints": 0,
+      "visual_strikes": 2,
+      "visual_review": [
+        "failed"
+      ]
+    },
+    {
+      "run": "20261124-174810_v4_2",
+      "task": "web_boids",
+      "arm": "tandem",
+      "pair": 2,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "timed_out": false,
+      "wall_seconds": 670.28,
+      "cost_usd": 0.1337292,
+      "usage": {
+        "input_tokens": 8,
+        "cache_creation_input_tokens": 7905,
+        "cache_read_input_tokens": 60486,
+        "output_tokens": 2918
+      },
+      "num_turns": 4,
+      "tool_uses": [
+        "ToolSearch",
+        "mcp__tandem__delegate",
+        "Bash"
+      ],
+      "local_tokens": 80862,
+      "local_jobs": [
+        "blocked"
+      ],
+      "hints": 0,
+      "visual_strikes": 0,
+      "visual_review": []
+    },
+    {
+      "run": "20261124-174810_v4_2",
+      "task": "web_boids",
+      "arm": "direct",
+      "pair": 2,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "timed_out": false,
+      "wall_seconds": 71.81,
+      "cost_usd": 0.2374786,
+      "usage": {
+        "input_tokens": 10,
+        "cache_creation_input_tokens": 9900,
+        "cache_read_input_tokens": 82393,
+        "output_tokens": 7088
+      },
+      "num_turns": 5,
+      "tool_uses": [
+        "Write",
+        "Bash",
+        "Bash",
+        "Bash"
+      ],
+      "local_tokens": 0,
+      "local_jobs": [],
+      "hints": 0,
+      "visual_strikes": 0,
+      "visual_review": []
+    },
+    {
+      "run": "20261124-174810_v4_2",
+      "task": "web_boids",
+      "arm": "direct",
+      "pair": 3,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "timed_out": false,
+      "wall_seconds": 54.44,
+      "cost_usd": 0.1780368,
+      "usage": {
+        "input_tokens": 6,
+        "cache_creation_input_tokens": 7142,
+        "cache_read_input_tokens": 44384,
+        "output_tokens": 5600
+      },
+      "num_turns": 3,
+      "tool_uses": [
+        "Write",
+        "Bash"
+      ],
+      "local_tokens": 0,
+      "local_jobs": [],
+      "hints": 0,
+      "visual_strikes": 0,
+      "visual_review": []
+    },
+    {
+      "run": "20261124-174810_v4_2",
+      "task": "web_boids",
+      "arm": "tandem",
+      "pair": 3,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "timed_out": false,
+      "wall_seconds": 626.65,
+      "cost_usd": 0.12446239999999999,
+      "usage": {
+        "input_tokens": 6,
+        "cache_creation_input_tokens": 8266,
+        "cache_read_input_tokens": 40252,
+        "output_tokens": 2513
+      },
+      "num_turns": 3,
+      "tool_uses": [
+        "ToolSearch",
+        "mcp__tandem__delegate"
+      ],
+      "local_tokens": 71041,
+      "local_jobs": [
+        "verified"
+      ],
+      "hints": 0,
+      "visual_strikes": 0,
+      "visual_review": [
+        "passed"
+      ]
+    },
+    {
+      "run": "20261124-174810_v4_2",
+      "task": "gen_orbital",
+      "arm": "direct",
+      "pair": 1,
+      "success": false,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "timed_out": true,
+      "wall_seconds": 4945.69,
+      "cost_usd": 0.348784,
+      "usage": {
+        "input_tokens": 6,
+        "cache_creation_input_tokens": 18190,
+        "cache_read_input_tokens": 42200,
+        "output_tokens": 9740
+      },
+      "num_turns": 3,
+      "tool_uses": [
+        "Write",
+        "Bash"
+      ],
+      "local_tokens": 0,
+      "local_jobs": [],
+      "hints": 0,
+      "visual_strikes": 0,
+      "visual_review": []
+    },
+    {
+      "run": "20261124-174810_v4_2",
+      "task": "gen_orbital",
+      "arm": "tandem",
+      "pair": 1,
+      "success": false,
+      "verdicts_agree": true,
+      "failed_checks": [
+        "trailsToggle"
+      ],
+      "timed_out": false,
+      "wall_seconds": 718.42,
+      "cost_usd": 0.1735918,
+      "usage": {
+        "input_tokens": 8,
+        "cache_creation_input_tokens": 12620,
+        "cache_read_input_tokens": 58199,
+        "output_tokens": 3048
+      },
+      "num_turns": 4,
+      "tool_uses": [
+        "ToolSearch",
+        "mcp__tandem__delegate",
+        "mcp__tandem__job_continue"
+      ],
+      "local_tokens": 128696,
+      "local_jobs": [
+        "verified"
+      ],
+      "hints": 1,
+      "visual_strikes": 0,
+      "visual_review": [
+        "passed"
+      ]
+    },
+    {
+      "run": "20261124-174810_v4_2",
+      "task": "gen_orbital",
+      "arm": "tandem",
+      "pair": 2,
+      "success": false,
+      "verdicts_agree": true,
+      "failed_checks": [
+        "clickSpawnsBurst",
+        "pauseStopsTime"
+      ],
+      "timed_out": false,
+      "wall_seconds": 658.92,
+      "cost_usd": 0.1350386,
+      "usage": {
+        "input_tokens": 6,
+        "cache_creation_input_tokens": 8836,
+        "cache_read_input_tokens": 40533,
+        "output_tokens": 2811
+      },
+      "num_turns": 3,
+      "tool_uses": [
+        "ToolSearch",
+        "mcp__tandem__delegate"
+      ],
+      "local_tokens": 83826,
+      "local_jobs": [
+        "verified"
+      ],
+      "hints": 0,
+      "visual_strikes": 0,
+      "visual_review": [
+        "passed"
+      ]
+    },
+    {
+      "run": "20261124-174810_v4_2",
+      "task": "gen_orbital",
+      "arm": "direct",
+      "pair": 2,
+      "success": false,
+      "verdicts_agree": true,
+      "failed_checks": [
+        "trailsToggle"
+      ],
+      "timed_out": false,
+      "wall_seconds": 78.25,
+      "cost_usd": 0.2997318,
+      "usage": {
+        "input_tokens": 6,
+        "cache_creation_input_tokens": 12616,
+        "cache_read_input_tokens": 46999,
+        "output_tokens": 9469
+      },
+      "num_turns": 3,
+      "tool_uses": [
+        "Write",
+        "Bash"
+      ],
+      "local_tokens": 0,
+      "local_jobs": [],
+      "hints": 0,
+      "visual_strikes": 0,
+      "visual_review": []
+    },
+    {
+      "run": "20261124-174810_v4_2",
+      "task": "gen_orbital",
+      "arm": "direct",
+      "pair": 3,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "timed_out": false,
+      "wall_seconds": 85.85,
+      "cost_usd": 0.3026466,
+      "usage": {
+        "input_tokens": 6,
+        "cache_creation_input_tokens": 11584,
+        "cache_read_input_tokens": 49153,
+        "output_tokens": 10006
+      },
+      "num_turns": 3,
+      "tool_uses": [
+        "Write",
+        "Bash"
+      ],
+      "local_tokens": 0,
+      "local_jobs": [],
+      "hints": 0,
+      "visual_strikes": 0,
+      "visual_review": []
+    },
+    {
+      "run": "20261124-174810_v4_2",
+      "task": "gen_orbital",
+      "arm": "tandem",
+      "pair": 3,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "timed_out": false,
+      "wall_seconds": 840.54,
+      "cost_usd": 0.1585338,
+      "usage": {
+        "input_tokens": 8,
+        "cache_creation_input_tokens": 9546,
+        "cache_read_input_tokens": 61869,
+        "output_tokens": 3488
+      },
+      "num_turns": 4,
+      "tool_uses": [
+        "ToolSearch",
+        "mcp__tandem__delegate",
+        "mcp__tandem__job_continue"
+      ],
+      "local_tokens": 129760,
+      "local_jobs": [
+        "verified"
+      ],
+      "hints": 1,
+      "visual_strikes": 0,
+      "visual_review": [
+        "passed"
+      ]
+    },
+    {
+      "run": "20261124-174810_v4_2",
+      "task": "gen_portal",
+      "arm": "direct",
+      "pair": 1,
+      "success": false,
+      "verdicts_agree": true,
+      "failed_checks": [
+        "interactions",
+        "visual"
+      ],
+      "timed_out": false,
+      "wall_seconds": 164.56,
+      "cost_usd": 0.610004,
+      "usage": {
+        "input_tokens": 18,
+        "cache_creation_input_tokens": 24403,
+        "cache_read_input_tokens": 227640,
+        "output_tokens": 18459
+      },
+      "num_turns": 9,
+      "tool_uses": [
+        "Bash",
+        "Write",
+        "Bash",
+        "Bash",
+        "Bash",
+        "Read",
+        "Bash",
+        "Read"
+      ],
+      "local_tokens": 0,
+      "local_jobs": [],
+      "hints": 0,
+      "visual_strikes": 0,
+      "visual_review": []
+    },
+    {
+      "run": "20261124-174810_v4_2",
+      "task": "gen_portal",
+      "arm": "tandem",
+      "pair": 1,
+      "success": false,
+      "verdicts_agree": true,
+      "failed_checks": [
+        "interactions"
+      ],
+      "timed_out": false,
+      "wall_seconds": 1990.9,
+      "cost_usd": 0.2851246,
+      "usage": {
+        "input_tokens": 20,
+        "cache_creation_input_tokens": 16464,
+        "cache_read_input_tokens": 199363,
+        "output_tokens": 5673
+      },
+      "num_turns": 10,
+      "tool_uses": [
+        "ToolSearch",
+        "mcp__tandem__delegate",
+        "Bash",
+        "Bash",
+        "Bash",
+        "Bash",
+        "Bash",
+        "Bash",
+        "Read"
+      ],
+      "local_tokens": 466655,
+      "local_jobs": [
+        "stuck"
+      ],
+      "hints": 0,
+      "visual_strikes": 0,
+      "visual_review": []
+    },
+    {
+      "run": "20261124-174810_v4_2",
+      "task": "gen_portal",
+      "arm": "tandem",
+      "pair": 2,
+      "success": true,
+      "verdicts_agree": true,
+      "failed_checks": [],
+      "timed_out": false,
+      "wall_seconds": 2403.29,
+      "cost_usd": 0.15019480000000002,
+      "usage": {
+        "input_tokens": 8,
+        "cache_creation_input_tokens": 10301,
+        "cache_read_input_tokens": 59174,
+        "output_tokens": 2796
+      },
+      "num_turns": 4,
+      "tool_uses": [
+        "ToolSearch",
+        "mcp__tandem__delegate",
+        "mcp__tandem__job_continue"
+      ],
+      "local_tokens": 531741,
+      "local_jobs": [
+        "verified"
+      ],
+      "hints": 1,
+      "visual_strikes": 0,
+      "visual_review": [
+        "passed"
+      ]
+    },
+    {
+      "run": "20261124-174810_v4_2",
+      "task": "gen_portal",
+      "arm": "direct",
+      "pair": 2,
+      "success": false,
+      "verdicts_agree": true,
+      "failed_checks": [
+        "interactions"
+      ],
+      "timed_out": false,
+      "wall_seconds": 133.84,
+      "cost_usd": 0.589877,
+      "usage": {
+        "input_tokens": 16,
+        "cache_creation_input_tokens": 30805,
+        "cache_read_input_tokens": 172365,
+        "output_tokens": 15445
+      },
+      "num_turns": 8,
+      "tool_uses": [
+        "Bash",
+        "Write",
+        "Bash",
+        "Bash",
+        "Bash",
+        "Read",
+        "Bash"
+      ],
+      "local_tokens": 0,
+      "local_jobs": [],
+      "hints": 0,
+      "visual_strikes": 0,
+      "visual_review": []
+    },
+    {
+      "run": "20261124-174810_v4_2",
+      "task": "gen_portal",
+      "arm": "direct",
+      "pair": 3,
+      "success": false,
+      "verdicts_agree": true,
+      "failed_checks": [
+        "visual"
+      ],
+      "timed_out": false,
+      "wall_seconds": 148.49,
+      "cost_usd": 0.5321456000000001,
+      "usage": {
+        "input_tokens": 18,
+        "cache_creation_input_tokens": 22374,
+        "cache_read_input_tokens": 207008,
+        "output_tokens": 15584
+      },
+      "num_turns": 9,
+      "tool_uses": [
+        "Bash",
+        "Write",
+        "Bash",
+        "Bash",
+        "Bash",
+        "Bash",
+        "Read",
+        "Bash"
+      ],
+      "local_tokens": 0,
+      "local_jobs": [],
+      "hints": 0,
+      "visual_strikes": 0,
+      "visual_review": []
+    },
+    {
+      "run": "20261124-174810_v4_2",
+      "task": "gen_portal",
+      "arm": "tandem",
+      "pair": 3,
+      "success": false,
+      "verdicts_agree": true,
+      "failed_checks": [
+        "interactions"
+      ],
+      "timed_out": false,
+      "wall_seconds": 1030.33,
+      "cost_usd": 0.11257619999999999,
+      "usage": {
+        "input_tokens": 6,
+        "cache_creation_input_tokens": 7962,
+        "cache_read_input_tokens": 40181,
+        "output_tokens": 2041
+      },
+      "num_turns": 3,
+      "tool_uses": [
+        "ToolSearch",
+        "mcp__tandem__delegate"
+      ],
+      "local_tokens": 192809,
+      "local_jobs": [
+        "verified"
+      ],
+      "hints": 0,
+      "visual_strikes": 0,
+      "visual_review": [
+        "passed"
+      ]
+    }
+  ]
+}

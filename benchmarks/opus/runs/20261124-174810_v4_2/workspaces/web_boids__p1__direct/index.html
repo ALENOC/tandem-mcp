@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Boids – Simulazione di stormo</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #070b14; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #e6edf7; }
+  canvas { display: block; position: fixed; inset: 0; width: 100vw; height: 100vh; cursor: crosshair; }
+  .glass {
+    background: rgba(255, 255, 255, 0.07);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 16px;
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255,255,255,0.08);
+  }
+  #hud { position: fixed; top: 16px; left: 16px; padding: 14px 18px; min-width: 190px; user-select: none; }
+  #hud h1 { font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: #8fb8ff; margin-bottom: 8px; }
+  .row { display: flex; justify-content: space-between; gap: 18px; font-size: 14px; line-height: 1.7; }
+  .row span:last-child { font-variant-numeric: tabular-nums; font-weight: 600; color: #fff; }
+  #state { margin-top: 6px; font-size: 12px; color: #ffcf6b; }
+  #state.running { color: #6bffb0; }
+  #controls { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); padding: 12px 16px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+  button {
+    font: inherit; font-size: 14px; font-weight: 600; color: #e6edf7; cursor: pointer;
+    background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 10px; padding: 8px 16px; min-width: 84px; transition: background .15s, transform .1s;
+  }
+  button:hover { background: rgba(143,184,255,0.25); }
+  button:active { transform: scale(0.96); }
+  button:focus-visible, input:focus-visible { outline: 2px solid #8fb8ff; outline-offset: 2px; }
+  #playBtn { background: rgba(107,255,176,0.18); border-color: rgba(107,255,176,0.45); }
+  #playBtn.playing { background: rgba(255,207,107,0.18); border-color: rgba(255,207,107,0.45); }
+  label { display: flex; align-items: center; gap: 8px; font-size: 14px; margin-left: 6px; }
+  input[type=range] { width: 140px; accent-color: #8fb8ff; }
+  #speedVal { font-variant-numeric: tabular-nums; min-width: 38px; font-weight: 600; }
+  #hint { position: fixed; top: 16px; right: 16px; padding: 10px 14px; font-size: 12px; color: #b5c3d9; user-select: none; }
+</style>
+</head>
+<body>
+<canvas id="canvas" aria-label="Simulazione Boids"></canvas>
+
+<div id="hud" class="glass" role="status" aria-live="polite">
+  <h1>Boids</h1>
+  <div class="row"><span>FPS</span><span id="fps">0</span></div>
+  <div class="row"><span>Boids</span><span id="count">0</span></div>
+  <div class="row"><span>Velocità</span><span id="speedHud">1.0×</span></div>
+  <div id="state">⏸ In pausa</div>
+</div>
+
+<div id="hint" class="glass">Clicca sul canvas per aggiungere un boid</div>
+
+<div id="controls" class="glass">
+  <button id="playBtn" type="button" aria-label="Play">▶ Play</button>
+  <button id="stepBtn" type="button">⏭ Step</button>
+  <button id="resetBtn" type="button">↺ Reset</button>
+  <label for="speed">Velocità
+    <input id="speed" type="range" min="0.5" max="3.0" step="0.1" value="1.0">
+    <span id="speedVal">1.0×</span>
+  </label>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var INITIAL_BOIDS = 60;
+  var MAX_BOIDS = 600;
+  var PERCEPTION = 60;
+  var SEPARATION_DIST = 24;
+  var BASE_MAX_SPEED = 2.6;
+  var MAX_FORCE = 0.06;
+  var W_SEP = 1.6, W_ALI = 1.0, W_COH = 0.8;
+
+  var canvas = document.getElementById('canvas');
+  var ctx = canvas.getContext('2d');
+  var playBtn = document.getElementById('playBtn');
+  var stepBtn = document.getElementById('stepBtn');
+  var resetBtn = document.getElementById('resetBtn');
+  var speedInput = document.getElementById('speed');
+  var speedVal = document.getElementById('speedVal');
+  var fpsEl = document.getElementById('fps');
+  var countEl = document.getElementById('count');
+  var speedHud = document.getElementById('speedHud');
+  var stateEl = document.getElementById('state');
+
+  var width = 0, height = 0, dpr = 1;
+  var boids = [];
+  var running = false;
+  var speed = 1.0;
+
+  function resize() {
+    dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
+    width = window.innerWidth;
+    height = window.innerHeight;
+    canvas.width = Math.floor(width * dpr);
+    canvas.height = Math.floor(height * dpr);
+    canvas.style.width = width + 'px';
+    canvas.style.height = height + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    for (var i = 0; i < boids.length; i++) {
+      boids[i].x = Math.min(boids[i].x, width);
+      boids[i].y = Math.min(boids[i].y, height);
+    }
+    draw();
+  }
+
+  function makeBoid(x, y) {
+    var a = Math.random() * Math.PI * 2;
+    var s = BASE_MAX_SPEED * (0.5 + Math.random() * 0.5);
+    return { x: x, y: y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, hue: 190 + Math.random() * 50 };
+  }
+
+  function reset() {
+    boids = [];
+    var margin = 40;
+    for (var i = 0; i < INITIAL_BOIDS; i++) {
+      boids.push(makeBoid(
+        margin + Math.random() * Math.max(1, width - margin * 2),
+        margin + Math.random() * Math.max(1, height - margin * 2)
+      ));
+    }
+    updateHud();
+    draw();
+  }
+
+  function limit(vx, vy, max) {
+    var m2 = vx * vx + vy * vy;
+    if (m2 > max * max) {
+      var m = Math.sqrt(m2);
+      return [vx / m * max, vy / m * max];
+    }
+    return [vx, vy];
+  }
+
+  function steer(dx, dy, b, maxSpeed) {
+    var m = Math.sqrt(dx * dx + dy * dy);
+    if (m === 0) return [0, 0];
+    dx = dx / m * maxSpeed - b.vx;
+    dy = dy / m * maxSpeed - b.vy;
+    return limit(dx, dy, MAX_FORCE * speed);
+  }
+
+  function update() {
+    var maxSpeed = BASE_MAX_SPEED * speed;
+    var n = boids.length;
+    var ax = new Float32Array(n), ay = new Float32Array(n);
+    var p2 = PERCEPTION * PERCEPTION, s2 = SEPARATION_DIST * SEPARATION_DIST;
+
+    for (var i = 0; i < n; i++) {
+      var b = boids[i];
+      var sepX = 0, sepY = 0, sepN = 0;
+      var aliX = 0, aliY = 0, cohX = 0, cohY = 0, nb = 0;
+      for (var j = 0; j < n; j++) {
+        if (i === j) continue;
+        var o = boids[j];
+        var dx = o.x - b.x, dy = o.y - b.y;
+        // toroidal distance
+        if (dx > width / 2) dx -= width; else if (dx < -width / 2) dx += width;
+        if (dy > height / 2) dy -= height; else if (dy < -height / 2) dy += height;
+        var d2 = dx * dx + dy * dy;
+        if (d2 < p2 && d2 > 0) {
+          nb++;
+          aliX += o.vx; aliY += o.vy;
+          cohX += dx; cohY += dy;
+          if (d2 < s2) {
+            sepX -= dx / d2; sepY -= dy / d2; sepN++;
+          }
+        }
+      }
+      var fx = 0, fy = 0, f;
+      if (sepN > 0) { f = steer(sepX, sepY, b, maxSpeed); fx += f[0] * W_SEP; fy += f[1] * W_SEP; }
+      if (nb > 0) {
+        f = steer(aliX / nb, aliY / nb, b, maxSpeed); fx += f[0] * W_ALI; fy += f[1] * W_ALI;
+        f = steer(cohX / nb, cohY / nb, b, maxSpeed); fx += f[0] * W_COH; fy += f[1] * W_COH;
+      }
+      ax[i] = fx; ay[i] = fy;
+    }
+
+    for (var k = 0; k < n; k++) {
+      var bk = boids[k];
+      var v = limit(bk.vx + ax[k], bk.vy + ay[k], maxSpeed);
+      var sp = Math.sqrt(v[0] * v[0] + v[1] * v[1]);
+      var minSpeed = maxSpeed * 0.35;
+      if (sp < minSpeed) {
+        if (sp === 0) { v = [minSpeed, 0]; }
+        else { v = [v[0] / sp * minSpeed, v[1] / sp * minSpeed]; }
+      }
+      bk.vx = v[0]; bk.vy = v[1];
+      bk.x += bk.vx; bk.y += bk.vy;
+      if (bk.x < 0) bk.x += width; else if (bk.x >= width) bk.x -= width;
+      if (bk.y < 0) bk.y += height; else if (bk.y >= height) bk.y -= height;
+    }
+  }
+
+  function draw() {
+    ctx.fillStyle = '#070b14';
+    ctx.fillRect(0, 0, width, height);
+    for (var i = 0; i < boids.length; i++) {
+      var b = boids[i];
+      var ang = Math.atan2(b.vy, b.vx);
+      ctx.save();
+      ctx.translate(b.x, b.y);
+      ctx.rotate(ang);
+      ctx.beginPath();
+      ctx.moveTo(9, 0);
+      ctx.lineTo(-6, 4.5);
+      ctx.lineTo(-3, 0);
+      ctx.lineTo(-6, -4.5);
+      ctx.closePath();
+      ctx.fillStyle = 'hsl(' + b.hue.toFixed(0) + ', 90%, 68%)';
+      ctx.shadowColor = 'hsla(' + b.hue.toFixed(0) + ', 90%, 60%, 0.8)';
+      ctx.shadowBlur = 8;
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  function updateHud() {
+    countEl.textContent = String(boids.length);
+    var s = speed.toFixed(1) + '×';
+    speedHud.textContent = s;
+    speedVal.textContent = s;
+  }
+
+  function setRunning(r) {
+    running = r;
+    if (running) {
+      playBtn.textContent = '⏸ Pause';
+      playBtn.setAttribute('aria-label', 'Pause');
+      playBtn.classList.add('playing');
+      stateEl.textContent = '▶ In esecuzione';
+      stateEl.classList.add('running');
+    } else {
+      playBtn.textContent = '▶ Play';
+      playBtn.setAttribute('aria-label', 'Play');
+      playBtn.classList.remove('playing');
+      stateEl.textContent = '⏸ In pausa';
+      stateEl.classList.remove('running');
+    }
+  }
+
+  playBtn.addEventListener('click', function () { setRunning(!running); });
+  stepBtn.addEventListener('click', function () {
+    if (running) setRunning(false);
+    update(); draw();
+  });
+  resetBtn.addEventListener('click', function () { setRunning(false); reset(); });
+  speedInput.addEventListener('input', function () {
+    var v = parseFloat(speedInput.value);
+    if (!isFinite(v)) v = 1;
+    speed = Math.min(3, Math.max(0.5, v));
+    updateHud();
+  });
+  canvas.addEventListener('click', function (e) {
+    if (boids.length >= MAX_BOIDS) return;
+    var rect = canvas.getBoundingClientRect();
+    boids.push(makeBoid(e.clientX - rect.left, e.clientY - rect.top));
+    updateHud();
+    if (!running) draw();
+  });
+  window.addEventListener('keydown', function (e) {
+    if (e.target && e.target.tagName === 'INPUT') return;
+    if (e.code === 'Space') { e.preventDefault(); setRunning(!running); }
+  });
+  window.addEventListener('resize', resize);
+
+  // FPS (misurato sul rendering, anche in pausa)
+  var frames = 0, lastFpsTime = performance.now();
+  function loop(now) {
+    if (running) { update(); draw(); }
+    frames++;
+    if (now - lastFpsTime >= 500) {
+      fpsEl.textContent = String(Math.round(frames * 1000 / (now - lastFpsTime)));
+      frames = 0; lastFpsTime = now;
+    }
+    requestAnimationFrame(loop);
+  }
+
+  resize();
+  reset();
+  setRunning(false);
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

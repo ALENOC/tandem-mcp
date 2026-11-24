@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Boids</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{margin:0;overflow:hidden;background:#070b14}
+#canvas{display:block;position:fixed;top:0;left:0}
+#hud{position:fixed;top:16px;left:16px;background:rgba(255,255,255,0.08);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.18);border-radius:14px;padding:14px 18px;color:#e2e8f0;font-family:system-ui,sans-serif;font-size:14px;line-height:1.7;user-select:none;z-index:10}
+#hud .row{display:flex;align-items:center;gap:8px;margin-top:6px}
+#hud .row:first-child{margin-top:0}
+#hud button{background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#e2e8f0;padding:6px 14px;cursor:pointer;font-size:13px;font-family:inherit}
+#hud button:hover{background:rgba(255,255,255,0.2)}
+#hud input[type=range]{width:120px;accent-color:#7dd3fc}
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<div id="hud">
+  <div id="fps">FPS: 0</div>
+  <div id="count">Boids: 60</div>
+  <div id="speedLabel">Velocit&agrave;: 1.0x</div>
+  <div class="row">
+    <button id="playBtn">Play</button>
+    <button id="stepBtn">Step</button>
+    <button id="resetBtn">Reset</button>
+  </div>
+  <div class="row">
+    <input type="range" id="speed" min="0.5" max="3.0" step="0.1" value="1.0">
+  </div>
+</div>
+<script>
+(function(){
+"use strict";
+var canvas=document.getElementById("canvas");
+var ctx=canvas.getContext("2d");
+var fpsEl=document.getElementById("fps");
+var countEl=document.getElementById("count");
+var speedLabelEl=document.getElementById("speedLabel");
+var playBtn=document.getElementById("playBtn");
+var stepBtn=document.getElementById("stepBtn");
+var resetBtn=document.getElementById("resetBtn");
+var speedInput=document.getElementById("speed");
+
+var W=window.innerWidth,H=window.innerHeight;
+canvas.width=W;canvas.height=H;
+
+var PERCEPTION=50,SEP_DIST=25,MAX_SPEED=3,MAX_FORCE=0.05;
+var boids=[];
+var running=false;
+var speed=1.0;
+var fps=0;
+var frameCount=0,lastFpsTime=performance.now();
+
+function rand(a,b){return a+Math.random()*(b-a)}
+
+function makeBoid(x,y){
+  var angle=Math.random()*Math.PI*2;
+  var spd=rand(1,MAX_SPEED);
+  return{x:x,y:y,vx:Math.cos(angle)*spd,vy:Math.sin(angle)*spd};
+}
+
+function initBoids(n){
+  boids=[];
+  for(var i=0;i<n;i++) boids.push(makeBoid(rand(0,W),rand(0,H)));
+}
+
+function update(){
+  var i,j,b,ox,oy,dx,dy,d,dist;
+  for(i=0;i<boids.length;i++){
+    b=boids[i];
+    var sepX=0,sepY=0,aliX=0,aliY=0,cohX=0,cohY=0,cnt=0;
+    for(j=0;j<boids.length;j++){
+      if(i===j) continue;
+      ox=boids[j].x;oy=boids[j].y;
+      dx=ox-b.x;dy=oy-b.y;
+      dist=Math.sqrt(dx*dx+dy*dy);
+      if(dist<PERCEPTION&&dist>0){
+        cnt++;
+        aliX+=boids[j].vx;aliY+=boids[j].vy;
+        cohX+=ox;cohY+=oy;
+        if(dist<SEP_DIST){sepX-=dx/dist;sepY-=dy/dist}
+      }
+    }
+    if(cnt>0){
+      aliX/=cnt;aliY/=cnt;
+      var aliMag=Math.sqrt(aliX*aliX+aliY*aliY);
+      if(aliMag>0){aliX=aliX/aliMag*MAX_SPEED-b.vx;aliY=aliY/aliMag*MAX_SPEED-b.vy}
+      var aliF=Math.sqrt(aliX*aliX+aliY*aliY);
+      if(aliF>MAX_FORCE){aliX=aliX/aliF*MAX_FORCE;aliY=aliY/aliF*MAX_FORCE}
+
+      cohX=cohX/cnt-b.x;cohY=cohY/cnt-b.y;
+      var cohMag=Math.sqrt(cohX*cohX+cohY*cohY);
+      if(cohMag>0){cohX=cohX/cohMag*MAX_SPEED-b.vx;cohY=cohY/cohMag*MAX_SPEED-b.vy}
+      var cohF=Math.sqrt(cohX*cohX+cohY*cohY);
+      if(cohF>MAX_FORCE){cohX=cohX/cohF*MAX_FORCE;cohY=cohY/cohF*MAX_FORCE}
+
+      var sepMag=Math.sqrt(sepX*sepX+sepY*sepY);
+      if(sepMag>0){sepX=sepX/sepMag*MAX_SPEED-b.vx;sepY=sepY/sepMag*MAX_SPEED-b.vy}
+      var sepF=Math.sqrt(sepX*sepX+sepY*sepY);
+      if(sepF>MAX_FORCE){sepX=sepX/sepF*MAX_FORCE;sepY=sepY/sepF*MAX_FORCE}
+
+      b.vx+=sepX+aliX+cohX;
+      b.vy+=sepY+aliY+cohY;
+    }
+    var spd=Math.sqrt(b.vx*b.vx+b.vy*b.vy);
+    if(spd>MAX_SPEED){b.vx=b.vx/spd*MAX_SPEED;b.vy=b.vy/spd*MAX_SPEED}
+    else if(spd<0.5&&spd>0){b.vx=b.vx/spd*0.5;b.vy=b.vy/spd*0.5}
+  }
+  for(i=0;i<boids.length;i++){
+    b=boids[i];
+    b.x+=b.vx*speed;
+    b.y+=b.vy*speed;
+    if(b.x<0)b.x+=W;
+    if(b.x>W)b.x-=W;
+    if(b.y<0)b.y+=H;
+    if(b.y>H)b.y-=H;
+  }
+}
+
+function draw(){
+  ctx.fillStyle="#070b14";
+  ctx.fillRect(0,0,W,H);
+  ctx.fillStyle="#7dd3fc";
+  for(var i=0;i<boids.length;i++){
+    var b=boids[i];
+    var angle=Math.atan2(b.vy,b.vx);
+    ctx.save();
+    ctx.translate(b.x,b.y);
+    ctx.rotate(angle);
+    ctx.beginPath();
+    ctx.moveTo(8,0);
+    ctx.lineTo(-5,-4);
+    ctx.lineTo(-5,4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+function updateHUD(){
+  fpsEl.textContent="FPS: "+fps;
+  countEl.textContent="Boids: "+boids.length;
+  speedLabelEl.textContent="Velocit\u00e0: "+speed.toFixed(1)+"x";
+}
+
+function step(){
+  update();
+  draw();
+  updateHUD();
+}
+
+function reset(){
+  initBoids(60);
+  running=false;
+  playBtn.textContent="Play";
+  draw();
+  updateHUD();
+}
+
+function togglePlay(){
+  running=!running;
+  playBtn.textContent=running?"Pause":"Play";
+}
+
+function addBoid(x,y){
+  boids.push(makeBoid(x,y));
+  draw();
+  updateHUD();
+}
+
+window.app={
+  get boids(){return boids},
+  get running(){return running},
+  set running(v){running=v},
+  get speed(){return speed},
+  set speed(v){speed=v},
+  get fps(){return fps},
+  set fps(v){fps=v},
+  step:step,
+  reset:reset,
+  togglePlay:togglePlay,
+  addBoid:addBoid
+};
+
+playBtn.addEventListener("click",function(e){
+  e.stopPropagation();
+  togglePlay();
+});
+stepBtn.addEventListener("click",function(e){
+  e.stopPropagation();
+  step();
+});
+resetBtn.addEventListener("click",function(e){
+  e.stopPropagation();
+  reset();
+});
+speedInput.addEventListener("input",function(e){
+  e.stopPropagation();
+  speed=parseFloat(speedInput.value);
+  updateHUD();
+});
+
+canvas.addEventListener("pointerdown",function(e){
+  addBoid(e.clientX,e.clientY);
+});
+
+window.addEventListener("resize",function(){
+  W=window.innerWidth;H=window.innerHeight;
+  canvas.width=W;canvas.height=H;
+  draw();
+});
+
+function loop(){
+  frameCount++;
+  var now=performance.now();
+  if(now-lastFpsTime>=1000){
+    fps=frameCount;
+    frameCount=0;
+    lastFpsTime=now;
+  }
+  if(running) update();
+  draw();
+  updateHUD();
+  requestAnimationFrame(loop);
+}
+
+initBoids(60);
+running=false;
+playBtn.textContent="Play";
+draw();
+updateHUD();
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

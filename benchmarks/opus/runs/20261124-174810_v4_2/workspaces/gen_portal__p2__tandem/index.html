@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NEON PORTAL 3D</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #02010a; }
+  #c { display: block; width: 100vw; height: 100vh; }
+  .hud {
+    position: fixed;
+    top: 16px;
+    left: 16px;
+    background: rgba(255,255,255,0.08);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 14px;
+    color: #fff;
+    font-family: 'Segoe UI', sans-serif;
+    padding: 16px 20px;
+    min-width: 200px;
+    z-index: 10;
+  }
+  .hud h1 {
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    margin-bottom: 10px;
+    color: #fff;
+  }
+  .hud .stats {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 12px;
+    font-size: 13px;
+  }
+  .hud .stats span { color: rgba(255,255,255,0.6); }
+  .hud .stats b { color: #00f0ff; font-weight: 600; }
+  .hud .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+  }
+  .hud button {
+    background: rgba(0,240,255,0.15);
+    border: 1px solid rgba(0,240,255,0.4);
+    color: #fff;
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    font-family: inherit;
+  }
+  .hud button:hover { background: rgba(0,240,255,0.3); }
+  .hud input[type="range"] {
+    width: 80px;
+    accent-color: #ff2bd6;
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="hud">
+  <h1>NEON PORTAL 3D</h1>
+  <div class="stats">
+    <div><span>FPS</span> <b id="fps">0</b></div>
+    <div><span>POLYS</span> <b id="polys">0</b></div>
+    <div><span>PARTS</span> <b id="parts">110</b></div>
+  </div>
+  <div class="controls">
+    <button id="btnPause">Pause</button>
+    <button id="btnOrbit">Orbit ON</button>
+    <button id="btnReset">Reset</button>
+    <input type="range" id="speed" min="0" max="3" step="0.1" value="1">
+  </div>
+</div>
+<script src="engine3d.js"></script>
+<script src="scene.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

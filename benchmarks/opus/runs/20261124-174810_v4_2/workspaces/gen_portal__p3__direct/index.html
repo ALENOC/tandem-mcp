@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Neon Portal 3D</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden;
+    background: radial-gradient(ellipse at 50% 45%, #1a0b3a 0%, #0b0620 45%, #03020a 100%);
+    font-family: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+    color: #e8f7ff;
+  }
+  #c { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; cursor: grab; }
+  #c:active { cursor: grabbing; }
+  .glass {
+    position: fixed;
+    background: rgba(20, 16, 48, 0.32);
+    border: 1px solid rgba(140, 220, 255, 0.22);
+    border-radius: 16px;
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.08);
+    user-select: none;
+  }
+  #hud { top: 18px; left: 18px; padding: 14px 18px; min-width: 220px; }
+  #hud h1 {
+    font-size: 17px; letter-spacing: 4px; font-weight: 800;
+    background: linear-gradient(90deg, #4ff3ff, #c86bff 55%, #ff4fd8);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 0 6px rgba(120, 200, 255, 0.55));
+    margin-bottom: 10px;
+  }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .stat { text-align: center; }
+  .stat .k { font-size: 10px; letter-spacing: 2px; opacity: 0.6; }
+  .stat .v { font-size: 18px; font-weight: 700; color: #7ff6ff; text-shadow: 0 0 8px rgba(80, 240, 255, 0.7); font-variant-numeric: tabular-nums; }
+  #controls {
+    bottom: 18px; left: 50%; transform: translateX(-50%);
+    padding: 10px 14px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: center;
+  }
+  button {
+    font: inherit; font-size: 13px; font-weight: 600; letter-spacing: 1px;
+    color: #e8f7ff; background: rgba(120, 90, 255, 0.16);
+    border: 1px solid rgba(150, 220, 255, 0.35); border-radius: 10px;
+    padding: 7px 14px; cursor: pointer; transition: all .15s ease;
+    min-width: 92px;
+  }
+  button:hover { background: rgba(120, 200, 255, 0.25); box-shadow: 0 0 12px rgba(100, 220, 255, 0.45); }
+  button.on { border-color: rgba(79, 243, 255, 0.85); box-shadow: 0 0 10px rgba(79, 243, 255, 0.35) inset; }
+  label { font-size: 12px; letter-spacing: 1.5px; opacity: 0.85; display: flex; align-items: center; gap: 8px; }
+  input[type=range] { width: 130px; accent-color: #c86bff; }
+  #spdv { width: 34px; text-align: right; font-variant-numeric: tabular-nums; color: #7ff6ff; }
+  #hint { position: fixed; right: 18px; bottom: 22px; font-size: 11px; opacity: 0.45; letter-spacing: 1px; pointer-events: none; }
+  @media (max-width: 640px) { #hint { display: none; } #controls { width: calc(100% - 24px); } }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="hud" class="glass">
+  <h1>NEON PORTAL 3D</h1>
+  <div class="stats">
+    <div class="stat"><div class="k">FPS</div><div class="v" id="fps">0</div></div>
+    <div class="stat"><div class="k">POLYS</div><div class="v" id="polys">0</div></div>
+    <div class="stat"><div class="k">PARTS</div><div class="v" id="parts">0</div></div>
+  </div>
+</div>
+
+<div id="controls" class="glass">
+  <button id="btnPause">Pause</button>
+  <button id="btnOrbit" class="on">Orbit ON</button>
+  <button id="btnReset">Reset</button>
+  <label>SPEED <input id="speed" type="range" min="0" max="3" step="0.05" value="1"><span id="spdv">1.00</span></label>
+</div>
+<div id="hint">drag to orbit · wheel to zoom</div>
+
+<script>
+(() => {
+'use strict';
+
+/* ======================= Engine: math + projection ======================= */
+const V = {
+  sub: (a, b) => [a[0]-b[0], a[1]-b[1], a[2]-b[2]],
+  add: (a, b) => [a[0]+b[0], a[1]+b[1], a[2]+b[2]],
+  scale: (a, s) => [a[0]*s, a[1]*s, a[2]*s],
+  dot: (a, b) => a[0]*b[0] + a[1]*b[1] + a[2]*b[2],
+  cross: (a, b) => [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]],
+  norm: (a) => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0]/l, a[1]/l, a[2]/l]; },
+};
+const rotY = (p, a) => { const c = Math.cos(a), s = Math.sin(a); return [p[0]*c + p[2]*s, p[1], -p[0]*s + p[2]*c]; };
+const rotX = (p, a) => { const c = Math.cos(a), s = Math.sin(a); return [p[0], p[1]*c - p[2]*s, p[1]*s + p[2]*c]; };
+const rotZ = (p, a) => { const c = Math.cos(a), s = Math.sin(a); return [p[0]*c - p[1]*s, p[0]*s + p[1]*c, p[2]]; };
+
+const NEAR = 0.1;
+const cam = { pos: [0, 0, 0], right: [1,0,0], up: [0,1,0], fwd: [0,0,1], f: 600, cx: 0, cy: 0 };
+
+function setCamera(pos, target) {
+  cam.pos = pos;
+  cam.fwd = V.norm(V.sub(target, pos));
+  cam.right = V.norm(V.cross([0, 1, 0], cam.fwd));
+  cam.up = V.cross(cam.fwd, cam.right);
+}
+// world -> camera space
+function toCam(p) {
+  const d = V.sub(p, cam.pos);
+  return [V.dot(d, cam.right), V.dot(d, cam.up), V.dot(d, cam.fwd)];
+}
+// camera space -> screen
+function proj(c) {
+  const s = cam.f / c[2];
+  return [cam.cx + c[0] * s, cam.cy - c[1] * s, s];
+}
+
+/* ======================= Canvas setup ======================= */
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  cam.cx = W / 2; cam.cy = H / 2;
+  cam.f = Math.min(W, H) * 0.95;
+}
+window.addEventListener('resize', resize);
+resize();
+
+/* ======================= Scene definition ======================= */
+const LIGHT = V.norm([0.45, 0.85, 0.35]);
+
+// box faces: [normal, vertex indices] for corners indexed by bits (x,y,z)
+const BOX_FACES = [
+  [[ 1, 0, 0], [1, 3, 7, 5]],
+  [[-1, 0, 0], [0, 4, 6, 2]],
+  [[ 0, 1, 0], [2, 6, 7, 3]],
+  [[ 0,-1, 0], [0, 1, 5, 4]],
+  [[ 0, 0, 1], [4, 5, 7, 6]],
+  [[ 0, 0,-1], [0, 2, 3, 1]],
+];
+function makeBox(cx, cy, cz, sx, sy, sz, base, edge) {
+  const v = [];
+  for (let i = 0; i < 8; i++) {
+    v.push([cx + (i & 1 ? sx : -sx) / 2, cy + (i & 2 ? sy : -sy) / 2, cz + (i & 4 ? sz : -sz) / 2]);
+  }
+  return { v, base, edge };
+}
+const boxes = [
+  makeBox(0, 0.25, 0, 7.0, 0.5, 5.0, [38, 30, 86], [79, 243, 255]),     // platform tier 1
+  makeBox(0, 0.70, 0, 5.2, 0.4, 3.6, [48, 34, 104], [200, 107, 255]),   // platform tier 2
+  makeBox(-1.9, 2.65, 0, 0.7, 3.5, 0.7, [44, 30, 96], [79, 243, 255]),  // left pillar
+  makeBox( 1.9, 2.65, 0, 0.7, 3.5, 0.7, [44, 30, 96], [79, 243, 255]),  // right pillar
+  makeBox(0, 4.65, 0, 4.8, 0.5, 0.95, [52, 34, 110], [255, 79, 216]),   // lintel
+  makeBox(0, 5.15, 0, 2.2, 0.5, 0.75, [60, 36, 120], [255, 200, 90]),   // crown cap
+]; // 6 boxes x 6 faces = 36 faces
+
+// octahedron: 6 verts, 8 tris
+const OCT_V = [[1,0,0],[-1,0,0],[0,1.6,0],[0,-1.6,0],[0,0,1],[0,0,-1]];
+const OCT_T = [[2,4,0],[2,0,5],[2,5,1],[2,1,4],[3,0,4],[3,5,0],[3,1,5],[3,4,1]];
+const CRYSTAL_COLORS = [[79,243,255],[200,107,255],[255,79,216],[120,255,170],[255,200,90],[110,150,255]];
+const crystals = CRYSTAL_COLORS.map((col, i) => ({ col, phase: i / 6 * Math.PI * 2, bob: Math.random() * 6.28 }));
+// 6 crystals x 8 tris = 48 triangles
+
+const PORTAL_C = [0, 2.65, 0];
+const SCENE_POLYS = boxes.length * BOX_FACES.length + crystals.length * OCT_T.length; // 84
+
+// stars: 180 on a big sphere
+const stars = [];
+for (let i = 0; i < 180; i++) {
+  const u = Math.random() * 2 - 1, th = Math.random() * Math.PI * 2;
+  const r = Math.sqrt(1 - u * u);
+  const y = Math.abs(u) * 0.95 + 0.05; // keep above horizon mostly
+  stars.push({
+    p: [r * Math.cos(th) * 80, (u * 0.5 + 0.5) * 55 - 6 + y, r * Math.sin(th) * 80],
+    s: Math.random() * 1.4 + 0.4,
+    ph: Math.random() * Math.PI * 2,
+    sp: Math.random() * 2.5 + 0.8,
+    hue: Math.random() < 0.3 ? 290 : 190,
+  });
+}
+
+// particles: 110 rising
+const particles = [];
+function spawnParticle(p, randomY) {
+  const a = Math.random() * Math.PI * 2;
+  const r = Math.random() < 0.55 ? Math.random() * 1.3 : 1.5 + Math.random() * 2.2;
+  p.x = Math.cos(a) * r; p.z = Math.sin(a) * r * 0.7;
+  p.y = randomY ? 0.9 + Math.random() * 6 : 0.9;
+  p.vy = 0.5 + Math.random() * 1.1;
+  p.drift = Math.random() * 6.28;
+  p.size = 0.03 + Math.random() * 0.05;
+  p.hue = Math.random() < 0.5 ? 185 + Math.random() * 20 : 285 + Math.random() * 40;
+  p.life = 7;
+  return p;
+}
+for (let i = 0; i < 110; i++) particles.push(spawnParticle({}, true));
+
+/* ======================= State + UI ======================= */
+const DEFAULT = { angle: 0.6, elev: 0.32, dist: 13, speed: 1 };
+const state = { paused: false, orbit: true, angle: DEFAULT.angle, elev: DEFAULT.elev, dist: DEFAULT.dist, speed: 1, t: 0 };
+
+const $ = (id) => document.getElementById(id);
+const btnPause = $('btnPause'), btnOrbit = $('btnOrbit'), btnReset = $('btnReset');
+const speedIn = $('speed'), spdv = $('spdv');
+btnPause.onclick = () => {
+  state.paused = !state.paused;
+  btnPause.textContent = state.paused ? 'Play' : 'Pause';
+  btnPause.classList.toggle('on', state.paused);
+};
+btnOrbit.onclick = () => {
+  state.orbit = !state.orbit;
+  btnOrbit.textContent = state.orbit ? 'Orbit ON' : 'Orbit OFF';
+  btnOrbit.classList.toggle('on', state.orbit);
+};
+btnReset.onclick = () => {
+  state.angle = DEFAULT.angle; state.elev = DEFAULT.elev; state.dist = DEFAULT.dist;
+  state.speed = DEFAULT.speed; speedIn.value = DEFAULT.speed; spdv.textContent = DEFAULT.speed.toFixed(2);
+  state.t = 0;
+  if (state.paused) btnPause.onclick();
+  if (!state.orbit) btnOrbit.onclick();
+};
+speedIn.oninput = () => { state.speed = parseFloat(speedIn.value); spdv.textContent = state.speed.toFixed(2); };
+
+// drag + wheel
+let drag = null;
+canvas.addEventListener('pointerdown', (e) => { drag = { x: e.clientX, y: e.clientY }; canvas.setPointerCapture(e.pointerId); });
+canvas.addEventListener('pointermove', (e) => {
+  if (!drag) return;
+  state.angle -= (e.clientX - drag.x) * 0.006;
+  state.elev = Math.max(0.02, Math.min(1.2, state.elev + (e.clientY - drag.y) * 0.004));
+  drag.x = e.clientX; drag.y = e.clientY;
+});
+const endDrag = () => { drag = null; };
+canvas.addEventListener('pointerup', endDrag);
+canvas.addEventListener('pointercancel', endDrag);
+canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  state.dist = Math.max(7, Math.min(26, state.dist * (1 + Math.sign(e.deltaY) * 0.08)));
+}, { passive: false });
+
+/* ======================= Rendering helpers ======================= */
+const rgb = (c, k = 1, a = 1) => `rgba(${Math.min(255, c[0]*k)|0},${Math.min(255, c[1]*k)|0},${Math.min(255, c[2]*k)|0},${a})`;
+
+// Clip a 3D segment (camera space) to the near plane; returns null if fully behind
+function clipSeg(a, b) {
+  if (a[2] < NEAR && b[2] < NEAR) return null;
+  if (a[2] < NEAR) { const t = (NEAR - a[2]) / (b[2] - a[2]); a = [a[0] + (b[0]-a[0])*t, a[1] + (b[1]-a[1])*t, NEAR]; }
+  else if (b[2] < NEAR) { const t = (NEAR - b[2]) / (a[2] - b[2]); b = [b[0] + (a[0]-b[0])*t, b[1] + (a[1]-b[1])*t, NEAR]; }
+  return [a, b];
+}
+
+function drawStars(t) {
+  ctx.globalCompositeOperation = 'lighter';
+  for (const s of stars) {
+    const c = toCam(s.p);
+    if (c[2] < NEAR) continue;
+    const p = proj(c);
+    if (p[0] < -5 || p[0] > W + 5 || p[1] < -5 || p[1] > H + 5) continue;
+    const tw = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(t * s.sp + s.ph));
+    const r = s.s * (0.7 + tw * 0.6);
+    ctx.fillStyle = `hsla(${s.hue},90%,85%,${tw})`;
+    ctx.beginPath(); ctx.arc(p[0], p[1], r, 0, Math.PI * 2); ctx.fill();
+    if (s.s > 1.4) {
+      ctx.fillStyle = `hsla(${s.hue},100%,70%,${tw * 0.18})`;
+      ctx.beginPath(); ctx.arc(p[0], p[1], r * 4, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+function drawGrid(t) {
+  const N = 14, step = 1.5, ext = N * step;
+  const scroll = (t * 0.6) % step;
+  ctx.lineWidth = 1;
+  for (let pass = 0; pass < 2; pass++) {
+    for (let i = -N; i <= N; i++) {
+      const k = i * step + (pass === 0 ? scroll : 0);
+      const a = pass === 0 ? [-ext, 0, k] : [k, 0, -ext];
+      const b = pass === 0 ? [ext, 0, k] : [k, 0, ext];
+      const seg = clipSeg(toCam(a), toCam(b));
+      if (!seg) continue;
+      const p1 = proj(seg[0]), p2 = proj(seg[1]);
+      const fade = 1 - Math.min(1, Math.abs(k) / ext);
+      const g = ctx.createLinearGradient(p1[0], p1[1], p2[0], p2[1]);
+      const col = pass === 0 ? '255,79,216' : '79,243,255';
+      const al = 0.55 * fade;
+      g.addColorStop(0, `rgba(${col},0)`);
+      g.addColorStop(0.5, `rgba(${col},${al})`);
+      g.addColorStop(1, `rgba(${col},0)`);
+      ctx.strokeStyle = g;
+      ctx.beginPath(); ctx.moveTo(p1[0], p1[1]); ctx.lineTo(p2[0], p2[1]); ctx.stroke();
+    }
+  }
+  // horizon glow under the portal
+  const c = toCam([0, 0, 0]);
+  if (c[2] > NEAR) {
+    const p = proj(c);
+    const r = 9 * p[2];
+    const g = ctx.createRadialGradient(p[0], p[1], 0, p[0], p[1], r);
+    g.addColorStop(0, 'rgba(160,90,255,0.35)');
+    g.addColorStop(1, 'rgba(160,90,255,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.ellipse(p[0], p[1], r, r * 0.45, 0, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+/* ======================= Frame ======================= */
+let last = performance.now(), fpsAcc = 0, fpsFrames = 0, fpsShown = 0;
+const fpsEl = $('fps'), polysEl = $('polys'), partsEl = $('parts');
+
+function frame(now) {
+  const rawDt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  fpsAcc += rawDt; fpsFrames++;
+  if (fpsAcc >= 0.5) { fpsShown = Math.round(fpsFrames / fpsAcc); fpsAcc = 0; fpsFrames = 0; fpsEl.textContent = fpsShown; }
+
+  const dt = state.paused ? 0 : rawDt * state.speed;
+  state.t += dt;
+  if (state.orbit && !drag) state.angle += dt * 0.25;
+  const t = state.t;
+
+  // camera
+  const ce = Math.cos(state.elev);
+  const camPos = [Math.sin(state.angle) * ce * state.dist, 2.4 + Math.sin(state.elev) * state.dist, Math.cos(state.angle) * ce * state.dist];
+  setCamera(camPos, [0, 2.4, 0]);
+
+  ctx.clearRect(0, 0, W, H);
+  drawStars(now / 1000);
+  drawGrid(t);
+
+  const list = []; // { z, draw }
+  let polyCount = 0;
+
+  // --- boxes
+  for (const b of boxes) {
+    const cv = b.v.map(toCam);
+    for (const [n, idx] of BOX_FACES) {
+      // backface culling (world space)
+      const p0 = b.v[idx[0]];
+      if (V.dot(n, V.sub(cam.pos, p0)) <= 0) continue;
+      if (idx.some(i => cv[i][2] < NEAR)) continue;
+      const pts = idx.map(i => proj(cv[i]));
+      const z = (cv[idx[0]][2] + cv[idx[1]][2] + cv[idx[2]][2] + cv[idx[3]][2]) / 4;
+      const lam = Math.max(0, V.dot(n, LIGHT));
+      const shade = 0.55 + lam * 0.75;
+      polyCount++;
+      list.push({ z, draw: () => {
+        ctx.beginPath();
+        ctx.moveTo(pts[0][0], pts[0][1]);
+        for (let i = 1; i < 4; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+        ctx.closePath();
+        ctx.fillStyle = rgb(b.base, shade);
+        ctx.fill();
+        ctx.strokeStyle = rgb(b.edge, 1, 0.9);
+        ctx.shadowColor = rgb(b.edge);
+        ctx.shadowBlur = 10;
+        ctx.lineWidth = 1.4;
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+      }});
+    }
+  }
+
+  // --- crystals
+  for (const cr of crystals) {
+    const a = cr.phase + t * 0.55;
+    const center = [Math.cos(a) * 4.4, 3.0 + Math.sin(t * 1.6 + cr.bob) * 0.45, Math.sin(a) * 4.4];
+    const spin = t * 1.8 + cr.phase;
+    const world = OCT_V.map(v => V.add(center, rotY(rotX(V.scale(v, 0.32), 0.25), spin)));
+    const cv = world.map(toCam);
+    const pulse = 0.75 + 0.25 * Math.sin(t * 3 + cr.phase * 2);
+    for (const tri of OCT_T) {
+      const A = world[tri[0]], B = world[tri[1]], C = world[tri[2]];
+      const n = V.norm(V.cross(V.sub(B, A), V.sub(C, A)));
+      if (V.dot(n, V.sub(cam.pos, A)) <= 0) continue;
+      if (tri.some(i => cv[i][2] < NEAR)) continue;
+      const pts = tri.map(i => proj(cv[i]));
+      const z = (cv[tri[0]][2] + cv[tri[1]][2] + cv[tri[2]][2]) / 3;
+      const lam = Math.max(0, V.dot(n, LIGHT));
+      const k = (0.35 + lam * 0.8) * pulse;
+      polyCount++;
+      list.push({ z, draw: () => {
+        ctx.beginPath();
+        ctx.moveTo(pts[0][0], pts[0][1]); ctx.lineTo(pts[1][0], pts[1][1]); ctx.lineTo(pts[2][0], pts[2][1]);
+        ctx.closePath();
+        ctx.fillStyle = rgb(cr.col, k, 0.92);
+        ctx.fill();
+        ctx.strokeStyle = rgb(cr.col, 1.3, 0.95);
+        ctx.shadowColor = rgb(cr.col);
+        ctx.shadowBlur = 14;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+      }});
+    }
+  }
+
+  // --- portal core (glow sprite) + rings (depth-sorted segments)
+  const pc = toCam(PORTAL_C);
+  if (pc[2] > NEAR) {
+    const pp = proj(pc);
+    const pulse = 1 + 0.08 * Math.sin(t * 4);
+    list.push({ z: pc[2] + 0.01, draw: () => {
+      ctx.globalCompositeOperation = 'lighter';
+      const r = 1.9 * pp[2] * pulse;
+      let g = ctx.createRadialGradient(pp[0], pp[1], 0, pp[0], pp[1], r);
+      g.addColorStop(0, 'rgba(255,255,255,0.95)');
+      g.addColorStop(0.15, 'rgba(150,245,255,0.85)');
+      g.addColorStop(0.45, 'rgba(170,90,255,0.45)');
+      g.addColorStop(1, 'rgba(255,60,200,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(pp[0], pp[1], r, 0, Math.PI * 2); ctx.fill();
+      // swirling arms
+      ctx.lineWidth = 2;
+      for (let k = 0; k < 3; k++) {
+        ctx.strokeStyle = k % 2 ? 'rgba(255,90,220,0.5)' : 'rgba(90,240,255,0.5)';
+        ctx.beginPath();
+        for (let s = 0; s <= 24; s++) {
+          const u = s / 24, ang = t * 2.2 + k * 2.094 + u * 4, rr = u * r * 0.7;
+          const x = pp[0] + Math.cos(ang) * rr, y = pp[1] + Math.sin(ang) * rr;
+          s ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+        }
+        ctx.stroke();
+      }
+      ctx.globalCompositeOperation = 'source-over';
+    }});
+  }
+  const RING_SEG = 48;
+  // two counter-rotating rings tumbling around the vertical axis
+  const rings = [
+    { r: 1.45, col: [79, 243, 255],  tf: (p) => rotY(rotX(rotZ(p,  t * 1.4), 0.3),  t * 0.9) },
+    { r: 1.15, col: [255, 79, 216], tf: (p) => rotY(rotX(rotZ(p, -t * 1.8), -0.3), -t * 1.1) },
+  ];
+  for (const ring of rings) {
+    const ptsW = [];
+    for (let i = 0; i < RING_SEG; i++) {
+      const a = i / RING_SEG * Math.PI * 2;
+      ptsW.push(V.add(PORTAL_C, ring.tf([Math.cos(a) * ring.r, Math.sin(a) * ring.r, 0])));
+    }
+    const cvs = ptsW.map(toCam);
+    for (let i = 0; i < RING_SEG; i++) {
+      const seg = clipSeg(cvs[i], cvs[(i + 1) % RING_SEG]);
+      if (!seg) continue;
+      const p1 = proj(seg[0]), p2 = proj(seg[1]);
+      const z = (seg[0][2] + seg[1][2]) / 2;
+      const w = Math.max(1, 0.09 * (p1[2] + p2[2]) / 2);
+      const bright = 0.75 + 0.25 * Math.sin(i / RING_SEG * Math.PI * 6 - t * 5);
+      list.push({ z, draw: () => {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = rgb(ring.col, bright, 0.35);
+        ctx.lineWidth = w * 2.6;
+        ctx.beginPath(); ctx.moveTo(p1[0], p1[1]); ctx.lineTo(p2[0], p2[1]); ctx.stroke();
+        ctx.strokeStyle = rgb(ring.col, 1.5 * bright, 0.95);
+        ctx.lineWidth = w;
+        ctx.stroke();
+        ctx.globalCompositeOperation = 'source-over';
+      }});
+    }
+  }
+
+  // --- particles (depth-sorted sprites)
+  let partCount = 0;
+  for (const p of particles) {
+    if (dt > 0) {
+      p.y += p.vy * dt;
+      p.drift += dt * 1.5;
+      p.x += Math.sin(p.drift) * 0.12 * dt;
+      p.z += Math.cos(p.drift) * 0.12 * dt;
+      if (p.y > 7.5) spawnParticle(p, false);
+    }
+    const c = toCam([p.x, p.y, p.z]);
+    if (c[2] < NEAR) continue;
+    const sp = proj(c);
+    const life = 1 - (p.y - 0.9) / 6.6;
+    const r = Math.max(0.6, p.size * sp[2]);
+    partCount++;
+    list.push({ z: c[2], draw: () => {
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.fillStyle = `hsla(${p.hue},100%,65%,${0.25 * life})`;
+      ctx.beginPath(); ctx.arc(sp[0], sp[1], r * 3, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = `hsla(${p.hue},100%,85%,${0.9 * life})`;
+      ctx.beginPath(); ctx.arc(sp[0], sp[1], r, 0, Math.PI * 2); ctx.fill();
+      ctx.globalCompositeOperation = 'source-over';
+    }});
+  }
+
+  // painter's algorithm: far to near
+  list.sort((a, b) => b.z - a.z);
+  for (const item of list) item.draw();
+
+  polysEl.textContent = SCENE_POLYS; // 36 box faces + 48 crystal tris (drawn after culling: polyCount)
+  partsEl.textContent = partCount;
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

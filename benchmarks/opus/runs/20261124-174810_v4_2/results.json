@@ -1,0 +1,2261 @@
+{
+  "run_id": "20261124-174810_v4_2",
+  "started": "2026-11-24T16:48:10.444261+00:00",
+  "model": "claude-opus-5-5",
+  "executor": "qwen3.8-27b@iq3_s",
+  "vision_model": null,
+  "visual_review": "auto",
+  "receipt_screenshot": true,
+  "tandem_version": "4.2.0",
+  "git": "74340f3660f0a1504e61393cd218ea27dd7ccdec",
+  "tandem_code_sha256": "1e0f5c61430c294668486791de5067b878b3b4e765ff89dd708e3921e86b1abc",
+  "claude_version": "2.1.331 (Claude Code)",
+  "tandem_suffix": "\n\nUsa Tandem.",
+  "records": [
+    {
+      "task": "py_discount",
+      "arm": "direct",
+      "pair": 1,
+      "workspace": "/home/ale/Projects/tandem-mcp/benchmarks/opus/runs/20261124-174810_v4_2/workspaces/py_discount__p1__direct",
+      "wall_seconds": 9.91,
+      "budget_s": 900,
+      "timed_out": false,
+      "is_error": false,
+      "num_turns": 4,
+      "total_cost_usd": 0.0741782,
+      "usage": {
+        "input_tokens": 6,
+        "cache_creation_input_tokens": 6604,
+        "cache_read_input_tokens": 37211,
+        "output_tokens": 694
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 6,
+          "outputTokens": 694,
+          "cacheReadInputTokens": 37211,
+          "cacheCreationInputTokens": 6604,
+          "webSearchRequests": 0,
+          "costUSD": 0.0741782,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 0,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 6604,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "tool_uses": [
+        "Bash",
+        "Edit",
+        "Bash"
+      ],
+      "result_text": "Ho corretto `apply_discount` in `discount.py` e ora tutti e 6 i test passano con `python3 -m unittest test_discount.py`. I test non li ho toccati.\n\nC'erano due problemi:\n1. **Calcolo sbagliato:** la percentuale veniva usata come frazione (`price * percent`) invece che divisa per 100. Ora \u00e8 `price - price * percent / 100`.\n2. **Controlli mancanti:** la funzione non lanciava `ValueError` come dice la sua docstring. Ora lo fa se il prezzo \u00e8 negativo o se la percentuale \u00e8 fuori da 0\u2013100.\n\n`total()` passa anche lui senza modifiche, perch\u00e9 usa `apply_discount`.",
+      "evaluation": {
+        "passed": true,
+        "failed": [],
+        "reason": "tests and independent check pass"
+      },
+      "success": true,
+      "cost_missing": false
+    },
+    {
+      "task": "py_discount",
+      "arm": "tandem",
+      "pair": 1,
+      "workspace": "/home/ale/Projects/tandem-mcp/benchmarks/opus/runs/20261124-174810_v4_2/workspaces/py_discount__p1__tandem",
+      "wall_seconds": 120.58,
+      "budget_s": 900,
+      "timed_out": false,
+      "is_error": false,
+      "num_turns": 4,
+      "total_cost_usd": 0.0819164,
+      "usage": {
+        "input_tokens": 8,
+        "cache_creation_input_tokens": 6943,
+        "cache_read_input_tokens": 53202,
+        "output_tokens": 785
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 8,
+          "outputTokens": 785,
+          "cacheReadInputTokens": 53202,
+          "cacheCreationInputTokens": 6943,
+          "webSearchRequests": 0,
+          "costUSD": 0.0819164,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 91,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 6943,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "tool_uses": [
+        "ToolSearch",
+        "mcp__tandem__delegate",
+        "Bash"
+      ],
+      "result_text": "Ho corretto `apply_discount` in `discount.py` tramite Tandem, con una modifica di 5 righe aggiunte e 1 rimossa; i test non li ho toccati. Ho eseguito `python3 -m unittest test_discount.py`: passano tutti e 6.",
+      "evaluation": {
+        "passed": true,
+        "failed": [],
+        "reason": "tests and independent check pass"
+      },
+      "success": true,
+      "cost_missing": false,
+      "local": {
+        "jobs": [
+          {
+            "id": "20261124-174828-b8c450",
+            "state": "verified",
+            "tokens": 14745,
+            "repairs": 0,
+            "steps": 5,
+            "seconds": 107.1,
+            "accepted": true,
+            "hints": 0,
+            "perf_strikes": 0,
+            "visual_strikes": 0,
+            "visual_review": null,
+            "screenshot": false,
+            "reference_image": false,
+            "verify": [
+              "python3 -m unittest test_discount.py"
+            ],
+            "constraints": [
+              "Non modificare test_discount.py",
+              "Mantieni il nome e la firma della funzione apply_discount"
+            ],
+            "goal": "Correggi la funzione apply_discount in discount.py in modo che tutti i test in test_discount.py passino. Non modificare test_discount.py."
+          }
+        ],
+        "local_tokens": 14745,
+        "screenshot": null
+      }
+    },
+    {
+      "task": "py_discount",
+      "arm": "tandem",
+      "pair": 2,
+      "workspace": "/home/ale/Projects/tandem-mcp/benchmarks/opus/runs/20261124-174810_v4_2/workspaces/py_discount__p2__tandem",
+      "wall_seconds": 134.83,
+      "budget_s": 900,
+      "timed_out": false,
+      "is_error": false,
+      "num_turns": 4,
+      "total_cost_usd": 0.0585826,
+      "usage": {
+        "input_tokens": 8,
+        "cache_creation_input_tokens": 3948,
+        "cache_read_input_tokens": 56233,
+        "output_tokens": 786
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 8,
+          "outputTokens": 786,
+          "cacheReadInputTokens": 56233,
+          "cacheCreationInputTokens": 3948,
+          "webSearchRequests": 0,
+          "costUSD": 0.0585826,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 77,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 3948,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "tool_uses": [
+        "ToolSearch",
+        "mcp__tandem__delegate",
+        "Bash"
+      ],
+      "result_text": "Ho corretto `apply_discount` in `discount.py` tramite Tandem: 5 righe aggiunte e 1 rimossa, `test_discount.py` non \u00e8 stato toccato. Ho eseguito `python3 -m unittest test_discount.py` e tutti e 6 i test passano.",
+      "evaluation": {
+        "passed": true,
+        "failed": [],
+        "reason": "tests and independent check pass"
+      },
+      "success": true,
+      "cost_missing": false,
+      "local": {
+        "jobs": [
+          {
+            "id": "20261124-175027-d980db",
+            "state": "verified",
+            "tokens": 18735,
+            "repairs": 1,
+            "steps": 6,
+            "seconds": 122.9,
+            "accepted": true,
+            "hints": 0,
+            "perf_strikes": 0,
+            "visual_strikes": 0,
+            "visual_review": null,
+            "screenshot": false,
+            "reference_image": false,
+            "verify": [
+              "python3 -m unittest test_discount.py"
+            ],
+            "constraints": [
+              "Modifica solo discount.py",
+              "Non modificare test_discount.py",
+              "Mantieni il nome e la firma della funzione apply_discount"
+            ],
+            "goal": "Correggi la funzione apply_discount in discount.py in modo che tutti i test in test_discount.py passino. Non modificare test_discount.py."
+          }
+        ],
+        "local_tokens": 18735,
+        "screenshot": null
+      }
+    },
+    {
+      "task": "py_discount",
+      "arm": "direct",
+      "pair": 2,
+      "workspace": "/home/ale/Projects/tandem-mcp/benchmarks/opus/runs/20261124-174810_v4_2/workspaces/py_discount__p2__direct",
+      "wall_seconds": 9.62,
+      "budget_s": 900,
+      "timed_out": false,
+      "is_error": false,
+      "num_turns": 4,
+      "total_cost_usd": 0.0515416,
+      "usage": {
+        "input_tokens": 6,
+        "cache_creation_input_tokens": 3770,
+        "cache_read_input_tokens": 40488,
+        "output_tokens": 663
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 6,
+          "outputTokens": 663,
+          "cacheReadInputTokens": 40488,
+          "cacheCreationInputTokens": 3770,
+          "webSearchRequests": 0,
+          "costUSD": 0.0515416,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 0,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 3770,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "tool_uses": [
+        "Bash",
+        "Edit",
+        "Bash"
+      ],
+      "result_text": "Ho corretto `apply_discount` in `discount.py`; adesso tutti e 6 i test passano con `python3 -m unittest test_discount.py`. Non ho modificato i test.\n\nLe correzioni sono due:\n- **Calcolo:** la funzione usava la percentuale come se fosse una frazione (`price * percent`), quindi con 10% toglieva 10 volte il prezzo. Ora divide per 100 (`price * percent / 100`).\n- **Validazione:** mancava del tutto. Ora la funzione solleva `ValueError` se il prezzo \u00e8 negativo o se la percentuale \u00e8 fuori dall'intervallo 0\u2013100, come gi\u00e0 indicato nella sua docstring.\n\n`total` usa `apply_discount`, quindi non ha richiesto modifiche.",
+      "evaluation": {
+        "passed": true,
+        "failed": [],
+        "reason": "tests and independent check pass"
+      },
+      "success": true,
+      "cost_missing": false
+    },
+    {
+      "task": "py_discount",
+      "arm": "direct",
+      "pair": 3,
+      "workspace": "/home/ale/Projects/tandem-mcp/benchmarks/opus/runs/20261124-174810_v4_2/workspaces/py_discount__p3__direct",
+      "wall_seconds": 10.69,
+      "budget_s": 900,
+      "timed_out": false,
+      "is_error": false,
+      "num_turns": 4,
+      "total_cost_usd": 0.059757000000000005,
+      "usage": {
+        "input_tokens": 6,
+        "cache_creation_input_tokens": 4627,
+        "cache_read_input_tokens": 38985,
+        "output_tokens": 746
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 6,
+          "outputTokens": 746,
+          "cacheReadInputTokens": 38985,
+          "cacheCreationInputTokens": 4627,
+          "webSearchRequests": 0,
+          "costUSD": 0.059757000000000005,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 42,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 4627,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "tool_uses": [
+        "Bash",
+        "Edit",
+        "Bash"
+      ],
+      "result_text": "Ho corretto `apply_discount` in `discount.py` e ora tutti e 6 i test passano (`python3 -m unittest test_discount.py` \u2192 `OK`). I test non sono stati modificati.\n\nC'erano due problemi:\n1. **Calcolo sbagliato:** la percentuale veniva usata come frazione, quindi `price * percent` invece di `price * percent / 100`. Ad esempio, con 200 e 10% restituiva -1800 invece di 180. Ora il calcolo \u00e8 `round(price * (100 - percent) / 100, 2)`.\n2. **Mancava la validazione:** la funzione ora solleva `ValueError` se il prezzo \u00e8 negativo o se la percentuale \u00e8 fuori dall'intervallo 0..100, come gi\u00e0 indicato nella docstring.\n\n`total` non ha richiesto modifiche: era sbagliato solo perch\u00e9 chiama `apply_discount`.",
+      "evaluation": {
+        "passed": true,
+        "failed": [],
+        "reason": "tests and independent check pass"
+      },
+      "success": true,
+      "cost_missing": false
+    },
+    {
+      "task": "py_discount",
+      "arm": "tandem",
+      "pair": 3,
+      "workspace": "/home/ale/Projects/tandem-mcp/benchmarks/opus/runs/20261124-174810_v4_2/workspaces/py_discount__p3__tandem",
+      "wall_seconds": 105.46,
+      "budget_s": 900,
+      "timed_out": false,
+      "is_error": false,
+      "num_turns": 4,
+      "total_cost_usd": 0.060371,
+      "usage": {
+        "input_tokens": 8,
+        "cache_creation_input_tokens": 4126,
+        "cache_read_input_tokens": 56555,
+        "output_tokens": 801
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 8,
+          "outputTokens": 801,
+          "cacheReadInputTokens": 56555,
+          "cacheCreationInputTokens": 4126,
+          "webSearchRequests": 0,
+          "costUSD": 0.060371,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 92,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 4126,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "tool_uses": [
+        "ToolSearch",
+        "mcp__tandem__delegate",
+        "Bash"
+      ],
+      "result_text": "Ho corretto `apply_discount` in `discount.py` tramite Tandem (+5 \u22121 righe) e ora `python3 -m unittest test_discount.py` passa: tutti e 6 i test sono OK. `test_discount.py` non \u00e8 stato toccato.",
+      "evaluation": {
+        "passed": true,
+        "failed": [],
+        "reason": "tests and independent check pass"
+      },
+      "success": true,
+      "cost_missing": false,
+      "local": {
+        "jobs": [
+          {
+            "id": "20261124-175304-fc5dcc",
+            "state": "verified",
+            "tokens": 14755,
+            "repairs": 0,
+            "steps": 5,
+            "seconds": 92.7,
+            "accepted": true,
+            "hints": 0,
+            "perf_strikes": 0,
+            "visual_strikes": 0,
+            "visual_review": null,
+            "screenshot": false,
+            "reference_image": false,
+            "verify": [
+              "python3 -m unittest test_discount.py"
+            ],
+            "constraints": [
+              "Modificare solo discount.py",
+              "Non modificare test_discount.py",
+              "Mantenere il nome e la firma di apply_discount"
+            ],
+            "goal": "Correggi la funzione apply_discount in discount.py in modo che tutti i test in test_discount.py passino. Non modificare test_discount.py."
+          }
+        ],
+        "local_tokens": 14755,
+        "screenshot": null
+      }
+    },
+    {
+      "task": "py_cron",
+      "arm": "direct",
+      "pair": 1,
+      "workspace": "/home/ale/Projects/tandem-mcp/benchmarks/opus/runs/20261124-174810_v4_2/workspaces/py_cron__p1__direct",
+      "wall_seconds": 73.26,
+      "budget_s": 2400,
+      "timed_out": false,
+      "is_error": false,
+      "num_turns": 6,
+      "total_cost_usd": 0.2941074,
+      "usage": {
+        "input_tokens": 10,
+        "cache_creation_input_tokens": 12783,
+        "cache_read_input_tokens": 74717,
+        "output_tokens": 8843
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 10,
+          "outputTokens": 8843,
+          "cacheReadInputTokens": 74717,
+          "cacheCreationInputTokens": 12783,
+          "webSearchRequests": 0,
+          "costUSD": 0.2941074,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 658,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 12783,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "tool_uses": [
+        "Bash",
+        "Write",
+        "Bash",
+        "Write",
+        "Bash"
+      ],
+      "result_text": "Ho creato `cron_sched.py` e `test_cron_sched.py`. `python3 -m unittest -v test_cron_sched.py` passa: 26 test eseguiti, tutti OK.\n\n**`cron_sched.py`**\n- **`parse(expr)`** legge le 5 espressioni e accetta `*`, numeri, intervalli `a-b`, liste `a,b,c` e step `*/n` e `a-b/n`. Questi formati si possono anche mescolare nella stessa lista, per esempio `0,10-12,50-59/5`. Solleva `ValueError` nei casi seguenti:\n  - numero di campi diverso da 5;\n  - valori fuori range;\n  - intervalli invertiti;\n  - step uguale a 0, mancante o doppio;\n  - elementi vuoti;\n  - testo non numerico o numeri negativi.\n- **`next_runs(expr, start_dt, count=5)`** restituisce datetime UTC con fuso orario, tutti strettamente successivi a `start_dt` (secondi e microsecondi vengono troncati). Se `start_dt` \u00e8 senza fuso viene trattato come UTC; se ha un altro fuso viene convertito in UTC.\n- Ho aggiunto anche **`iter_runs`**, un generatore senza limite di risultati che `next_runs` usa internamente. Avanza giorno per giorno invece che minuto per minuto, quindi anche le espressioni rare (come il 29 febbraio) si calcolano subito.\n\n**Scelte di comportamento che vale la pena conoscere:**\n- **Domenica:** nel giorno della settimana sia 0 sia 7 indicano la domenica.\n- **Giorno del mese e giorno della settimana insieme:** se entrambi sono limitati (non `*`), basta che il giorno ne soddisfi uno, come fa cron standard. Per esempio `0 0 1 * 1` scatta il primo del mese *oppure* ogni luned\u00ec. Anche `*/n` conta come campo limitato; al",
+      "evaluation": {
+        "passed": true,
+        "failed": [],
+        "reason": "own tests and independent check pass"
+      },
+      "success": true,
+      "cost_missing": false
+    },
+    {
+      "task": "py_cron",
+      "arm": "tandem",
+      "pair": 1,
+      "workspace": "/home/ale/Projects/tandem-mcp/benchmarks/opus/runs/20261124-174810_v4_2/workspaces/py_cron__p1__tandem",
+      "wall_seconds": 1551.66,
+      "budget_s": 2400,
+      "timed_out": false,
+      "is_error": false,
+      "num_turns": 3,
+      "total_cost_usd": 0.112669,
+      "usage": {
+        "input_tokens": 6,
+        "cache_creation_input_tokens": 6624,
+        "cache_read_input_tokens": 40165,
+        "output_tokens": 2581
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 6,
+          "outputTokens": 2581,
+          "cacheReadInputTokens": 40165,
+          "cacheCreationInputTokens": 6624,
+          "webSearchRequests": 0,
+          "costUSD": 0.112669,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 139,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 6624,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "tool_uses": [
+        "ToolSearch",
+        "mcp__tandem__delegate"
+      ],
+      "result_text": "Ho creato `cron_sched.py` con `next_runs(expr, start_dt, count=5)` e `test_cron_sched.py` con almeno 12 test unittest. Il codice l'ha scritto Tandem e ha superato tutti i controlli, compreso `python3 -m unittest -v test_cron_sched.py`. Non ho letto i file: il riepilogo qui sotto viene dai requisiti dati a Tandem e dalle verifiche che li controllano.\n\nOltre ai test scritti da Tandem, uno script di verifica separato ha passato questi casi:\n- **Sintassi:** `*/n`, `a-b/n`, liste e `7` come domenica.\n- **Anni bisestili:** il 29 febbraio salta correttamente al 2024 e poi al 2028.\n- **Giorno del mese e giorno della settimana:** se sono entrambi indicati, basta che la data ne soddisfi uno (regola standard di cron).\n- **Errori:** viene sollevato `ValueError` su 11 espressioni non valide, tra cui un numero sbagliato di campi, valori fuori range, `5-1` e `*/0`. Lo stesso vale per un'espressione impossibile come `0 0 31 2 *`, che va in errore invece di cercare all'infinito.\n\nAlcune scelte di comportamento:\n- La ricerca si ferma a 5 anni; oltre quel limite l'espressione \u00e8 trattata come impossibile.\n- Un `start_dt` senza fuso orario viene interpretato come UTC.\n- I risultati hanno sempre fuso UTC, secondi a zero e sono strettamente successivi a `start_dt`.\n- Il giorno della settimana va da 0 a 6 con 0 = domenica; \u00e8 accettato anche 7 come domenica.",
+      "evaluation": {
+        "passed": true,
+        "failed": [],
+        "reason": "own tests and independent check pass"
+      },
+      "success": true,
+      "cost_missing": false,
+      "local": {
+        "jobs": [
+          {
+            "id": "20261124-175614-1531b5",
+            "state": "verified",
+            "tokens": 194819,
+            "repairs": 0,
+            "steps": 16,
+            "seconds": 1525.6,
+            "accepted": true,
+            "hints": 0,
+            "perf_strikes": 0,
+            "visual_strikes": 0,
+            "visual_review": null,
+            "screenshot": false,
+            "reference_image": false,
+            "verify": [
+              "python3 -m unittest -v test_cron_sched.py",
+              "python3 -c \"import unittest,test_cron_sched as t; n=unittest.defaultTestLoader.loadTestsFromModule(t).countTestCases(); assert n>=12, n\"",
+              "python3 -c \"from datetime import datetime as D, timezone as Z\nfrom cron_sched import next_runs as N\nu=Z.utc\nassert N('*/15 * * * *', D(2024,1,1,0,0), 3)==[D(2024,1,1,0,15,tzinfo=u),D(2024,1,1,0,30,tzinfo=u),D(2024,1,1,0,45,tzinfo=u)]\nassert N('0 0 29 2 *', D(2023,1,1), 2)==[D(2024,2,29,tzinfo=u),D(2028,2,29,tzinfo=u)]\nassert N('0 12 1 * 1', D(2024,1,1,12,0), 2)==[D(2024,1,8,12,tzinfo=u),D(2024,1,1"
+            ],
+            "constraints": [
+              "Solo libreria standard Python 3.",
+              "Funzione pubblica: next_runs(expr, start_dt, count=5) -> list[datetime] in cron_sched.py.",
+              "Range: minuto 0-59, ora 0-23, giorno_mese 1-31, mese 1-12, giorno_settimana 0-6 con 0=domenica (accetta anche 7 come domenica).",
+              "Esattamente 5 campi separati da spazi, altrimenti ValueError.",
+              "ValueError per: valori fuori range, intervallo a-b con a>b, step 0 o non numerico, token vuoti o non numerici, expr non stringa, count < 1.",
+              "I datetime restituiti sono timezone-aware in UTC (tzinfo=timezone.utc), secondi e microsecondi = 0, strettamente maggiori di start_dt.",
+              "start_dt naive va interpretato come UTC",
+              "start_dt aware va convertito in UTC.",
+              "Semantica standard cron: se sia giorno_mese sia giorno_settimana sono ristretti (non '*'), la data corrisponde se soddisfa ALMENO uno dei due (OR)",
+              "altrimenti si applica quello ristretto.",
+              "Espressioni impossibili come '0 0 31 2 *' devono sollevare ValueError (non loop infinito): limita la ricerca, ad es. a 5 anni.",
+              "L'iterazione deve essere efficiente (salta giorni/ore non validi invece di avanzare minuto per minuto su anni).",
+              "test_cron_sched.py: almeno 12 metodi test_ unittest, che coprono ogni sintassi, gli errori, il cambio mese/anno, gli anni bisestili e la regola OR giorno_mese/giorno_settimana."
+            ],
+            "goal": "Crea da zero cron_sched.py: parser e iteratore di espressioni cron a 5 campi (minuto, ora, giorno_mese, mese, giorno_settimana) con supporto a *, numeri, intervalli a-b, liste a,b,c, step */n e a-b/n; pi\u00f9 la funzione next_runs(expr, start_dt, count=5) che restituisce i prossimi count datetime UTC strettamente successivi a start_dt, sollevando ValueError su espressioni non valide. Aggiungi test_cron_sched.py con almeno 12 test unittest."
+          }
+        ],
+        "local_tokens": 194819,
+        "screenshot": null
+      }
+    },
+    {
+      "task": "py_cron",
+      "arm": "tandem",
+      "pair": 2,
+      "workspace": "/home/ale/Projects/tandem-mcp/benchmarks/opus/runs/20261124-174810_v4_2/workspaces/py_cron__p2__tandem",
+      "wall_seconds": 4243.59,
+      "budget_s": 2400,
+      "timed_out": true,
+      "is_error": false,
+      "num_turns": 7,
+      "total_cost_usd": 0.20243139999999998,
+      "usage": {
+        "input_tokens": 14,
+        "cache_creation_input_tokens": 11436,
+        "cache_read_input_tokens": 123737,
+        "output_tokens": 4307
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 14,
+          "outputTokens": 4307,
+          "cacheReadInputTokens": 123737,
+          "cacheCreationInputTokens": 11436,
+          "webSearchRequests": 0,
+          "costUSD": 0.20243139999999998,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 303,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 11436,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "tool_uses": [
+        "ToolSearch",
+        "mcp__tandem__delegate",
+        "mcp__tandem__job_continue",
+        "Bash",
+        "Bash",
+        "Bash"
+      ],
+      "result_text": "Ho creato `cron_sched.py` e `test_cron_sched.py`, e `python3 -m unittest -v test_cron_sched.py` passa con 27 test.\n\nTandem ha chiuso il job come **FAILED (out_of_time)** due volte. Al primo giro aveva sbagliato il giorno della settimana e l'espansione di `*` sul giorno del mese. Dopo il mio suggerimento c'era ancora un test rosso, ma i file finali su disco passano sia i test sia il mio controllo indipendente. Quel controllo usa date fisse (per esempio il 29 febbraio salta dal 2028 al 2032 e `0 0 13 * 5` d\u00e0 6, 13 e 20 settembre 2024) e verifica che le espressioni non valide sollevino `ValueError`. Io ho modificato solo un commento nel codice che descriveva la regola sbagliata.\n\n**Comportamento:**\n- **`next_runs`:** restituisce datetime UTC strettamente successivi a `start_dt`. Un `start_dt` senza fuso orario viene trattato come UTC, uno con un altro fuso viene convertito.\n- **Giorno del mese e della settimana:** se li specifichi entrambi, basta che la data ne soddisfi uno, come nel cron standard.\n- **`ValueError`:** viene sollevato per un numero di campi diverso da 5, valori fuori range, intervalli con a>b, step a 0, token vuoti o non numerici e `count < 1`. Lo stesso vale per le espressioni che non scattano mai entro 10 anni, come `0 0 31 2 *`.\n- **Domenica:** sia 0 che 7 valgono come domenica.\n- **`parse(expr)`:** \u00e8 pubblica e restituisce i 5 insiemi di valori ammessi.\n\nDue cose accettate che non avevi chiesto: lo step dopo un numero singolo (`5/15` vale come 5, 20, 35, 50) ",
+      "evaluation": {
+        "passed": true,
+        "failed": [],
+        "reason": "own tests and independent check pass"
+      },
+      "success": false,
+      "cost_missing": false,
+      "local": {
+        "jobs": [
+          {
+            "id": "20261124-182206-93f0c3",
+            "state": "out_of_time",
+            "tokens": 1310095,
+            "repairs": 2,
+            "steps": 71,
+            "seconds": 4204.1,
+            "accepted": null,
+            "hints": 1,
+            "perf_strikes": 0,
+            "visual_strikes": 0,
+            "visual_review": null,
+            "screenshot": false,
+            "reference_image": false,
+            "verify": [
+              "python3 -m unittest -v test_cron_sched.py",
+              "python3 -c \"import ast;t=ast.parse(open('test_cron_sched.py').read());n=sum(1 for x in ast.walk(t) if isinstance(x,ast.FunctionDef) and x.name.startswith('test'));assert n>=12,n;print(n)\"",
+              "python3 -c \"from datetime import datetime,timezone as tz;from cron_sched import next_runs as n;s=datetime(2024,1,31,23,58,tzinfo=tz.utc);r=n('*/15 * * * *',s,3);assert r==[datetime(2024,2,1,0,0,tzinfo=tz.utc),datetime(2024,2,1,0,15,tzinfo=tz.utc),datetime(2024,2,1,0,30,tzinfo=tz.utc)],r;r=n('0 12 29 2 *',datetime(2024,3,1),2);assert r==[datetime(2025+3,2,29,12,0,tzinfo=tz.utc),datetime(2032,2,29,1"
+            ],
+            "constraints": [
+              "Solo libreria standard Python 3.",
+              "Campi in ordine: minuto (0-59), ora (0-23), giorno_mese (1-31), mese (1-12), giorno_settimana (0-6, 0=domenica",
+              "accettare anche 7 come domenica).",
+              "Ogni campo supporta: *, numero singolo, intervallo a-b, lista a,b,c (elementi possono essere intervalli o step), step */n e a-b/n.",
+              "Funzione pubblica parse(expr) che restituisce i set di valori ammessi per ciascun campo (es. oggetto o tupla con 5 set).",
+              "Funzione pubblica next_runs(expr, start_dt, count=5) che restituisce una lista di count datetime UTC (tzinfo=timezone.utc), strettamente successivi a start_dt, in ordine crescente, con secondi e microsecondi a 0.",
+              "Se start_dt \u00e8 naive va interpretato come UTC",
+              "se ha un tzinfo diverso va convertito in UTC.",
+              "Semantica cron standard: se sia giorno_mese sia giorno_settimana sono ristretti (non '*'), una data corrisponde se soddisfa almeno uno dei due (OR)",
+              "altrimenti si applica quello ristretto.",
+              "Sollevare ValueError per: numero di campi diverso da 5, valori fuori range, intervalli con a>b, step 0 o non numerico, token vuoti o non numerici, count non intero positivo (count < 1).",
+              "Se non esiste alcuna data valida (es. '0 0 31 2 *') sollevare ValueError invece di ciclare all'infinito (limite di ricerca ad es. 5 anni).",
+              "Iterazione efficiente: saltare per mese/giorno/ora non corrispondenti invece di avanzare minuto per minuto.",
+              "test_cron_sched.py usa unittest con almeno 12 metodi test_ che coprono: *, numeri, intervalli, liste, */n, a-b/n, regola OR giorno_mese/giorno_settimana, attraversamento fine mese/anno, 29 febbraio in anno bisestile, start_dt naive vs aware, e diversi casi di ValueError."
+            ],
+            "goal": "Creare da zero cron_sched.py (parser e iteratore di espressioni cron a 5 campi) e test_cron_sched.py con almeno 12 test unittest."
+          }
+        ],
+        "local_tokens": 1310095,
+        "screenshot": null
+      }
+    },
+    {
+      "task": "py_cron",
+      "arm": "direct",
+      "pair": 2,
+      "workspace": "/home/ale/Projects/tandem-mcp/benchmarks/opus/runs/20261124-174810_v4_2/workspaces/py_cron__p2__direct",
+      "wall_seconds": 59.88,
+      "budget_s": 2400,
+      "timed_out": false,
+      "is_error": false,
+      "num_turns": 5,
+      "total_cost_usd": 0.2632982,
+      "usage": {
+        "input_tokens": 8,
+        "cache_creation_input_tokens": 12964,
+        "cache_read_input_tokens": 54671,
+        "output_tokens": 7431
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 8,
+          "outputTokens": 7431,
+          "cacheReadInputTokens": 54671,
+          "cacheCreationInputTokens": 12964,
+          "webSearchRequests": 0,
+          "costUSD": 0.2632982,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 435,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 12964,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "tool_uses": [
+        "Bash",
+        "Write",
+        "Write",
+        "Bash"
+      ],
+      "result_text": "Ho creato `cron_sched.py` e `test_cron_sched.py`. `python3 -m unittest -v test_cron_sched.py` passa: 20 test eseguiti, tutti OK.\n\n**`cron_sched.py`**\n- **`parse(expr)`** legge i 5 campi e accetta `*`, numeri, intervalli `a-b`, liste `a,b,c`, step `*/n` e `a-b/n`, anche mescolati nella stessa lista (es. `1,10-12,*/30`). Solleva `ValueError` per:\n  - numero di campi diverso da 5;\n  - valori fuori intervallo o non numerici;\n  - intervalli decrescenti;\n  - step 0 o vuoti;\n  - elementi vuoti in una lista.\n- **`next_runs(expr, start_dt, count=5)`** restituisce datetime UTC sempre strettamente successivi a `start_dt`. Secondi e microsecondi di `start_dt` vengono ignorati, quindi si parte dal minuto seguente. Per trovarli scorre un giorno alla volta, non un minuto alla volta, quindi anche le espressioni rare restano veloci.\n\nAlcune scelte che non erano nella richiesta, da cambiare se servono altrimenti:\n- **Giorno del mese e giorno della settimana insieme:** se nessuno dei due \u00e8 `*`, basta che ne corrisponda uno, come nel cron classico. Esempio: `0 0 1 * 5` scatta il giorno 1 del mese *oppure* ogni venerd\u00ec.\n- **Giorno della settimana:** va da 0 (domenica) a 6, e 7 vale anche come domenica.\n- **Fusi orari:** un `start_dt` senza fuso \u00e8 trattato come UTC; uno con fuso viene convertito in UTC.\n- **Date impossibili:** `0 0 30 2 *` (30 febbraio) solleva `ValueError` gi\u00e0 in fase di parsing. Per sicurezza la ricerca si ferma comunque dopo 400 anni, cio\u00e8 un ciclo completo del calendario.\n- **",
+      "evaluation": {
+        "passed": true,
+        "failed": [],
+        "reason": "own tests and independent check pass"
+      },
+      "success": true,
+      "cost_missing": false
+    },
+    {
+      "task": "py_cron",
+      "arm": "direct",
+      "pair": 3,
+      "workspace": "/home/ale/Projects/tandem-mcp/benchmarks/opus/runs/20261124-174810_v4_2/workspaces/py_cron__p3__direct",
+      "wall_seconds": 58.14,
+      "budget_s": 2400,
+      "timed_out": false,
+      "is_error": false,
+      "num_turns": 5,
+      "total_cost_usd": 0.247461,
+      "usage": {
+        "input_tokens": 8,
+        "cache_creation_input_tokens": 11060,
+        "cache_read_input_tokens": 56145,
+        "output_tokens": 7386
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 8,
+          "outputTokens": 7386,
+          "cacheReadInputTokens": 56145,
+          "cacheCreationInputTokens": 11060,
+          "webSearchRequests": 0,
+          "costUSD": 0.247461,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 320,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 11060,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "tool_uses": [
+        "Bash",
+        "Write",
+        "Write",
+        "Bash"
+      ],
+      "result_text": "Ho creato `cron_sched.py` e `test_cron_sched.py`. `python3 -m unittest -v test_cron_sched.py` esegue 24 test e passano tutti.\n\n**`cron_sched.py`**\n- **`parse(expr)`** legge i 5 campi e accetta `*`, `N`, `a-b`, liste `a,b,c`, `*/n` e `a-b/n`. In pi\u00f9 accetta anche `N/n`, che vuol dire \"da N fino al valore massimo del campo\".\n- **Controlli:** solleva `ValueError` se il numero di campi \u00e8 sbagliato, se un valore \u00e8 fuori intervallo, se un intervallo \u00e8 invertito (`5-1`), se lo step \u00e8 zero o vuoto, se in una lista c'\u00e8 un elemento vuoto o se un token non \u00e8 valido.\n- **`next_runs(expr, start_dt, count=5)`** restituisce datetime UTC con fuso orario, strettamente successivi a `start_dt`, con secondi e microsecondi azzerati. Se `start_dt` non ha fuso orario viene trattato come UTC; se ce l'ha viene convertito in UTC.\n- **Ricerca:** procede giorno per giorno e, nei giorni validi, scorre solo le ore e i minuti ammessi, quindi resta veloce anche con espressioni che scattano raramente.\n\nAlcune scelte che non erano nella richiesta, prese seguendo il comportamento classico di cron:\n- **Domenica:** nel giorno della settimana sono validi sia 0 sia 7.\n- **Giorno del mese e giorno della settimana insieme:** se nessuno dei due \u00e8 `*`, basta che la data soddisfi uno dei due. Per esempio `0 0 1 * 1` scatta il primo del mese e anche ogni luned\u00ec.\n- **Date impossibili:** un'espressione come `0 0 30 2 *` (30 febbraio) solleva `ValueError` invece di bloccarsi. Il programma rinuncia dopo circa 30 anni consec",
+      "evaluation": {
+        "passed": true,
+        "failed": [],
+        "reason": "own tests and independent check pass"
+      },
+      "success": true,
+      "cost_missing": false
+    },
+    {
+      "task": "py_cron",
+      "arm": "tandem",
+      "pair": 3,
+      "workspace": "/home/ale/Projects/tandem-mcp/benchmarks/opus/runs/20261124-174810_v4_2/workspaces/py_cron__p3__tandem",
+      "wall_seconds": 1508.19,
+      "budget_s": 2400,
+      "timed_out": false,
+      "is_error": false,
+      "num_turns": 3,
+      "total_cost_usd": 0.10453760000000001,
+      "usage": {
+        "input_tokens": 6,
+        "cache_creation_input_tokens": 5403,
+        "cache_read_input_tokens": 41448,
+        "output_tokens": 2650
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 6,
+          "outputTokens": 2650,
+          "cacheReadInputTokens": 41448,
+          "cacheCreationInputTokens": 5403,
+          "webSearchRequests": 0,
+          "costUSD": 0.10453760000000001,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 226,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 5403,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "tool_uses": [
+        "ToolSearch",
+        "mcp__tandem__delegate"
+      ],
+      "result_text": "Ho creato `cron_sched.py` e `test_cron_sched.py` tramite Tandem. Il job \u00e8 stato accettato dopo 2 correzioni automatiche e tutti e tre i controlli passano, compreso `python3 -m unittest -v test_cron_sched.py`. I file non li ho letti personalmente, come prevede il flusso di Tandem.\n\nIl secondo controllo verifica che ci siano almeno 12 test. Il terzo prova `next_runs` su casi con risultato noto, tra cui:\n- step semplici e combinati (`*/15`, `10-20/5`);\n- giorni feriali (`1-5`);\n- il 29 febbraio di un anno bisestile;\n- domenica scritta come 0 o come 7.\n\nLo stesso controllo verifica anche che 14 espressioni non valide sollevino `ValueError`.\n\nAlcune scelte di comportamento che ho fissato io:\n- **Giorno del mese e giorno della settimana:** se li restringi entrambi, basta che corrisponda uno dei due, come nel cron standard di Linux.\n- **Giorno della settimana:** accetta da 0 a 7, e sia 0 che 7 indicano la domenica.\n- **Date senza fuso orario:** un `start_dt` senza fuso viene trattato come UTC. I risultati sono sempre in UTC, con secondi a zero e strettamente dopo `start_dt`.\n- **Espressioni che non scattano mai:** un caso come `0 0 31 2 *` (31 febbraio) solleva `ValueError` invece di bloccarsi in un ciclo infinito.",
+      "evaluation": {
+        "passed": true,
+        "failed": [],
+        "reason": "own tests and independent check pass"
+      },
+      "success": true,
+      "cost_missing": false,
+      "local": {
+        "jobs": [
+          {
+            "id": "20261124-193451-9f1ddb",
+            "state": "verified",
+            "tokens": 388590,
+            "repairs": 2,
+            "steps": 28,
+            "seconds": 1479.4,
+            "accepted": true,
+            "hints": 0,
+            "perf_strikes": 0,
+            "visual_strikes": 0,
+            "visual_review": null,
+            "screenshot": false,
+            "reference_image": false,
+            "verify": [
+              "python3 -m unittest -v test_cron_sched.py",
+              "python3 -c \"import ast;t=ast.parse(open('test_cron_sched.py').read());n=sum(1 for x in ast.walk(t) if isinstance(x,ast.FunctionDef) and x.name.startswith('test'));assert n>=12,n\"",
+              "python3 -c \"\nfrom datetime import datetime as D, timezone as Z\nfrom cron_sched import next_runs as N\nu=Z.utc\nr=N('*/15 * * * *',D(2024,1,1,0,0,tzinfo=u),3);assert r==[D(2024,1,1,0,15,tzinfo=u),D(2024,1,1,0,30,tzinfo=u),D(2024,1,1,0,45,tzinfo=u)],r\nr=N('0 9 * * 1-5',D(2024,1,5,10,0),2);assert r==[D(2024,1,8,9,0,tzinfo=u),D(2024,1,9,9,0,tzinfo=u)],r\nr=N('0 0 29 2 *',D(2023,1,1),1);assert r==[D(2024,"
+            ],
+            "constraints": [
+              "Solo libreria standard Python 3.",
+              "Sintassi per campo: '*', numero, intervallo 'a-b', lista 'a,b,c' (elementi possono essere intervalli o step), step '*/n' e 'a-b/n'.",
+              "Range: minuto 0-59, ora 0-23, giorno_mese 1-31, mese 1-12, giorno_settimana 0-7 con 0 e 7 = domenica, 1 = luned\u00ec.",
+              "ValueError per: numero di campi diverso da 5, valori fuori range, a > b in un intervallo, step <= 0 o non numerico, token vuoti o non numerici, expr non stringa, count < 1.",
+              "next_runs(expr, start_dt, count=5) restituisce una lista di count datetime timezone-aware con tzinfo=datetime.timezone.utc, secondi e microsecondi a 0, tutti strettamente > start_dt, in ordine crescente.",
+              "Se start_dt \u00e8 naive va interpretato come UTC",
+              "se \u00e8 aware va convertito in UTC.",
+              "Semantica giorno (come Vixie cron): se sia giorno_mese sia giorno_settimana sono ristretti (non iniziano con '*'), un giorno corrisponde se corrisponde ALMENO UNO dei due",
+              "altrimenti devono corrispondere entrambi.",
+              "Espressioni che non possono mai corrispondere (es. '0 0 31 2 *') devono sollevare ValueError invece di ciclare all'infinito (es. limite di ricerca di alcuni anni).",
+              "Iterazione efficiente: salta giorni/ore non corrispondenti invece di avanzare minuto per minuto su anni.",
+              "test_cron_sched.py usa unittest e contiene almeno 12 metodi test_."
+            ],
+            "goal": "Crea da zero cron_sched.py: parser e iteratore di espressioni cron a 5 campi (minuto, ora, giorno_mese, mese, giorno_settimana) con funzione next_runs(expr, start_dt, count=5) che restituisce i prossimi count datetime UTC strettamente successivi a start_dt; solleva ValueError su espressioni non valide. Aggiungi test_cron_sched.py con almeno 12 test unittest."
+          }
+        ],
+        "local_tokens": 388590,
+        "screenshot": null
+      }
+    },
+    {
+      "task": "web_boids",
+      "arm": "direct",
+      "pair": 1,
+      "workspace": "/home/ale/Projects/tandem-mcp/benchmarks/opus/runs/20261124-174810_v4_2/workspaces/web_boids__p1__direct",
+      "wall_seconds": 45.76,
+      "budget_s": 2400,
+      "timed_out": false,
+      "is_error": false,
+      "num_turns": 3,
+      "total_cost_usd": 0.1984396,
+      "usage": {
+        "input_tokens": 6,
+        "cache_creation_input_tokens": 8763,
+        "cache_read_input_tokens": 43658,
+        "output_tokens": 5979
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 6,
+          "outputTokens": 5979,
+          "cacheReadInputTokens": 43658,
+          "cacheCreationInputTokens": 8763,
+          "webSearchRequests": 0,
+          "costUSD": 0.1984396,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 37,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 8763,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "tool_uses": [
+        "Write",
+        "Bash"
+      ],
+      "result_text": "Ho creato `index.html` da zero, in un unico file e senza dipendenze esterne. Ho verificato solo che il JavaScript non abbia errori di sintassi (`node --check`). Non l'ho aperto in un browser, quindi non ho controllato n\u00e9 il comportamento a runtime n\u00e9 l'assenza di errori in console.\n\n- **Canvas:** occupa tutto lo schermo con sfondo `#070b14` e si adatta al ridimensionamento della finestra e agli schermi ad alta densit\u00e0.\n- **Stormo:** partono 60 boids. Applicano separazione, allineamento e coesione, con una velocit\u00e0 minima e massima. Chi esce da un bordo rientra da quello opposto.\n- **Avvio:** la simulazione parte in pausa, con i boids gi\u00e0 disegnati e il pulsante che mostra \"\u25b6 Play\".\n- **HUD in stile glassmorphism:** mostra FPS, numero di boids, velocit\u00e0 e lo stato (in pausa o in esecuzione).\n- **Controlli:**\n  - **Play/Pause** avvia o ferma la simulazione.\n  - **Step** mette in pausa e fa avanzare la simulazione di un solo fotogramma.\n  - **Reset** mette in pausa e ricrea lo stormo iniziale.\n  - **Slider velocit\u00e0** va da 0.5 a 3.0 con passo 0.1.\n- **Click sul canvas:** aggiunge un boid nel punto cliccato, fino a un massimo di 600.\n- **Extra non richiesto:** la barra spaziatrice fa partire e fermare la simulazione.",
+      "evaluation": {
+        "passed": true,
+        "failed": [],
+        "reason": "all Boids checks passed"
+      },
+      "success": true,
+      "cost_missing": false
+    },
+    {
+      "task": "web_boids",
+      "arm": "tandem",
+      "pair": 1,
+      "workspace": "/home/ale/Projects/tandem-mcp/benchmarks/opus/runs/20261124-174810_v4_2/workspaces/web_boids__p1__tandem",
+      "wall_seconds": 806.41,
+      "budget_s": 2400,
+      "timed_out": false,
+      "is_error": false,
+      "num_turns": 3,
+      "total_cost_usd": 0.1221706,
+      "usage": {
+        "input_tokens": 6,
+        "cache_creation_input_tokens": 8173,
+        "cache_read_input_tokens": 40113,
+        "output_tokens": 2437
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 6,
+          "outputTokens": 2437,
+          "cacheReadInputTokens": 40113,
+          "cacheCreationInputTokens": 8173,
+          "webSearchRequests": 0,
+          "costUSD": 0.1221706,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 110,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 8173,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "tool_uses": [
+        "ToolSearch",
+        "mcp__tandem__delegate"
+      ],
+      "result_text": "Ho creato `index.html` con Tandem e il job \u00e8 stato accettato: tutti i controlli automatici in Chromium sono passati.\n\n- **Simulazione:** canvas a tutto schermo su sfondo `#070b14`, con 60 boids a triangolo che seguono separazione, allineamento e coesione. Ai bordi i boids rientrano dal lato opposto.\n- **Avvio:** parte in pausa, con il pulsante che mostra \"Play\". Premendolo diventa \"Pause\".\n- **HUD:** pannello glassmorphism in alto a sinistra con FPS, numero di boids e velocit\u00e0.\n- **Controlli:** Step avanza di un passo anche in pausa, Reset ricrea 60 boids e rimette in pausa, lo slider regola la velocit\u00e0 da 0.5 a 3.0.\n- **Nessuna dipendenza esterna:** CSS e JavaScript sono tutti dentro il file.\n\nIl controllo automatico ha aggiunto un boid chiamando direttamente la funzione nel codice, non con un vero click sul canvas, quindi il click non \u00e8 stato provato. Non viene nemmeno verificato in modo esplicito che non ci siano errori JavaScript. Ti conviene aprire la pagina e fare qualche click sul canvas per esserne sicuro.",
+      "evaluation": {
+        "passed": true,
+        "failed": [],
+        "reason": "all Boids checks passed"
+      },
+      "success": true,
+      "cost_missing": false,
+      "local": {
+        "jobs": [
+          {
+            "id": "20261124-200045-fdf9f1",
+            "state": "verified",
+            "tokens": 99533,
+            "repairs": 2,
+            "steps": 10,
+            "seconds": 782.5,
+            "accepted": true,
+            "hints": 0,
+            "perf_strikes": 0,
+            "visual_strikes": 2,
+            "visual_review": {
+              "status": "failed",
+              "model": "qwen3.8-27b@iq3_s",
+              "summary": "Render is clean and complete (full-screen dark canvas, light-blue oriented triangle boids, glassmorphism HUD with FPS/Boids/Velocit\u00e0, three buttons, working slider). One concrete contract violation visible in the screenshot: the play button reads 'Pause' at startup, meaning the simulation is running",
+              "issues": [
+                "Play button (id=playBtn) shows 'Pause' at startup instead of 'Play'. This indicates the simulation started in a running state, violating 'La simulazione parte in PAUSA: window.app.running === false al"
+              ]
+            },
+            "screenshot": true,
+            "reference_image": false,
+            "verify": [
+              "tandem:ui_test {\"steps\":[{\"exists\":\"#canvas\"},{\"js\":\"window.app && window.app.running === false && window.app.boids.length >= 40\"},{\"text\":\"#playBtn\",\"match\":\"^\\\\s*Play\\\\s*$\"},{\"exists\":\"#stepBtn\"},{\"exists\":\"#resetBtn\"},{\"js\":\"(()=>{const s=document.getElementById('speed');return s.type==='range'&&parseFloat(s.min)===0.5&&parseFloat(s.max)===3})()\"},{\"expect\":\"static\"},{\"snapshot\":\"paused\"},{\"cli"
+            ],
+            "constraints": [
+              "Un solo file index.html con CSS e JS inline",
+              "nessuna risorsa esterna (no CDN, no font esterni, no immagini)",
+              "Canvas id=\"canvas\" a tutto schermo (window.innerWidth x window.innerHeight, ridimensionato su resize), body margin 0, overflow hidden, sfondo #070b14",
+              "Boids con tre regole: separazione, allineamento, coesione",
+              "i bordi fanno wrap-around",
+              "ogni boid disegnato come triangolo orientato secondo la velocit\u00e0, colore chiaro ben visibile sul fondo scuro (es. #7dd3fc)",
+              "All'avvio ci sono 60 boids distribuiti casualmente nell'area visibile e gi\u00e0 disegnati sul canvas",
+              "La simulazione parte in PAUSA: window.app.running === false all'avvio",
+              "Esporre window.app = { boids: Array, running: boolean, speed: number, step(): void, reset(): void, togglePlay(): void, addBoid(x, y): void, fps: number }",
+              "HUD glassmorphism in alto a sinistra (position fixed, background rgba(255,255,255,0.08), backdrop-filter: blur(12px), bordo 1px rgba(255,255,255,0.18), border-radius 14px, testo #e2e8f0) che mostra: 'FPS: <n>' in elemento id=\"fps\", 'Boids: <n>' in elemento id=\"count\", 'Velocit\u00e0: <v>x' in elemento id=\"speedLabel\" (v con 1 decimale)",
+              "Pulsante id=\"playBtn\": all'avvio testo esattamente 'Play'",
+              "al click alterna running e il testo diventa 'Pause' quando in esecuzione, 'Play' quando in pausa",
+              "Pulsante id=\"stepBtn\" con testo 'Step': avanza la simulazione di esattamente un passo e ridisegna (funziona in pausa)",
+              "Pulsante id=\"resetBtn\" con testo 'Reset': ricrea 60 boids casuali, imposta running=false e il pulsante Play torna a 'Play'",
+              "Slider input type=range id=\"speed\" min=0.5 max=3.0 step=0.1 value=1.0",
+              "modificandolo aggiorna window.app.speed e l'etichetta speedLabel",
+              "Click sul canvas (evento click/pointerdown sul canvas, non sull'HUD) aggiunge un nuovo boid alla posizione del click con velocit\u00e0 casuale e ridisegna subito",
+              "il contatore Boids si aggiorna",
+              "Il loop requestAnimationFrame gira sempre (per FPS e disegno) ma aggiorna le posizioni solo se running===true",
+              "la velocit\u00e0 di movimento \u00e8 moltiplicata per app.speed",
+              "I controlli non devono catturare il click del canvas (gli eventi dell'HUD non devono aggiungere boids)"
+            ],
+            "goal": "Crea da zero index.html: simulazione Boids (separazione, allineamento, coesione) su HTML5 Canvas a tutto schermo, sfondo #070b14, con HUD glassmorphism e controlli. Tutto in un unico file, zero dipendenze esterne, zero errori JavaScript."
+          }
+        ],
+        "local_tokens": 99533,
+        "screenshot": "/home/ale/Projects/tandem-mcp/benchmarks/opus/runs/20261124-174810_v4_2/screenshots/web_boids__p1__tandem.jpg"
+      }
+    },
+    {
+      "task": "web_boids",
+      "arm": "tandem",
+      "pair": 2,
+      "workspace": "/home/ale/Projects/tandem-mcp/benchmarks/opus/runs/20261124-174810_v4_2/workspaces/web_boids__p2__tandem",
+      "wall_seconds": 670.28,
+      "budget_s": 2400,
+      "timed_out": false,
+      "is_error": false,
+      "num_turns": 4,
+      "total_cost_usd": 0.1337292,
+      "usage": {
+        "input_tokens": 8,
+        "cache_creation_input_tokens": 7905,
+        "cache_read_input_tokens": 60486,
+        "output_tokens": 2918
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 8,
+          "outputTokens": 2918,
+          "cacheReadInputTokens": 60486,
+          "cacheCreationInputTokens": 7905,
+          "webSearchRequests": 0,
+          "costUSD": 0.1337292,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 110,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 7905,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "tool_uses": [
+        "ToolSearch",
+        "mcp__tandem__delegate",
+        "Bash"
+      ],
+      "result_text": "Ho creato `index.html` con Tandem. Supera 20 dei 22 controlli automatici in Chromium; i due che falliscono sono colpa di un errore nel test che ho scritto io, non della pagina.\n\nIl test dichiarava due volte la stessa variabile (`const s`) in due passaggi diversi, quindi il passaggio che muove lo slider si \u00e8 fermato con un errore prima di partire, e quello dopo \u00e8 fallito di conseguenza. Leggendo il codice, lo slider aggiorna davvero la velocit\u00e0 e l'etichetta \"Velocit\u00e0: N.Nx\", ma questo comportamento non l'ho visto girare.\n\nControlli superati:\n- La pagina parte in pausa con 60 boids visibili e il pulsante mostra \"Play\".\n- Step avanza la simulazione di un passo.\n- Un click sul canvas aggiunge un boid e il contatore passa a 61.\n- Play la avvia e il pulsante diventa \"Pause\".\n- Reset torna a 60 boids e rimette in pausa.\n\nLo screenshot mostra lo sfondo `#070b14`, l'HUD in vetro smerigliato in alto a sinistra (FPS, Boids, Velocit\u00e0 pi\u00f9 i pulsanti) e i boids disegnati come triangoli celesti. Lo slider va da 0.5 a 3.0 e nel file non ci sono riferimenti esterni.\n\nNon ho controllato in modo specifico la console del browser per gli errori JavaScript.",
+      "evaluation": {
+        "passed": true,
+        "failed": [],
+        "reason": "all Boids checks passed"
+      },
+      "success": true,
+      "cost_missing": false,
+      "local": {
+        "jobs": [
+          {
+            "id": "20261124-201421-46d4a8",
+            "state": "blocked",
+            "tokens": 80862,
+            "repairs": 1,
+            "steps": 8,
+            "seconds": 635.9,
+            "accepted": null,
+            "hints": 0,
+            "perf_strikes": 0,
+            "visual_strikes": 0,
+            "visual_review": null,
+            "screenshot": true,
+            "reference_image": false,
+            "verify": [
+              "tandem:ui_test {\"steps\":[{\"exists\":\"canvas#c\"},{\"js\":\"window.app && window.app.paused === true && window.app.boids.length >= 40\"},{\"text\":\"#playBtn\",\"match\":\"^\\\\s*Play\\\\s*$\"},{\"text\":\"#count\",\"match\":\"60\"},{\"text\":\"#speedLabel\",\"match\":\"1\\\\.0\"},{\"exists\":\"#fps\"},{\"exists\":\"#stepBtn\"},{\"exists\":\"#resetBtn\"},{\"js\":\"getComputedStyle(document.body).backgroundColor === 'rgb(7, 11, 20)' || getComputedSt"
+            ],
+            "constraints": [
+              "Un solo file index.html con CSS e JS inline",
+              "nessuna risorsa esterna (niente CDN, font o immagini remote)",
+              "Canvas a tutto schermo (100vw x 100vh, ridimensionato su resize), sfondo #070b14, body margin 0 e overflow hidden",
+              "Boids con tre regole: separazione, allineamento, coesione",
+              "bordi a wrap-around",
+              "ogni boid disegnato come triangolo orientato nella direzione della velocit\u00e0, colore chiaro ben visibile su #070b14 (es. #7dd3fc)",
+              "All'avvio: 60 boids in posizioni casuali dentro il canvas, simulazione in pausa ma gi\u00e0 disegnata (boids visibili)",
+              "Esporre window.app = { boids (array), paused (boolean), speed (number), frames (numero di step di simulazione eseguiti), fps (number) }",
+              "app.boids.length = numero boids",
+              "HUD in alto a sinistra con glassmorphism: background rgba(255,255,255,0.08), backdrop-filter: blur(12px), border 1px solid rgba(255,255,255,0.18), border-radius 14px, testo #e6edf7, font system-ui",
+              "HUD mostra tre righe con id: #fps ('FPS: N'), #count ('Boids: N'), #speedLabel ('Velocit\u00e0: 1.0x' con una cifra decimale)",
+              "Pulsanti con id #playBtn, #stepBtn, #resetBtn dentro l'HUD",
+              "testo #playBtn \u00e8 'Play' quando in pausa e 'Pause' quando in esecuzione",
+              "all'avvio mostra 'Play'",
+              "#stepBtn: quando in pausa avanza la simulazione di esattamente uno step (app.frames += 1) e ridisegna",
+              "#resetBtn: rigenera 60 boids casuali, app.frames = 0, mette in pausa (playBtn torna 'Play')",
+              "Slider input type=range id #speed con min 0.5, max 3.0, step 0.1, value 1.0",
+              "al cambio aggiorna app.speed e #speedLabel",
+              "la velocit\u00e0 moltiplica lo spostamento dei boids",
+              "Click sul canvas (id #c) aggiunge un nuovo boid nella posizione del click con velocit\u00e0 casuale e aggiorna #count",
+              "click sull'HUD non aggiunge boids (HUD sopra il canvas)",
+              "Loop con requestAnimationFrame sempre attivo per calcolare FPS e disegnare",
+              "aggiorna la fisica solo se non in pausa"
+            ],
+            "goal": "Crea da zero index.html: simulazione HTML5 Canvas a tutto schermo di uno stormo Boids (separazione, allineamento, coesione) con HUD glassmorphism e controlli. Tutto in un unico file, zero dipendenze esterne, zero errori JavaScript."
+          }
+        ],
+        "local_tokens": 80862,
+        "screenshot": "/home/ale/Projects/tandem-mcp/benchmarks/opus/runs/20261124-174810_v4_2/screenshots/web_boids__p2__tandem.jpg"
+      }
+    },
+    {
+      "task": "web_boids",
+      "arm": "direct",
+      "pair": 2,
+      "workspace": "/home/ale/Projects/tandem-mcp/benchmarks/opus/runs/20261124-174810_v4_2/workspaces/web_boids__p2__direct",
+      "wall_seconds": 71.81,
+      "budget_s": 2400,
+      "timed_out": false,
+      "is_error": false,
+      "num_turns": 5,
+      "total_cost_usd": 0.2374786,
+      "usage": {
+        "input_tokens": 10,
+        "cache_creation_input_tokens": 9900,
+        "cache_read_input_tokens": 82393,
+        "output_tokens": 7088
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 10,
+          "outputTokens": 7088,
+          "cacheReadInputTokens": 82393,
+          "cacheCreationInputTokens": 9900,
+          "webSearchRequests": 0,
+          "costUSD": 0.2374786,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 59,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 9900,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "tool_uses": [
+        "Write",
+        "Bash",
+        "Bash",
+        "Bash"
+      ],
+      "result_text": "Ho creato `index.html`. \u00c8 un unico file senza dipendenze esterne. L'ho provato solo in Node, con il DOM simulato: in questa macchina non c'\u00e8 un browser headless, quindi la pagina non \u00e8 ancora stata aperta in un browser vero.\n\n**Contenuto della pagina:**\n- **Canvas a tutto schermo** con sfondo `#070b14`, nitido anche su schermi ad alta densit\u00e0 e che si adatta al ridimensionamento della finestra.\n- **Stormo Boids** con le tre regole classiche: separazione, allineamento e coesione. Chi esce da un bordo rientra dal lato opposto.\n- **Avvio in pausa con 60 boids** gi\u00e0 disegnati. Il pulsante mostra \"\u25b6 Play\".\n- **HUD in stile glassmorphism** con FPS, numero di boids, velocit\u00e0 e stato (in pausa o in esecuzione).\n- **Controlli:**\n  - **Play/Pause** alterna l'etichetta del pulsante.\n  - **Step** avanza di un fotogramma ed \u00e8 disattivato mentre la simulazione gira.\n  - **Reset** riporta lo stormo a 60 boids.\n  - **Slider velocit\u00e0** da 0.5 a 3.0, con passo 0.1.\n- **Click sul canvas** aggiunge un boid nel punto cliccato, fino a un massimo di 600.\n\n**Verifiche fatte:**\n- Il JavaScript supera il controllo di sintassi di `node --check`.\n- Ho eseguito lo script in Node con il DOM simulato, senza errori. All'avvio mostra \"\u25b6 Play\", 60 boids e lo stato \"Pausa\". Dopo un click sul canvas, uno Step e Play diventa \"\u275a\u275a Pause\" con 61 boids. Portando lo slider a 3.0 l'HUD mostra \"3.0\u00d7\", e il Reset torna a 60 boids.\n\n**Da controllare:** l'aspetto visivo e lo \"zero errori\" nella console di un browser reale",
+      "evaluation": {
+        "passed": true,
+        "failed": [],
+        "reason": "all Boids checks passed"
+      },
+      "success": true,
+      "cost_missing": false
+    },
+    {
+      "task": "web_boids",
+      "arm": "direct",
+      "pair": 3,
+      "workspace": "/home/ale/Projects/tandem-mcp/benchmarks/opus/runs/20261124-174810_v4_2/workspaces/web_boids__p3__direct",
+      "wall_seconds": 54.44,
+      "budget_s": 2400,
+      "timed_out": false,
+      "is_error": false,
+      "num_turns": 3,
+      "total_cost_usd": 0.1780368,
+      "usage": {
+        "input_tokens": 6,
+        "cache_creation_input_tokens": 7142,
+        "cache_read_input_tokens": 44384,
+        "output_tokens": 5600
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 6,
+          "outputTokens": 5600,
+          "cacheReadInputTokens": 44384,
+          "cacheCreationInputTokens": 7142,
+          "webSearchRequests": 0,
+          "costUSD": 0.1780368,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 52,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 7142,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "tool_uses": [
+        "Write",
+        "Bash"
+      ],
+      "result_text": "Ho creato `index.html` da zero, in un unico file senza dipendenze esterne. Ho verificato solo la sintassi del JavaScript con `node --check`, che passa. Non l'ho aperto in un browser, quindi l'assenza di errori durante l'esecuzione non \u00e8 ancora confermata.\n\n- **Canvas:** occupa tutto lo schermo con sfondo `#070b14` e si adatta al ridimensionamento della finestra. Sugli schermi ad alta densit\u00e0 resta nitido.\n- **Stormo:** parte con 60 boids visibili e la simulazione in pausa. Applica le tre regole: separazione, allineamento e coesione. Chi esce da un bordo rientra da quello opposto.\n- **HUD glassmorphism:** mostra FPS, numero di boids, velocit\u00e0 e stato (in pausa / in esecuzione).\n- **Controlli:**\n  - **Play/Pause:** all'avvio mostra \"\u25b6 Play\".\n  - **Step:** avanza di un passo ed \u00e8 attivo solo in pausa.\n  - **Reset:** rigenera lo stormo e rimette in pausa.\n  - **Slider velocit\u00e0:** va da 0.5 a 3.0, con passo 0.1.\n- **Click sul canvas:** aggiunge un nuovo boid nel punto cliccato. Funziona anche in pausa.\n\nHo messo un tetto di 600 boids: oltre quel numero, ogni nuovo boid sostituisce il pi\u00f9 vecchio, cos\u00ec le prestazioni restano stabili.",
+      "evaluation": {
+        "passed": true,
+        "failed": [],
+        "reason": "all Boids checks passed"
+      },
+      "success": true,
+      "cost_missing": false
+    },
+    {
+      "task": "web_boids",
+      "arm": "tandem",
+      "pair": 3,
+      "workspace": "/home/ale/Projects/tandem-mcp/benchmarks/opus/runs/20261124-174810_v4_2/workspaces/web_boids__p3__tandem",
+      "wall_seconds": 626.65,
+      "budget_s": 2400,
+      "timed_out": false,
+      "is_error": false,
+      "num_turns": 3,
+      "total_cost_usd": 0.12446239999999999,
+      "usage": {
+        "input_tokens": 6,
+        "cache_creation_input_tokens": 8266,
+        "cache_read_input_tokens": 40252,
+        "output_tokens": 2513
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 6,
+          "outputTokens": 2513,
+          "cacheReadInputTokens": 40252,
+          "cacheCreationInputTokens": 8266,
+          "webSearchRequests": 0,
+          "costUSD": 0.12446239999999999,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 18,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 8266,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "tool_uses": [
+        "ToolSearch",
+        "mcp__tandem__delegate"
+      ],
+      "result_text": "Ho creato `index.html` con Tandem. Il modello locale ha superato tutti i controlli nel browser: la simulazione parte in pausa con 60 boids e il pulsante mostra \u00abPlay\u00bb. Step avanza di un solo passo, il click sul canvas aggiunge un boid e aggiorna il contatore. Play fa partire lo stormo e Reset lo rimette in pausa.\n\nLo screenshot finale mostra lo sfondo scuro, i boids azzurri in gruppi e l'HUD in vetro smerigliato in alto a sinistra, con FPS, numero di boids, velocit\u00e0, i pulsanti e lo slider da 0.5 a 3.0. Il file \u00e8 unico, con CSS e JavaScript al suo interno, senza dipendenze esterne.\n\nDue limiti delle verifiche:\n- **Errori JavaScript:** nessun controllo cercava esplicitamente errori nella console. La pagina comunque si carica e tutti i passaggi funzionano.\n- **Colore di sfondo:** il controllo sul colore esatto #070b14 era sempre vero, quindi non ha verificato niente. Lo sfondo scuro \u00e8 confermato solo dallo screenshot.",
+      "evaluation": {
+        "passed": true,
+        "failed": [],
+        "reason": "all Boids checks passed"
+      },
+      "success": true,
+      "cost_missing": false,
+      "local": {
+        "jobs": [
+          {
+            "id": "20261124-202748-b9258f",
+            "state": "verified",
+            "tokens": 71041,
+            "repairs": 1,
+            "steps": 8,
+            "seconds": 596.2,
+            "accepted": true,
+            "hints": 0,
+            "perf_strikes": 0,
+            "visual_strikes": 0,
+            "visual_review": {
+              "status": "passed",
+              "model": "qwen3.8-27b@iq3_s",
+              "summary": "Render is clean and complete: full-screen dark canvas (#070b14), light cyan triangle boids oriented along velocity, glassmorphism HUD top-left with readable 'FPS: 60', 'Boids: 60', 'Velocit\u00e0: 1.0x', Pause/Step/Reset buttons and a visible range slider. No cut-off canvas, no overlapping/unreadable HUD",
+              "issues": []
+            },
+            "screenshot": true,
+            "reference_image": false,
+            "verify": [
+              "tandem:ui_test {\"steps\":[{\"exists\":\"#canvas\"},{\"text\":\"#playBtn\",\"match\":\"^\\\\s*Play\\\\s*$\"},{\"js\":\"window.app && window.app.paused === true && window.app.boids.length >= 40\"},{\"exists\":\"#stepBtn\"},{\"exists\":\"#resetBtn\"},{\"js\":\"document.getElementById('speed').min==='0.5' && document.getElementById('speed').max==='3.0'\"},{\"js\":\"getComputedStyle(document.body).backgroundColor==='rgb(7, 11, 20)' || ge"
+            ],
+            "constraints": [
+              "Un solo file index.html con CSS e JS inline",
+              "nessuna risorsa esterna (niente CDN, font, immagini).",
+              "Canvas <canvas id=\"canvas\"> a tutto schermo (100vw x 100vh, ridimensionato su resize), sfondo #070b14",
+              "body margin 0, overflow hidden.",
+              "Boids con tre regole: separazione, allineamento, coesione",
+              "bordi con wrap-around",
+              "velocit\u00e0 limitata.",
+              "All'avvio almeno 40 boids (es. 60) con posizioni casuali dentro il canvas, disegnati subito come triangoli chiari orientati sulla velocit\u00e0 (colori ciano/azzurro chiaro ben visibili su #070b14).",
+              "La simulazione parte IN PAUSA: i boids sono disegnati ma fermi finch\u00e9 non si preme Play.",
+              "Il loop requestAnimationFrame gira sempre (ridisegna e aggiorna FPS) ma aggiorna le posizioni solo se non in pausa.",
+              "HUD glassmorphism in alto a sinistra: background rgba(255,255,255,0.08), backdrop-filter: blur(12px), border 1px solid rgba(255,255,255,0.18), border-radius 14px, testo chiaro #e6edf7, font system-ui.",
+              "HUD mostra tre righe: 'FPS: <n>' in <span id=\"fps\">, 'Boids: <n>' in <span id=\"count\">, 'Velocit\u00e0: <x.x>x' in <span id=\"speedLabel\">.",
+              "Pulsanti: <button id=\"playBtn\"> con testo esatto 'Play' all'avvio e 'Pause' quando in esecuzione (toggle)",
+              "<button id=\"stepBtn\"> testo 'Step' che avanza esattamente una iterazione (solo quando in pausa)",
+              "<button id=\"resetBtn\"> testo 'Reset' che rigenera i boids iniziali (stesso numero iniziale) e rimette in pausa con testo 'Play'.",
+              "Slider <input type=\"range\" id=\"speed\" min=\"0.5\" max=\"3.0\" step=\"0.1\" value=\"1\"> che moltiplica la velocit\u00e0 della simulazione e aggiorna speedLabel.",
+              "Click sul canvas aggiunge un nuovo boid nella posizione del click con velocit\u00e0 casuale",
+              "il contatore Boids si aggiorna subito e il boid viene disegnato subito anche in pausa.",
+              "Esporre window.app = { boids (array di oggetti con x,y,vx,vy), paused (boolean), speed (number), step(), reset(), togglePlay() }, mantenuto aggiornato (stesso array/stato usato dal loop).",
+              "I controlli (HUD e pulsanti) hanno z-index sopra il canvas e i click su di essi non aggiungono boids."
+            ],
+            "goal": "Crea da zero index.html: simulazione HTML5 Canvas a tutto schermo di uno stormo Boids (separazione, allineamento, coesione), che parte in pausa, con HUD glassmorphism e controlli. Zero dipendenze esterne, zero errori JavaScript."
+          }
+        ],
+        "local_tokens": 71041,
+        "screenshot": "/home/ale/Projects/tandem-mcp/benchmarks/opus/runs/20261124-174810_v4_2/screenshots/web_boids__p3__tandem.jpg"
+      }
+    },
+    {
+      "task": "gen_orbital",
+      "arm": "direct",
+      "pair": 1,
+      "workspace": "/home/ale/Projects/tandem-mcp/benchmarks/opus/runs/20261124-174810_v4_2/workspaces/gen_orbital__p1__direct",
+      "wall_seconds": 4945.69,
+      "budget_s": 2400,
+      "timed_out": true,
+      "is_error": false,
+      "num_turns": 3,
+      "total_cost_usd": 0.348784,
+      "usage": {
+        "input_tokens": 6,
+        "cache_creation_input_tokens": 18190,
+        "cache_read_input_tokens": 42200,
+        "output_tokens": 9740
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 6,
+          "outputTokens": 9740,
+          "cacheReadInputTokens": 42200,
+          "cacheCreationInputTokens": 18190,
+          "webSearchRequests": 0,
+          "costUSD": 0.348784,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 69,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 18190,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "tool_uses": [
+        "Write",
+        "Bash"
+      ],
+      "result_text": "I've created `index.html` as a single file with no external dependencies. The JavaScript passes a syntax check (`node --check`), but I haven't opened it in a browser, so I haven't seen it run or measured performance.\n\n**What it does:**\n- **Canvas:** fills the window on the `#060913` background, scales for high-density screens (`devicePixelRatio`, capped at 2.5) and animates with `requestAnimationFrame`. The time step per frame is capped so the simulation doesn't jump after you switch tabs.\n- **Star:** the core and the outer corona are both drawn with `createRadialGradient`. The corona pulses slightly, and keeps pulsing while the simulation is paused.\n- **Planets:** 7 planets, each with its own orbit radius, speed and color. One has a ring. There are 7 moons in total, one of which orbits backwards. Planets and moons leave trails that fade out, and the orbit paths are drawn as faint circles. Planets are lit on the side facing the star.\n- **Starfield:** 180\u2013600 stars depending on window size, each twinkling at its own rate, plus a faint nebula glow.\n- **HUD:** a frosted-glass panel with Play/Pause, Trails ON/OFF and Reset buttons. The speed slider uses exactly the attributes you gave and shows the multiplier live (e.g. `1.0\u00d7`). It also shows FPS, simulation time in seconds and the current burst particle count.\n- **Bursts:** each click spawns 90\u2013140 glowing particles that slow down, fade out and drift slightly toward the star. The total is capped at 3000 particles.\n\n**Things I ad",
+      "evaluation": {
+        "passed": false,
+        "failed": [
+          "clickSpawnsBurst"
+        ],
+        "reason": "clickSpawnsBurst: particles before=0, afterClick=0, after2.2s=39"
+      },
+      "success": false,
+      "cost_missing": false
+    },
+    {
+      "task": "gen_orbital",
+      "arm": "tandem",
+      "pair": 1,
+      "workspace": "/home/ale/Projects/tandem-mcp/benchmarks/opus/runs/20261124-174810_v4_2/workspaces/gen_orbital__p1__tandem",
+      "wall_seconds": 718.42,
+      "budget_s": 2400,
+      "timed_out": false,
+      "is_error": false,
+      "num_turns": 4,
+      "total_cost_usd": 0.1735918,
+      "usage": {
+        "input_tokens": 8,
+        "cache_creation_input_tokens": 12620,
+        "cache_read_input_tokens": 58199,
+        "output_tokens": 3048
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 8,
+          "outputTokens": 3048,
+          "cacheReadInputTokens": 58199,
+          "cacheCreationInputTokens": 12620,
+          "webSearchRequests": 0,
+          "costUSD": 0.1735918,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 154,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 12620,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "tool_uses": [
+        "ToolSearch",
+        "mcp__tandem__delegate",
+        "mcp__tandem__job_continue"
+      ],
+      "result_text": "I've created `index.html` using Tandem. It's a single file with no external dependencies. It has a glowing star with a pulsing corona, 6 planets and at least 3 moons with fading trails, a twinkling starfield of 200+ stars, and a frosted-glass control panel. Clicking the canvas sends out a burst of glowing particles that slow down and fade away.\n\nTandem's automated browser test passed. It checked that the controls work: Play/Pause, Trails ON/OFF, Reset, the 0.2\u20133.0 speed slider and its live readout, and that a click creates particles. It also checked the page loads without errors. In the first version the FPS, time and particle numbers had no labels, so I sent it back once, and the panel now reads \"FPS 60 \u00b7 Time 4.1 s \u00b7 Particles 0\".",
+      "evaluation": {
+        "passed": false,
+        "failed": [
+          "trailsToggle"
+        ],
+        "reason": "trailsToggle: label \"Trails: ON\" -> \"Trails: OFF\"; orbitalNonBg@320x200: ON=229 vs OFF=222 (drop=7, min=15)"
+      },
+      "success": false,
+      "cost_missing": false,
+      "local": {
+        "jobs": [
+          {
+            "id": "20261124-220101-a3c116",
+            "state": "verified",
+            "tokens": 128696,
+            "repairs": 0,
+            "steps": 11,
+            "seconds": 687.0,
+            "accepted": true,
+            "hints": 1,
+            "perf_strikes": 0,
+            "visual_strikes": 0,
+            "visual_review": {
+              "status": "passed",
+              "model": "qwen3.8-27b@iq3_s",
+              "summary": "Render is clean and complete: full-viewport dark canvas with central radial-gradient star + pulsing corona, faint orbit rings, 6 distinct colored planets, visible moons (small dots near yellow/red/blue planets), fading trails behind moving planets, dense twinkling starfield, and a readable glassmorp",
+              "issues": []
+            },
+            "screenshot": true,
+            "reference_image": false,
+            "verify": [
+              "tandem:ui_test {\"steps\":[{\"exists\":\"canvas#sim\"},{\"exists\":\"#hud\"},{\"js\":\"window.app.planets.length>=5 && window.app.moons.length>=3\"},{\"js\":\"document.querySelector('#speed').min==='0.2' && document.querySelector('#speed').max==='3.0' && document.querySelector('#speed').step==='0.1'\"},{\"text\":\"#speedVal\",\"match\":\"1\\\\.0x\"},{\"text\":\"#playBtn\",\"match\":\"^Pause$\"},{\"text\":\"#trailsBtn\",\"match\":\"Trails: "
+            ],
+            "constraints": [
+              "Only one file: index.html with inline <style> and <script>",
+              "no external URLs, fonts, images or libraries.",
+              "Page background and canvas clear color #060913",
+              "html/body margin 0, overflow hidden.",
+              "One <canvas id=\"sim\"> covering full window (position fixed, 100vw x 100vh)",
+              "on resize set canvas.width/height = innerWidth/innerHeight * devicePixelRatio and ctx.setTransform(dpr,0,0,dpr,0,0).",
+              "Animation loop uses requestAnimationFrame with delta time (clamp dt to max 0.05s).",
+              "Central star at canvas center drawn with ctx.createRadialGradient (white core -> #ffd27a -> #ff8a3d -> transparent) plus a corona whose radius pulses subtly with Math.sin(time).",
+              "At least 5 planets in an array, each with distinct orbit radius, angular speed, color and size (e.g. #8fd3ff, #ff7a7a, #7dffb0, #ffd27a, #c59bff, #ff9de2).",
+              "Draw faint orbit path circles.",
+              "At least 3 moons total orbiting their parent planets (each moon with own radius, speed, color).",
+              "Each planet keeps a trail history of recent positions (~40-60 points) drawn as fading line segments/dots with decreasing alpha",
+              "when trails are OFF, trails are not drawn and history is cleared.",
+              "Background starfield of at least 200 stars with random positions (regenerated on resize), each twinkling via alpha = base + amplitude*sin(time*speed+phase).",
+              "HUD overlay: a <div id=\"hud\"> fixed top-left with glassmorphism: background rgba(255,255,255,0.08), backdrop-filter: blur(12px) (plus -webkit-backdrop-filter), 1px border rgba(255,255,255,0.18), border-radius 14px, light text, system-ui font.",
+              "HUD button <button id=\"playBtn\"> toggles pause",
+              "label text exactly 'Pause' while running and 'Play' while paused.",
+              "HUD button <button id=\"trailsBtn\"> toggles trails",
+              "label text exactly 'Trails: ON' or 'Trails: OFF'.",
+              "Trails start ON.",
+              "HUD button <button id=\"resetBtn\"> label 'Reset': resets simulation time to 0, planet/moon angles to initial values, clears trails and all burst particles, sets speed to 1.0 (slider and readout), and unpauses.",
+              "HUD contains exactly <input type=\"range\" id=\"speed\" min=\"0.2\" max=\"3.0\" step=\"0.1\" value=\"1.0\"> and a <span id=\"speedVal\"> showing live multiplier formatted like '1.0x' updated on input event.",
+              "HUD stats: <span id=\"fps\"> (integer FPS, smoothed, updated ~every 0.5s), <span id=\"simTime\"> (simulation time in seconds with 1 decimal, e.g. '12.3'), <span id=\"particles\"> (current burst particle count integer).",
+              "Simulation time advances by dt*speed only when not paused",
+              "orbits use simulation time so pause freezes them",
+              "starfield twinkle may keep animating.",
+              "Clicking (pointerdown/click) on the canvas spawns a radial burst of 60-120 glowing particles at the click point (use clientX/clientY in CSS pixels), random angles and speeds, velocity damping each frame (e.g. v *= Math.pow(0.9, dt*60) or similar), life decreasing to fade out alpha",
+              "remove dead particles.",
+              "Draw particles with globalCompositeOperation 'lighter' and a small radial glow.",
+              "Particles update only when not paused.",
+              "Clicks on the HUD must not spawn bursts (HUD is outside canvas",
+              "HUD pointer events don't propagate to canvas).",
+              "Expose window.app = { get paused(), get trails(), get speed(), get simTime(), get particleCount(), planets, moons, spawnBurst(x,y) } where planets and moons are the arrays (planets.length>=5, moons.length>=3).",
+              "Valid JavaScript, no console errors."
+            ],
+            "goal": "Create a single self-contained index.html: an interactive full-viewport HTML5 Canvas orbital particle simulation in dark space, with glassmorphism HUD, zero external dependencies."
+          }
+        ],
+        "local_tokens": 128696,
+        "screenshot": "/home/ale/Projects/tandem-mcp/benchmarks/opus/runs/20261124-174810_v4_2/screenshots/gen_orbital__p1__tandem.jpg"
+      }
+    },
+    {
+      "task": "gen_orbital",
+      "arm": "tandem",
+      "pair": 2,
+      "workspace": "/home/ale/Projects/tandem-mcp/benchmarks/opus/runs/20261124-174810_v4_2/workspaces/gen_orbital__p2__tandem",
+      "wall_seconds": 658.92,
+      "budget_s": 2400,
+      "timed_out": false,
+      "is_error": false,
+      "num_turns": 3,
+      "total_cost_usd": 0.1350386,
+      "usage": {
+        "input_tokens": 6,
+        "cache_creation_input_tokens": 8836,
+        "cache_read_input_tokens": 40533,
+        "output_tokens": 2811
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 6,
+          "outputTokens": 2811,
+          "cacheReadInputTokens": 40533,
+          "cacheCreationInputTokens": 8836,
+          "webSearchRequests": 0,
+          "costUSD": 0.1350386,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 68,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 8836,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "tool_uses": [
+        "ToolSearch",
+        "mcp__tandem__delegate"
+      ],
+      "result_text": "Tandem ha creato `index.html` (576 righe, nessuna dipendenza esterna) e ha superato tutti i controlli UI automatici in Chromium e la revisione visiva locale. Contiene:\n- una stella centrale con corona pulsante;\n- 6 pianeti con almeno 3 lune e scie che sfumano;\n- un campo stellare scintillante di 220 stelle;\n- un HUD in stile glassmorphism con i pulsanti Play/Pause, Trails e Reset, lo slider della velocit\u00e0 e i valori in tempo reale di FPS, tempo e particelle;\n- esplosioni di particelle al clic, che rallentano e svaniscono.\n\nBasta aprire il file nel browser.",
+      "evaluation": {
+        "passed": false,
+        "failed": [
+          "pauseStopsTime",
+          "clickSpawnsBurst"
+        ],
+        "reason": "pauseStopsTime: clicked \"Pause\"; t=1.5s -> 1.6s over 700ms; labelChanged=true; clickSpawnsBurst: particles before=0, afterClick=0, after2.2s=0"
+      },
+      "success": false,
+      "cost_missing": false,
+      "local": {
+        "jobs": [
+          {
+            "id": "20261124-221316-22ef49",
+            "state": "verified",
+            "tokens": 83826,
+            "repairs": 1,
+            "steps": 7,
+            "seconds": 626.2,
+            "accepted": true,
+            "hints": 0,
+            "perf_strikes": 0,
+            "visual_strikes": 0,
+            "visual_review": {
+              "status": "passed",
+              "model": "qwen3.8-27b@iq3_s",
+              "summary": "Render is clean and complete: dark #060913 space, central radial-gradient star with pulsing corona, 6 distinct planets on faint orbit rings, 3+ moons, fading trails, twinkling starfield, and a glassmorphism HUD with Pause/Trails/Reset, speed slider (1.0x), FPS/Time/Particles readouts. No blank/cut-o",
+              "issues": []
+            },
+            "screenshot": true,
+            "reference_image": false,
+            "verify": [
+              "tandem:ui_test {\"steps\":[{\"exists\":\"canvas#sim\"},{\"exists\":\"#hud\"},{\"exists\":\"#btnPlay\"},{\"exists\":\"#btnTrails\"},{\"exists\":\"#btnReset\"},{\"exists\":\"input#speed[type=range][min='0.2'][max='3.0'][step='0.1']\"},{\"js\":\"window.app.planets.length>=5 && window.app.moons.length>=3 && window.app.stars.length>=150\"},{\"js\":\"getComputedStyle(document.body).backgroundColor==='rgb(6, 9, 19)'\"},{\"expect\":\"moving\""
+            ],
+            "constraints": [
+              "Only one file index.html",
+              "all CSS and JS inline",
+              "no external URLs, fonts, scripts or images.",
+              "Page background and canvas clear color is #060913",
+              "html/body margin 0, overflow hidden.",
+              "One <canvas id=\"sim\"> covering the full window (position fixed, 100vw x 100vh)",
+              "on resize set canvas.width/height = innerWidth/innerHeight * devicePixelRatio and ctx.setTransform(dpr,0,0,dpr,0,0).",
+              "Animation loop uses requestAnimationFrame with delta time from the timestamp (clamp dt to max 0.05 s).",
+              "Central star at canvas center drawn with ctx.createRadialGradient (white core -> #ffd27a -> #ff9a3c -> transparent) plus a corona halo whose radius pulses with a sine of time (about \u00b18%).",
+              "At least 6 planets, each with distinct orbital radius, angular speed, color and size",
+              "draw a faint orbit ring for each.",
+              "At least 3 moons total, each orbiting a parent planet with its own radius and speed.",
+              "Fading orbital trails: each planet keeps a history array of recent positions (about 60 points) drawn as segments with alpha decreasing toward the oldest point",
+              "trails hidden and history cleared when trails are OFF.",
+              "Background starfield of 220 stars with random positions (relative to viewport, regenerated on resize), size and twinkle phase",
+              "alpha oscillates with sin(time*speed+phase).",
+              "HUD overlay <div id=\"hud\"> fixed top-left, glassmorphism: background rgba(255,255,255,0.08), backdrop-filter: blur(12px) (plus -webkit-backdrop-filter), border 1px solid rgba(255,255,255,0.18), border-radius 14px, padding 14px, color #e6ecff, system-ui font, small box-shadow.",
+              "Button #btnPlay toggles pause",
+              "its text is exactly 'Pause' while running and 'Play' while paused.",
+              "Button #btnTrails toggles trails",
+              "text exactly 'Trails: ON' or 'Trails: OFF'.",
+              "Default ON.",
+              "Button #btnReset resets simulation time to 0, planet/moon angles to initial values, clears trails and burst particles, and sets speed back to 1.0 (slider and readout).",
+              "Slider exactly: <input type=\"range\" id=\"speed\" min=\"0.2\" max=\"3.0\" step=\"0.1\" value=\"1.0\">",
+              "a <span id=\"speedVal\"> shows live multiplier formatted like '1.0x' (one decimal + 'x') updated on input.",
+              "Stats: <span id=\"fps\"> (integer FPS, updated about every 0.5 s), <span id=\"simTime\"> (simulation time in seconds with 1 decimal, advances by dt*speed only while playing), <span id=\"particles\"> (current number of active burst particles).",
+              "Clicks on the HUD must not spawn bursts (HUD stops propagation or the canvas listener only listens on the canvas).",
+              "Clicking the canvas spawns 80 particles at the click point (use clientX/clientY in CSS pixels) with random angle, random speed 60-260 px/s, random warm/cool hue",
+              "each frame velocity multiplied by Math.pow(0.92, dt*60) (damping), life decreases and alpha fades to 0",
+              "dead particles removed.",
+              "Draw particles with globalCompositeOperation 'lighter' and a glow (small radial gradient or shadowBlur).",
+              "When paused, planets, moons, sim time and particles freeze, but the scene keeps rendering.",
+              "Expose window.app = { get paused(){...}, get trails(){...}, get speed(){...}, get simTime(){...}, get particleCount(){...}, planets: <array of planet objects>, moons: <array of moon objects>, stars: <starfield array> } kept in sync with live state.",
+              "Valid JavaScript, no console errors."
+            ],
+            "goal": "Create a single self-contained index.html: interactive full-viewport HTML5 Canvas orbital particle simulation in dark space with central glowing star, orbiting planets with moons and trails, twinkling starfield, glassmorphism HUD, and click-spawned particle bursts. Zero external dependencies."
+          }
+        ],
+        "local_tokens": 83826,
+        "screenshot": "/home/ale/Projects/tandem-mcp/benchmarks/opus/runs/20261124-174810_v4_2/screenshots/gen_orbital__p2__tandem.jpg"
+      }
+    },
+    {
+      "task": "gen_orbital",
+      "arm": "direct",
+      "pair": 2,
+      "workspace": "/home/ale/Projects/tandem-mcp/benchmarks/opus/runs/20261124-174810_v4_2/workspaces/gen_orbital__p2__direct",
+      "wall_seconds": 78.25,
+      "budget_s": 2400,
+      "timed_out": false,
+      "is_error": false,
+      "num_turns": 3,
+      "total_cost_usd": 0.2997318,
+      "usage": {
+        "input_tokens": 6,
+        "cache_creation_input_tokens": 12616,
+        "cache_read_input_tokens": 46999,
+        "output_tokens": 9469
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 6,
+          "outputTokens": 9469,
+          "cacheReadInputTokens": 46999,
+          "cacheCreationInputTokens": 12616,
+          "webSearchRequests": 0,
+          "costUSD": 0.2997318,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 142,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 12616,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "tool_uses": [
+        "Write",
+        "Bash"
+      ],
+      "result_text": "I've created `index.html` with the whole simulation in one file and no external dependencies. The JavaScript passes a syntax check (`node --check`), but I haven't opened it in a browser, so the visuals and controls are untested.\n\n**What's in it:**\n- **Canvas:** fills the window, scales for high-density screens, redraws with `requestAnimationFrame`, and adjusts when the window is resized. Movement is based on elapsed time, so speed doesn't depend on frame rate.\n- **Star:** a glowing core with a corona that pulses gently.\n- **Planets:** 7 planets with different orbit sizes, speeds and colours, plus 6 moons across 4 of them. One planet has a ring. Planets and moons leave trails that fade out, and faint orbit lines are drawn.\n- **Starfield:** at least 180 twinkling stars (more on bigger screens), over a faint nebula tint.\n- **Control panel:** a frosted-glass panel in the top-left with Play/Pause, Trails ON/OFF and Reset buttons. It also has the speed slider (0.2\u20133.0) with a live readout, plus live FPS, simulation time and burst particle count.\n- **Bursts:** clicking spawns about 90\u2013140 glowing particles that fly outward, slow down and fade. They're capped at 4,000 to protect performance.\n\nA few behaviours you might not expect:\n- Reset also puts the speed back to 1.0\u00d7 and resumes playback if it was paused.\n- Pause freezes the planets and the burst particles, but the star's pulse and the twinkling keep going.\n- Resizing the window clears the trails so they don't jump to the new siz",
+      "evaluation": {
+        "passed": false,
+        "failed": [
+          "trailsToggle"
+        ],
+        "reason": "trailsToggle: label \"Trails: ON\" -> \"Trails: OFF\"; orbitalNonBg@320x200: ON=787 vs OFF=775 (drop=12, min=15)"
+      },
+      "success": false,
+      "cost_missing": false
+    },
+    {
+      "task": "gen_orbital",
+      "arm": "direct",
+      "pair": 3,
+      "workspace": "/home/ale/Projects/tandem-mcp/benchmarks/opus/runs/20261124-174810_v4_2/workspaces/gen_orbital__p3__direct",
+      "wall_seconds": 85.85,
+      "budget_s": 2400,
+      "timed_out": false,
+      "is_error": false,
+      "num_turns": 3,
+      "total_cost_usd": 0.3026466,
+      "usage": {
+        "input_tokens": 6,
+        "cache_creation_input_tokens": 11584,
+        "cache_read_input_tokens": 49153,
+        "output_tokens": 10006
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 6,
+          "outputTokens": 10006,
+          "cacheReadInputTokens": 49153,
+          "cacheCreationInputTokens": 11584,
+          "webSearchRequests": 0,
+          "costUSD": 0.3026466,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 81,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 11584,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "tool_uses": [
+        "Write",
+        "Bash"
+      ],
+      "result_text": "I've created `index.html`, a single file with no external dependencies. The JavaScript passes a syntax check (`node --check`), but I haven't opened it in a browser, so the visuals and controls haven't been checked by eye.\n\n1. **Canvas:** fills the window, redraws on every frame with `requestAnimationFrame`, and scales for high-density screens using `devicePixelRatio`. On resize it rebuilds the starfield and recalculates the planet orbits.\n2. **Central star:** a radial-gradient core with an outer corona, faint rotating rays, and a gentle pulse that combines two sine waves.\n3. **Planets and moons:** 7 planets with distinct radii, speeds and colours, each lit from the star's side, and a ring on the largest one. There are 6 moons spread across 4 planets. Planets and moons leave fading trails that get thinner and dimmer towards the tail.\n4. **Starfield:** at least 180 twinkling stars (more on larger screens), each with its own twinkle rate and phase, a few tinted blue or gold.\n5. **HUD panel:** a frosted-glass panel with:\n   - Play/Pause, Trails ON/OFF and Reset buttons\n   - the speed slider exactly as specified (0.2\u20133.0, step 0.1), with a live readout like \"1.0\u00d7\"\n   - live FPS, simulation time in seconds, and the number of burst particles on screen\n6. **Click bursts:** each click spawns 90\u2013140 glowing particles that fly out radially, slow down and fade. The slider speeds these up or slows them down too, and they're capped at 4,000 at once.\n\nBehaviours you might not expect:\n- **Pa",
+      "evaluation": {
+        "passed": false,
+        "failed": [
+          "clickSpawnsBurst"
+        ],
+        "reason": "clickSpawnsBurst: particles before=0, afterClick=0, after2.2s=17"
+      },
+      "success": false,
+      "cost_missing": false
+    },
+    {
+      "task": "gen_orbital",
+      "arm": "tandem",
+      "pair": 3,
+      "workspace": "/home/ale/Projects/tandem-mcp/benchmarks/opus/runs/20261124-174810_v4_2/workspaces/gen_orbital__p3__tandem",
+      "wall_seconds": 840.54,
+      "budget_s": 2400,
+      "timed_out": false,
+      "is_error": false,
+      "num_turns": 4,
+      "total_cost_usd": 0.1585338,
+      "usage": {
+        "input_tokens": 8,
+        "cache_creation_input_tokens": 9546,
+        "cache_read_input_tokens": 61869,
+        "output_tokens": 3488
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 8,
+          "outputTokens": 3488,
+          "cacheReadInputTokens": 61869,
+          "cacheCreationInputTokens": 9546,
+          "webSearchRequests": 0,
+          "costUSD": 0.1585338,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 127,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 9546,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "tool_uses": [
+        "ToolSearch",
+        "mcp__tandem__delegate",
+        "mcp__tandem__job_continue"
+      ],
+      "result_text": "I used Tandem to build `index.html`, a single self-contained file with no external dependencies. It has a glowing central star with a pulsing corona, 6 planets with moons and fading trails, a twinkling starfield of 200+ stars, and a frosted-glass control panel. Clicking the canvas sends out a burst of 60 glowing particles that slow down and fade.\n\nTandem's automated browser test passed, covering the parts that can be tested by script:\n- **Content:** there are at least 5 planets with distinct orbit sizes and colors, at least 3 moons and at least 150 stars.\n- **Buttons:** Play/Pause, Trails ON/OFF and Reset each did what they should; Reset also cleared the particles and set the speed back to 1.0.\n- **Slider and burst:** the speed slider has the exact settings you specified, and moving it updates the readout. A click on the canvas spawned particles.\n- **Sizing:** the canvas is scaled for high-resolution screens.\n\nThe visual parts (glow, trails, twinkling, how the bursts look) were checked only from a single screenshot. On that first screenshot, the \"1.0x\" speed readout ran past the panel's edge and \"Trails: ON\" wrapped onto two lines. I had Tandem fix the panel layout, and the second screenshot shows both fixed. The full test passed again after the fix.",
+      "evaluation": {
+        "passed": true,
+        "failed": [],
+        "reason": ""
+      },
+      "success": true,
+      "cost_missing": false,
+      "local": {
+        "jobs": [
+          {
+            "id": "20261124-222745-c18d29",
+            "state": "verified",
+            "tokens": 129760,
+            "repairs": 0,
+            "steps": 11,
+            "seconds": 807.3,
+            "accepted": true,
+            "hints": 1,
+            "perf_strikes": 0,
+            "visual_strikes": 0,
+            "visual_review": {
+              "status": "passed",
+              "model": "qwen3.8-27b@iq3_s",
+              "summary": "Render is clean and complete: full-viewport dark canvas, central radial-gradient star with pulsing corona, 6 distinct planets with distinct colors/sizes, multiple moons orbiting parents, fading orbital trails visible, dense twinkling starfield, and a readable glassmorphism HUD (FPS/Time/Particles/Sp",
+              "issues": []
+            },
+            "screenshot": true,
+            "reference_image": false,
+            "verify": [
+              "tandem:ui_test {\"steps\":[{\"exists\":\"canvas#sim\"},{\"exists\":\"#hud\"},{\"js\":\"window.app && window.app.planets.length>=5 && window.app.moons.length>=3 && window.app.stars.length>=150\"},{\"js\":\"new Set(window.app.planets.map(p=>p.radius)).size===window.app.planets.length && new Set(window.app.planets.map(p=>p.color)).size===window.app.planets.length\"},{\"js\":\"(()=>{const s=document.querySelector('#speed'"
+            ],
+            "constraints": [
+              "Only one file: index.html, with inline <style> and <script>",
+              "no external URLs, fonts, images or libraries.",
+              "body/html background color #060913, margin 0, overflow hidden",
+              "canvas id=\"sim\" is position fixed, covers the full window (100vw x 100vh).",
+              "Canvas backing size = window size * window.devicePixelRatio, with ctx.setTransform(dpr,0,0,dpr,0,0)",
+              "resize handler on window 'resize'.",
+              "Animation loop uses requestAnimationFrame",
+              "delta time clamped to max 0.05 s.",
+              "Central star at canvas center drawn with ctx.createRadialGradient (white core -> yellow #ffd36b -> orange -> transparent) plus a corona whose radius pulses with Math.sin of time (subtle, ~\u00b18%).",
+              "Exactly 6 planets in window.app.planets, each object with fields: name, radius (orbital radius px), speed (rad/s), size, color, angle, trail (array of past {x,y}).",
+              "Orbital radii distinct (e.g. 70,110,155,205,260,320 scaled down by Math.min(1, minDimension/720)), speeds distinct (inner faster), colors distinct.",
+              "At least 4 moons total in window.app.moons, each with fields: parent (planet index), radius, speed, size, color, angle",
+              "moons orbit their parent planet.",
+              "Orbital trails: each planet stores last ~60 positions and draws them as a fading polyline (alpha decreasing toward the oldest point).",
+              "When trails are OFF, trails are not drawn and are cleared.",
+              "Background starfield: window.app.stars array with at least 200 stars, each with x,y,r,phase,twinkleSpeed",
+              "alpha = 0.3+0.7*abs(sin(time*twinkleSpeed+phase))",
+              "stars regenerated on resize.",
+              "HUD: a div id=\"hud\" fixed top-left with glassmorphism: background rgba(255,255,255,0.08), backdrop-filter: blur(12px) (plus -webkit-backdrop-filter), border 1px solid rgba(255,255,255,0.18), border-radius 14px, padding 14px, color #e6ecff, font-family system-ui, sans-serif.",
+              "HUD button id=\"playBtn\": text 'Pause' while running, 'Play' while paused",
+              "toggles window.app.paused.",
+              "HUD button id=\"trailsBtn\": text 'Trails: ON' / 'Trails: OFF'",
+              "toggles window.app.trails (default true).",
+              "HUD button id=\"resetBtn\": text 'Reset'",
+              "sets window.app.simTime=0, resets planet/moon angles to initial values, clears trails and all burst particles, sets speed to 1.0 and slider value to 1.0, unpauses.",
+              "Speed slider exactly: <input type=\"range\" id=\"speed\" min=\"0.2\" max=\"3.0\" step=\"0.1\" value=\"1.0\">",
+              "on 'input' sets window.app.speed=parseFloat(value) and updates span id=\"speedVal\" text to speed.toFixed(1)+'x' (initially '1.0x').",
+              "HUD readouts: span id=\"fps\" (integer FPS, smoothed, updated ~every 0.5 s), span id=\"simTime\" (window.app.simTime.toFixed(1), seconds), span id=\"particles\" (window.app.particles.length).",
+              "Labels: 'FPS', 'Time (s)', 'Particles'.",
+              "window.app.simTime advances by dt*speed only when not paused",
+              "planets/moons stop moving when paused.",
+              "Clicking (mousedown/click event on canvas, not on HUD) spawns a radial burst of 60 particles at the click point into window.app.particles",
+              "each particle has x,y,vx,vy,life,maxLife,color,size",
+              "velocities spread evenly around 360\u00b0 with random magnitude 60-260 px/s.",
+              "Particles: velocity damping each frame (v *= Math.pow(0.9, dt*60) or similar), life decreases, alpha = life/maxLife, drawn with additive blending (globalCompositeOperation 'lighter') and a glow (shadowBlur or radial gradient)",
+              "removed when life<=0.",
+              "Particles keep updating even when paused is false",
+              "when paused they freeze.",
+              "Expose window.app = { planets, moons, stars, particles, paused, trails, speed, simTime, spawnBurst(x,y), reset() } where spawnBurst adds the 60 particles and reset performs the Reset button behavior.",
+              "HUD must not overflow off-screen at 1280x800",
+              "buttons styled as glass pills with hover state."
+            ],
+            "goal": "Create a single self-contained index.html implementing an interactive full-viewport HTML5 Canvas orbital particle simulation in dark space, with a glassmorphism HUD and click-to-spawn particle bursts. Zero external dependencies, valid JavaScript."
+          }
+        ],
+        "local_tokens": 129760,
+        "screenshot": "/home/ale/Projects/tandem-mcp/benchmarks/opus/runs/20261124-174810_v4_2/screenshots/gen_orbital__p3__tandem.jpg"
+      }
+    },
+    {
+      "task": "gen_portal",
+      "arm": "direct",
+      "pair": 1,
+      "workspace": "/home/ale/Projects/tandem-mcp/benchmarks/opus/runs/20261124-174810_v4_2/workspaces/gen_portal__p1__direct",
+      "wall_seconds": 164.56,
+      "budget_s": 4200,
+      "timed_out": false,
+      "is_error": false,
+      "num_turns": 9,
+      "total_cost_usd": 0.610004,
+      "usage": {
+        "input_tokens": 18,
+        "cache_creation_input_tokens": 24403,
+        "cache_read_input_tokens": 227640,
+        "output_tokens": 18459
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 18,
+          "outputTokens": 18459,
+          "cacheReadInputTokens": 227640,
+          "cacheCreationInputTokens": 24403,
+          "webSearchRequests": 0,
+          "costUSD": 0.610004,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 2239,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 24403,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "tool_uses": [
+        "Bash",
+        "Write",
+        "Bash",
+        "Bash",
+        "Bash",
+        "Read",
+        "Bash",
+        "Read"
+      ],
+      "result_text": "I built the demo as a single self-contained file, `index.html`, with no dependencies. The script passes a syntax check, and I rendered it in headless Chromium and checked two screenshots. They show the platform, pillars, lintel, crown, crystals, portal core, rings, grid, stars, particles and HUD all drawing correctly. I didn't measure a real frame rate: the headless capture skips real-time frames, so the FPS counter read 0 there. Animation and the buttons were only checked by reading the code, not by clicking them.\n\n**How it's built**\n- **3D renderer:** written from scratch on the 2D canvas. It handles the camera, perspective, hidden faces, near-plane clipping for lines, and sorting everything back to front so nearer objects cover farther ones. Faces get simple lighting plus a rim highlight and glowing outlines.\n- **Background:** a dark purple radial-gradient sky with two faint drifting nebula glows.\n- **Structure:** a two-tier platform, twin pillars, lintel and crown cap, made from 6 boxes with 36 faces in total.\n- **Crystals:** six octahedra (48 triangles) in cyan, magenta and violet. They orbit the portal, bob up and down, spin and tilt, and each has a soft halo.\n- **Portal core:** a glowing disc tilted to match the 3D view, with four rotating spiral arms and an outer bloom. Two rings rotate in opposite directions, and each ring segment is sorted separately so the rings pass correctly in front of and behind the pillars.\n- **Grid floor:** a cyber grid that fades with distan",
+      "evaluation": {
+        "passed": false,
+        "failed": [
+          "interactions",
+          "visual"
+        ],
+        "reason": " ON\"->\"Orbit OFF\", floorDiffOn=8.656, floorDiffOff=1.508, fullDiffOn=8.529, fullDiffOff=5.268]; speed=[diff@0.2x=3.149 vs diff@3x=14.790]; reset=[pauseRestored=false, animAfterReset=false, extraControlsReset=false (speed=true, orbit=false)] visual={'status': 'failed', 'passed': False, 'darkBlueFaces': 299696, 'saturatedCyan': 8743, 'saturatedMagenta': 53859, 'overexposedWhite': 15065}"
+      },
+      "success": false,
+      "cost_missing": false
+    },
+    {
+      "task": "gen_portal",
+      "arm": "tandem",
+      "pair": 1,
+      "workspace": "/home/ale/Projects/tandem-mcp/benchmarks/opus/runs/20261124-174810_v4_2/workspaces/gen_portal__p1__tandem",
+      "wall_seconds": 1990.9,
+      "budget_s": 4200,
+      "timed_out": false,
+      "is_error": false,
+      "num_turns": 10,
+      "total_cost_usd": 0.2851246,
+      "usage": {
+        "input_tokens": 20,
+        "cache_creation_input_tokens": 16464,
+        "cache_read_input_tokens": 199363,
+        "output_tokens": 5673
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 20,
+          "outputTokens": 5673,
+          "cacheReadInputTokens": 199363,
+          "cacheCreationInputTokens": 16464,
+          "webSearchRequests": 0,
+          "costUSD": 0.2851246,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 579,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 16464,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "tool_uses": [
+        "ToolSearch",
+        "mcp__tandem__delegate",
+        "Bash",
+        "Bash",
+        "Bash",
+        "Bash",
+        "Bash",
+        "Bash",
+        "Read"
+      ],
+      "result_text": "The neon portal demo is built and working: open `index.html` directly in a browser. Tandem's job ended as FAILED, and I had to fix the grid floor myself.\n\n**What I checked:** I took a headless screenshot after my fix. It shows the full scene, including the floor grid. The page reports 41 polygons drawn per frame, and the HUD shows FPS and PARTS 110. In the screenshot FPS read 14, but that's the headless renderer, not a browser. In Tandem's own run FPS was 60, and its checks for the canvas size, star and particle counts, Pause and Orbit passed.\n\n**What failed in Tandem's check:** the \"is the image still while paused\" step crashed inside the test tool itself (`getImageData` ran out of memory). It didn't show a fault in the page. I didn't re-run that pause check or the Reset check, so those two are still untested.\n\n**The fix I made:** the grid floor code skipped converting world positions into camera view, so the whole grid collapsed into one purple line on the horizon. I fixed it in `app.js` and also clipped lines that pass behind the camera.\n\n**One small visual flaw:** stars are drawn on top of the grid, so a few show through the floor.\n\nThe files are `index.html`, `engine3d.js` (the 3D renderer), `scene.js` (the scene objects) and `app.js` (animation, camera and HUD). Your current state is exposed as `window.app` for testing.",
+      "evaluation": {
+        "passed": false,
+        "failed": [
+          "interactions"
+        ],
+        "reason": "bit ON\"->\"Orbit OFF\", floorDiffOn=6.747, floorDiffOff=4.139, fullDiffOn=8.678, fullDiffOff=5.953]; speed=[diff@0.2x=4.494 vs diff@3x=8.834]; reset=[pauseRestored=true, animAfterReset=true, extraControlsReset=false (speed=true, orbit=false)] visual={'status': 'passed', 'passed': True, 'darkBlueFaces': 384621, 'saturatedCyan': 8014, 'saturatedMagenta': 10003, 'overexposedWhite': 453}"
+      },
+      "success": false,
+      "cost_missing": false,
+      "local": {
+        "jobs": [
+          {
+            "id": "20261124-224456-18eeeb",
+            "state": "stuck",
+            "tokens": 466655,
+            "repairs": 4,
+            "steps": 29,
+            "seconds": 1924.9,
+            "accepted": null,
+            "hints": 0,
+            "perf_strikes": 0,
+            "visual_strikes": 0,
+            "visual_review": null,
+            "screenshot": true,
+            "reference_image": false,
+            "verify": [
+              "tandem:ui_test {\"steps\":[{\"exists\":\"canvas#c\"},{\"text\":\"body\",\"match\":\"NEON PORTAL 3D\"},{\"text\":\"body\",\"match\":\"FPS\"},{\"text\":\"body\",\"match\":\"POLYS\"},{\"text\":\"body\",\"match\":\"PARTS\"},{\"exists\":\"#speed\"},{\"js\":\"window.app && app.stars.length===180 && app.particles.length===110 && app.boxFaces===36 && app.crystalTris===48\"},{\"js\":\"(()=>{const c=document.getElementById('c');return c.width>=window.inne"
+            ],
+            "constraints": [
+              "Files: index.html loads engine3d.js, then scene.js, then app.js via plain <script src> tags (no modules, no CDN, works from file://).",
+              "Canvas: <canvas id=\"c\"> fills the full viewport (100vw x 100vh, resized on window resize, devicePixelRatio aware).",
+              "Background: dark radial-gradient space background, center #1a0b3a fading to #05010f at the edges, drawn on the canvas each frame.",
+              "engine3d.js: vec3 math, rotation, camera lookAt, perspective projection, backface culling, depth-sorted polygon fill with per-face flat shading (Lambert factor against a light direction).",
+              "Platform: two-tier platform = 2 boxes (lower wide 6x0.4x4, upper 4.4x0.4x2.8 on top), color #00e5ff edges on dark #0b1030 faces.",
+              "Twin pillars: 2 tall boxes at x=-1.6 and x=+1.6 standing on the upper tier, color #ff2bd6 neon edges.",
+              "Lintel: 1 box spanning across the top of both pillars",
+              "crown cap: 1 smaller box on top of the lintel.",
+              "Total box count is exactly 6 (2 platform + 2 pillars + lintel + crown), each with 6 faces = exactly 36 box faces.",
+              "Six octahedral crystals (each 8 triangles = exactly 48 crystal triangles) orbit the portal on a circle, each spinning on its own axis, colors alternating #00e5ff, #ff2bd6, #ffe600.",
+              "Portal core: glowing disc/ellipse between the pillars with radial gradient (white center to #8a2be2 to transparent) and pulsing brightness.",
+              "Two concentric rings around the portal core, rotating in opposite directions (one clockwise, one counter-clockwise), drawn as projected 3D rings of line segments with neon glow (shadowBlur).",
+              "Cyber grid floor: a grid of neon lines (#7a2cff, alpha ~0.5) on the y=0 plane below the platform, extending to the horizon, scrolling slowly.",
+              "Stars: exactly 180 stars with random screen positions and individually twinkling alpha (sin of time with random phase).",
+              "Particles: exactly 110 particles rising from the platform upward around the portal, fading out and respawning at the bottom.",
+              "Camera orbits the scene center automatically around the Y axis when Orbit is ON",
+              "slight vertical bob.",
+              "HUD: glassmorphism panel top-left (background rgba(255,255,255,0.08), backdrop-filter: blur(12px), 1px border rgba(255,255,255,0.18), border-radius 16px), title text exactly 'NEON PORTAL 3D'.",
+              "HUD stats: three readouts labeled exactly 'FPS', 'POLYS', 'PARTS'",
+              "FPS updates live, POLYS shows the number of polygons drawn this frame, PARTS shows 110.",
+              "HUD buttons with exact labels: 'Pause' (toggles to 'Resume' while paused), 'Orbit ON' (toggles to 'Orbit OFF'), 'Reset' (resets time, camera angle and speed to defaults).",
+              "HUD speed slider: <input type=\"range\" id=\"speed\"> min 0 max 3 step 0.1 default 1, multiplies animation speed.",
+              "Expose window.app = { paused, orbit, speed, time, camAngle, stars, particles, boxFaces, crystalTris, polys, fps } kept up to date each frame (stars and particles are arrays; boxFaces=36; crystalTris=48).",
+              "Buttons ids: #pauseBtn, #orbitBtn, #resetBtn."
+            ],
+            "goal": "Create a self-contained 3D neon portal web demo: index.html + scene.js + engine3d.js + app.js. A software 3D renderer (no WebGL, no external libraries) draws on a full-viewport <canvas id=\"c\"> using the 2D context: perspective projection, painter's algorithm depth sorting, flat shading with neon glow. Scene: two-tier platform, twin pillars, lintel and crown cap built from boxes (36 box faces total), six orbiting octahedral crystals (48 triangles total), a portal core with two counter-rotating rings, a cyber grid floor, 180 twinkling stars, 110 rising particles, an orbiting camera, and a glassmorphism HUD."
+          }
+        ],
+        "local_tokens": 466655,
+        "screenshot": "/home/ale/Projects/tandem-mcp/benchmarks/opus/runs/20261124-174810_v4_2/screenshots/gen_portal__p1__tandem.jpg"
+      }
+    },
+    {
+      "task": "gen_portal",
+      "arm": "tandem",
+      "pair": 2,
+      "workspace": "/home/ale/Projects/tandem-mcp/benchmarks/opus/runs/20261124-174810_v4_2/workspaces/gen_portal__p2__tandem",
+      "wall_seconds": 2403.29,
+      "budget_s": 4200,
+      "timed_out": false,
+      "is_error": false,
+      "num_turns": 4,
+      "total_cost_usd": 0.15019480000000002,
+      "usage": {
+        "input_tokens": 8,
+        "cache_creation_input_tokens": 10301,
+        "cache_read_input_tokens": 59174,
+        "output_tokens": 2796
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 8,
+          "outputTokens": 2796,
+          "cacheReadInputTokens": 59174,
+          "cacheCreationInputTokens": 10301,
+          "webSearchRequests": 0,
+          "costUSD": 0.15019480000000002,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 223,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 10301,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "tool_uses": [
+        "ToolSearch",
+        "mcp__tandem__delegate",
+        "mcp__tandem__job_continue"
+      ],
+      "result_text": "I built the neon portal demo with Tandem, split across `index.html`, `engine3d.js`, `scene.js` and `app.js`, with no external libraries. It passed all the automated checks: the element counts (36 box faces, 48 crystal triangles, 180 stars, 110 particles), the HUD, and the Pause, Orbit and Reset buttons. I sent the first version back once for fixes. That added the missing second direction of grid lines, pulled the camera back so the whole platform fits in view, and fixed how the lintel sits on the pillars.\n\nOne visible problem is left: in the final screenshot the two counter-rotating portal rings are still barely visible. Only a small arc shows above the lintel. The Tandem instructions allow only one fix round on the visual side and I had already used it, so I didn't change the files myself. Making the rings brighter and larger around the portal disc would be a small follow-up fix if you want it.\n\nTo run it, open `index.html` in a browser.",
+      "evaluation": {
+        "passed": true,
+        "failed": [],
+        "reason": "bit ON\"->\"Orbit OFF\", floorDiffOn=2.057, floorDiffOff=0.020, fullDiffOn=3.410, fullDiffOff=0.494]; speed=[diff@0.2x=1.764 vs diff@3x=3.598]; reset=[pauseRestored=true, animAfterReset=true, extraControlsReset=false (speed=true, orbit=false)] visual={'status': 'passed', 'passed': True, 'darkBlueFaces': 406202, 'saturatedCyan': 2658, 'saturatedMagenta': 3380, 'overexposedWhite': 12}"
+      },
+      "success": true,
+      "cost_missing": false,
+      "local": {
+        "jobs": [
+          {
+            "id": "20261124-231812-6401bd",
+            "state": "verified",
+            "tokens": 531741,
+            "repairs": 0,
+            "steps": 33,
+            "seconds": 2373.6,
+            "accepted": true,
+            "hints": 1,
+            "perf_strikes": 0,
+            "visual_strikes": 0,
+            "visual_review": {
+              "status": "passed",
+              "model": "qwen3.8-27b@iq3_s",
+              "summary": "Render is clean and complete. Full-viewport canvas with dark radial space background, twinkling stars, fading cyan 3D grid floor, two-tier platform, twin pillars, lintel and crown cap, magenta-to-cyan portal core glow, orbiting octahedral crystals, rising particles, and a correct glassmorphism HUD (",
+              "issues": []
+            },
+            "screenshot": true,
+            "reference_image": false,
+            "verify": [
+              "tandem:ui_test {\"steps\":[{\"exists\":\"canvas#c\"},{\"text\":\"body\",\"match\":\"NEON PORTAL 3D\"},{\"exists\":\"#fps\"},{\"exists\":\"#polys\"},{\"exists\":\"#parts\"},{\"exists\":\"#speed\"},{\"text\":\"#btnOrbit\",\"match\":\"Orbit ON\"},{\"js\":\"window.app.counts.boxFaces===36 && window.app.counts.crystalTris===48 && window.app.counts.stars===180 && window.app.counts.particles===110\"},{\"wait\":800},{\"js\":\"window.app.stats.polys>0 "
+            ],
+            "constraints": [
+              "engine3d.js: software 3D renderer: vec3 math, perspective projection, camera lookAt, back-face culling, painter's algorithm (sort triangles/quads by depth), flat shading with a directional light plus neon emissive edge strokes.",
+              "Canvas <canvas id=\"c\"> fills the full viewport (100vw x 100vh), resizes on window resize, handles devicePixelRatio.",
+              "Background each frame: dark radial-gradient space background, center #1a0b3d to edge #02010a.",
+              "Scene: two-tier platform (lower wide box + upper narrower box), twin pillars, a lintel across the pillar tops, and a crown cap on the lintel: exactly 6 boxes x 6 faces = 36 box faces.",
+              "Six octahedral crystals orbiting the portal, each 8 triangles = 48 crystal triangles total",
+              "each crystal spins on its own axis and bobs.",
+              "Portal core between the pillars: glowing radial-gradient disc (magenta #ff2bd6 to cyan #00f0ff) with two counter-rotating rings (one rotates clockwise, the other counter-clockwise) drawn as projected 3D polylines.",
+              "Cyber grid floor: neon cyan (#00f0ff, low alpha) grid lines on the ground plane projected in 3D, fading with distance.",
+              "Exactly 180 twinkling stars in the background (alpha oscillates with per-star phase).",
+              "Exactly 110 rising particles from the portal/platform that drift upward, fade out and respawn at the bottom.",
+              "Camera orbits the scene around the Y axis automatically when Orbit is ON, with slight vertical bob",
+              "looks at the portal center.",
+              "Glassmorphism HUD panel at top-left: background rgba(255,255,255,0.08), backdrop-filter: blur(12px), 1px border rgba(255,255,255,0.18), border-radius 14px, white text.",
+              "HUD title text exactly: NEON PORTAL 3D",
+              "HUD stats show three labelled values: FPS, POLYS, PARTS (elements with ids fps, polys, parts).",
+              "POLYS = number of polygons drawn this frame",
+              "PARTS = 110.",
+              "HUD buttons with ids btnPause, btnOrbit, btnReset. btnPause label toggles between 'Pause' and 'Resume'. btnOrbit label toggles between 'Orbit ON' and 'Orbit OFF'. btnReset resets camera angle and time and speed to defaults.",
+              "Speed slider: <input type=\"range\" id=\"speed\" min=\"0\" max=\"3\" step=\"0.1\" value=\"1\"> multiplies animation speed.",
+              "Expose window.app = { paused (bool), orbit (bool), speed (number), camAngle (number), time (number), stats: { fps, polys, parts }, counts: { boxFaces, crystalTris, stars, particles } } updated live. counts must be boxFaces=36, crystalTris=48, stars=180, particles=110.",
+              "Animation via requestAnimationFrame",
+              "when paused, time and camAngle do not advance but the frame still renders."
+            ],
+            "goal": "Create a self-contained 3D neon portal web demo using a software 3D renderer (no WebGL, no external libraries) drawing with Canvas 2D on a full-viewport <canvas id=\"c\">. Files: index.html, scene.js, engine3d.js, app.js (index.html loads engine3d.js, scene.js, app.js in that order via plain <script> tags)."
+          }
+        ],
+        "local_tokens": 531741,
+        "screenshot": "/home/ale/Projects/tandem-mcp/benchmarks/opus/runs/20261124-174810_v4_2/screenshots/gen_portal__p2__tandem.jpg"
+      }
+    },
+    {
+      "task": "gen_portal",
+      "arm": "direct",
+      "pair": 2,
+      "workspace": "/home/ale/Projects/tandem-mcp/benchmarks/opus/runs/20261124-174810_v4_2/workspaces/gen_portal__p2__direct",
+      "wall_seconds": 133.84,
+      "budget_s": 4200,
+      "timed_out": false,
+      "is_error": false,
+      "num_turns": 8,
+      "total_cost_usd": 0.589877,
+      "usage": {
+        "input_tokens": 16,
+        "cache_creation_input_tokens": 30805,
+        "cache_read_input_tokens": 172365,
+        "output_tokens": 15445
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 16,
+          "outputTokens": 15445,
+          "cacheReadInputTokens": 172365,
+          "cacheCreationInputTokens": 30805,
+          "webSearchRequests": 0,
+          "costUSD": 0.589877,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 1541,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 30805,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "tool_uses": [
+        "Bash",
+        "Write",
+        "Bash",
+        "Bash",
+        "Bash",
+        "Read",
+        "Bash"
+      ],
+      "result_text": "I've built the demo as a single file, `index.html`, with nothing external to load. I rendered it once in headless Chromium and it came out correctly. Then I made the rising particles smaller and dimmer because their halos looked like grey blobs over the portal; I haven't taken a new screenshot since that change.\n\n**Scene**\n- **Background:** a dark purple-to-black radial gradient with 180 twinkling stars. A few are tinted, the bigger ones get a soft glow, and they shift slightly as the camera turns.\n- **Structure:** six boxes (lower and upper platform, two pillars, lintel and crown cap), giving the 36 faces. They're shaded by light direction, drawn back to front, have neon outlines that pulse, and hidden faces are skipped.\n- **Crystals:** six octahedra (48 triangles) orbit the portal, bobbing and spinning, each with a coloured glow.\n- **Portal core:** a glowing disc with swirling arms and two rings that spin in opposite directions and wobble. The rings are split into short pieces so the pillars correctly cover their far side.\n- **Floor:** a neon grid that scrolls, pulses outward from the centre and fades with distance, with a purple glow under the portal.\n- **Particles:** 110 particles rise from the platform, drift sideways, fade out at the top and respawn.\n- **Camera:** circles the portal automatically. You can also drag to rotate and use the mouse wheel to zoom.\n\n**HUD**\n- A frosted-glass panel showing the NEON PORTAL 3D title and live FPS, POLYS and PARTS counters.\n- Button",
+      "evaluation": {
+        "passed": false,
+        "failed": [
+          "interactions"
+        ],
+        "reason": "Orbit ON\"->\"Orbit OFF\", floorDiffOn=4.281, floorDiffOff=1.540, fullDiffOn=6.915, fullDiffOff=4.213]; speed=[diff@0.2x=2.698 vs diff@3x=7.283]; reset=[pauseRestored=true, animAfterReset=true, extraControlsReset=true (speed=true, orbit=true)] visual={'status': 'passed', 'passed': True, 'darkBlueFaces': 389743, 'saturatedCyan': 5174, 'saturatedMagenta': 9771, 'overexposedWhite': 1155}"
+      },
+      "success": false,
+      "cost_missing": false
+    },
+    {
+      "task": "gen_portal",
+      "arm": "direct",
+      "pair": 3,
+      "workspace": "/home/ale/Projects/tandem-mcp/benchmarks/opus/runs/20261124-174810_v4_2/workspaces/gen_portal__p3__direct",
+      "wall_seconds": 148.49,
+      "budget_s": 4200,
+      "timed_out": false,
+      "is_error": false,
+      "num_turns": 9,
+      "total_cost_usd": 0.5321456000000001,
+      "usage": {
+        "input_tokens": 18,
+        "cache_creation_input_tokens": 22374,
+        "cache_read_input_tokens": 207008,
+        "output_tokens": 15584
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 18,
+          "outputTokens": 15584,
+          "cacheReadInputTokens": 207008,
+          "cacheCreationInputTokens": 22374,
+          "webSearchRequests": 0,
+          "costUSD": 0.5321456000000001,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 1840,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 22374,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "tool_uses": [
+        "Bash",
+        "Write",
+        "Bash",
+        "Bash",
+        "Bash",
+        "Bash",
+        "Read",
+        "Bash"
+      ],
+      "result_text": "I've built the demo as a single self-contained file, `index.html`, with no dependencies. A headless Chromium screenshot shows everything rendering correctly. The screenshot was taken before my last small change (the POLYS counter); I syntax-checked that change but didn't re-run the screenshot. I haven't tested it interactively in a browser, so the buttons, slider and drag/zoom haven't been clicked.\n\n**Renderer:** it projects the 3D scene onto the full-screen `<canvas id=\"c\">` by hand. It hides faces turned away from the camera, cuts off geometry that's behind the camera, shades each face by a single light direction, and draws everything back to front so nearer objects cover farther ones.\n\n**Scene:**\n- **Structure:** six neon-edged boxes with 6 faces each, giving the 36 box faces. They are the two-tier platform, the twin pillars, the lintel and the crown cap.\n- **Crystals:** six octahedra (8 triangles each, so 48) circle the portal while bobbing and spinning, each in its own colour.\n- **Portal core:** a pulsing glow with swirling arms between the pillars. Two rings spin in opposite directions around it and pass correctly in front of and behind the other objects.\n- **Floor:** a cyber grid in cyan and magenta that scrolls and fades out toward the edges, with a purple glow under the platform.\n- **Stars and particles:** 180 stars on a distant sphere twinkle and shift as the camera moves. 110 glowing particles rise from the platform and respawn at the bottom.\n- **Background:** a da",
+      "evaluation": {
+        "passed": false,
+        "failed": [
+          "visual"
+        ],
+        "reason": "bit ON\"->\"Orbit OFF\", floorDiffOn=9.836, floorDiffOff=0.606, fullDiffOn=16.490, fullDiffOff=6.374]; speed=[diff@0.2x=9.154 vs diff@3x=19.201]; reset=[pauseRestored=true, animAfterReset=true, extraControlsReset=true (speed=true, orbit=true)] visual={'status': 'failed', 'passed': False, 'darkBlueFaces': 85037, 'saturatedCyan': 10249, 'saturatedMagenta': 178606, 'overexposedWhite': 7894}"
+      },
+      "success": false,
+      "cost_missing": false
+    },
+    {
+      "task": "gen_portal",
+      "arm": "tandem",
+      "pair": 3,
+      "workspace": "/home/ale/Projects/tandem-mcp/benchmarks/opus/runs/20261124-174810_v4_2/workspaces/gen_portal__p3__tandem",
+      "wall_seconds": 1030.33,
+      "budget_s": 4200,
+      "timed_out": false,
+      "is_error": false,
+      "num_turns": 3,
+      "total_cost_usd": 0.11257619999999999,
+      "usage": {
+        "input_tokens": 6,
+        "cache_creation_input_tokens": 7962,
+        "cache_read_input_tokens": 40181,
+        "output_tokens": 2041
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 6,
+          "outputTokens": 2041,
+          "cacheReadInputTokens": 40181,
+          "cacheCreationInputTokens": 7962,
+          "webSearchRequests": 0,
+          "costUSD": 0.11257619999999999,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 63,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 7962,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "tool_uses": [
+        "ToolSearch",
+        "mcp__tandem__delegate"
+      ],
+      "result_text": "I used Tandem to build the neon portal demo, and it passed all its checks. It's four files: `index.html`, `engine3d.js`, `scene.js` and `app.js`. Everything else you listed is there, including the HUD with the buttons and speed slider. The HUD shows 84 polygons (36 box faces plus 48 crystal triangles) and 110 particles. Open `index.html` in a browser to run it; it needs no WebGL or outside libraries.\n\nIn the rendered screenshot, the magenta portal ring is mostly hidden behind the pillars and the cyan ring, so only small arcs of it show. If you want both rings clearly visible, that's a quick follow-up.",
+      "evaluation": {
+        "passed": false,
+        "failed": [
+          "interactions"
+        ],
+        "reason": "Orbit ON\"->\"Orbit OFF\", floorDiffOn=5.136, floorDiffOff=0.033, fullDiffOn=4.432, fullDiffOff=1.083]; speed=[diff@0.2x=2.712 vs diff@3x=4.211]; reset=[pauseRestored=true, animAfterReset=true, extraControlsReset=true (speed=true, orbit=true)] visual={'status': 'passed', 'passed': True, 'darkBlueFaces': 400512, 'saturatedCyan': 6302, 'saturatedMagenta': 4365, 'overexposedWhite': 88}"
+      },
+      "success": false,
+      "cost_missing": false,
+      "local": {
+        "jobs": [
+          {
+            "id": "20261125-000319-abeea7",
+            "state": "verified",
+            "tokens": 192809,
+            "repairs": 3,
+            "steps": 15,
+            "seconds": 1005.1,
+            "accepted": true,
+            "hints": 0,
+            "perf_strikes": 0,
+            "visual_strikes": 0,
+            "visual_review": {
+              "status": "passed",
+              "model": "qwen3.8-27b@iq3_s",
+              "summary": "Render is clean and complete. HUD panel (glassmorphism, title 'NEON PORTAL 3D', FPS/POLYS/PARTS stats, Pause/Orbit ON/Reset buttons, Speed slider) is readable and non-overlapping. 3D scene shows two-tier platform, twin pillars, lintel, crown cap, glowing portal core with two concentric neon rings, s",
+              "issues": []
+            },
+            "screenshot": true,
+            "reference_image": false,
+            "verify": [
+              "tandem:ui_test {\"steps\":[{\"exists\":\"canvas#c\"},{\"text\":\"body\",\"match\":\"NEON PORTAL 3D\"},{\"text\":\"body\",\"match\":\"FPS:\"},{\"text\":\"body\",\"match\":\"POLYS:\"},{\"text\":\"body\",\"match\":\"PARTS:\"},{\"js\":\"window.app.stars.length===180\"},{\"js\":\"window.app.particles.length===110\"},{\"js\":\"window.app.crystals.length===6\"},{\"js\":\"window.app.polyCount>=84\"},{\"wait\":500},{\"expect\":\"moving\"},{\"click\":\"#btnPause\"},{\"js"
+            ],
+            "constraints": [
+              "index.html loads engine3d.js, scene.js, app.js via plain <script> tags in that order",
+              "no modules, no CDN, works from file://",
+              "Full-viewport <canvas id=\"c\"> sized to window.innerWidth x innerHeight with devicePixelRatio, resized on window resize",
+              "body margin 0, overflow hidden",
+              "Background each frame: dark radial gradient space, center #1a0b3a fading to #05020f at edges",
+              "engine3d.js: vec3 math, perspective projection, camera lookAt, back-face culling, painter's algorithm depth sort, flat shading with a directional light, filled polygons with neon edge stroke",
+              "scene.js: two-tier platform (lower wide box + upper smaller box), twin pillars, a lintel across pillar tops, a crown cap on the lintel: exactly 6 boxes = 36 box faces (quads)",
+              "Six octahedral crystals (8 triangles each = 48 triangles) orbiting the portal, each spinning, cyan/magenta neon colors",
+              "Portal core between the pillars: glowing center disc plus two concentric rings rotating in opposite directions (ring colors #00f0ff and #ff2bd6)",
+              "Cyber grid floor: neon purple/cyan lines on the ground plane projected in 3D, fading with distance",
+              "Exactly 180 stars in the background that twinkle (per-star sine alpha)",
+              "Exactly 110 particles rising from the portal/platform, respawning at the bottom when they reach max height",
+              "Orbiting camera circling the portal at constant radius, looking at the portal center",
+              "orbit can be toggled",
+              "Glassmorphism HUD panel top-left: background rgba(255,255,255,0.08), backdrop-filter blur(12px), 1px border rgba(255,255,255,0.2), border-radius 14px, white text",
+              "HUD title text exactly: NEON PORTAL 3D",
+              "HUD stats lines with ids fps, polys, parts showing labels exactly 'FPS:', 'POLYS:', 'PARTS:' followed by live numbers (PARTS shows 110)",
+              "Three buttons with ids btnPause, btnOrbit, btnReset",
+              "labels exactly 'Pause' (toggles to 'Resume' when paused), 'Orbit ON' (toggles to 'Orbit OFF'), 'Reset'",
+              "Speed slider <input type=range id=speed min=0 max=3 step=0.1 value=1> labelled 'Speed', scales animation speed",
+              "Reset restores camera angle to 0, speed slider to 1, unpaused, orbit on",
+              "Expose window.app = { paused, orbit, speed, camAngle, stars, particles, crystals, polyCount, fps } kept up to date each frame (stars.length 180, particles.length 110, crystals.length 6)"
+            ],
+            "goal": "Create a self-contained 3D neon portal web demo: index.html + scene.js + engine3d.js + app.js, using a custom software 3D renderer (no WebGL, no external libraries) drawing on a full-viewport 2D <canvas id=\"c\">."
+          }
+        ],
+        "local_tokens": 192809,
+        "screenshot": "/home/ale/Projects/tandem-mcp/benchmarks/opus/runs/20261124-174810_v4_2/screenshots/gen_portal__p3__tandem.jpg"
+      }
+    }
+  ]
+}

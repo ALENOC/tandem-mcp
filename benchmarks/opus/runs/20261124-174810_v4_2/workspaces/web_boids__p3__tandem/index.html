@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Boids</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #070b14;
+  }
+  #canvas {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: #070b14;
+  }
+  #hud {
+    position: fixed;
+    top: 16px;
+    left: 16px;
+    z-index: 10;
+    background: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 14px;
+    padding: 14px 16px;
+    color: #e6edf7;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    min-width: 180px;
+    user-select: none;
+  }
+  #hud .row {
+    display: block;
+    white-space: nowrap;
+  }
+  #controls {
+    margin-top: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  #controls .btns {
+    display: flex;
+    gap: 8px;
+  }
+  button {
+    font-family: inherit;
+    font-size: 13px;
+    color: #e6edf7;
+    background: rgba(255, 255, 255, 0.10);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 8px;
+    padding: 6px 12px;
+    cursor: pointer;
+  }
+  button:hover {
+    background: rgba(255, 255, 255, 0.18);
+  }
+  #speed {
+    width: 100%;
+  }
+</style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <div id="hud">
+    <span class="row">FPS: <span id="fps">0</span></span>
+    <span class="row">Boids: <span id="count">0</span></span>
+    <span class="row">Velocità: <span id="speedLabel">1.0</span>x</span>
+    <div id="controls">
+      <div class="btns">
+        <button id="playBtn">Play</button>
+        <button id="stepBtn">Step</button>
+        <button id="resetBtn">Reset</button>
+      </div>
+      <input type="range" id="speed" min="0.5" max="3.0" step="0.1" value="1">
+    </div>
+  </div>
+<script>
+(function () {
+  "use strict";
+
+  var canvas = document.getElementById("canvas");
+  var ctx = canvas.getContext("2d");
+
+  var fpsEl = document.getElementById("fps");
+  var countEl = document.getElementById("count");
+  var speedLabelEl = document.getElementById("speedLabel");
+  var playBtn = document.getElementById("playBtn");
+  var stepBtn = document.getElementById("stepBtn");
+  var resetBtn = document.getElementById("resetBtn");
+  var speedInput = document.getElementById("speed");
+
+  var INITIAL_COUNT = 60;
+  var PERCEPTION = 60;
+  var SEPARATION_DIST = 24;
+  var MAX_SPEED = 3.0;
+  var MIN_SPEED = 1.0;
+  var MAX_FORCE = 0.05;
+
+  var boids = [];
+  var paused = true;
+  var speed = 1;
+
+  function rand(min, max) {
+    return min + Math.random() * (max - min);
+  }
+
+  function makeBoid(x, y) {
+    var angle = rand(0, Math.PI * 2);
+    var sp = rand(MIN_SPEED, MAX_SPEED);
+    return {
+      x: x,
+      y: y,
+      vx: Math.cos(angle) * sp,
+      vy: Math.sin(angle) * sp
+    };
+  }
+
+  function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+
+  function initBoids() {
+    boids.length = 0;
+    for (var i = 0; i < INITIAL_COUNT; i++) {
+      boids.push(makeBoid(rand(0, canvas.width), rand(0, canvas.height)));
+    }
+  }
+
+  function limit(vx, vy, max) {
+    var m = Math.sqrt(vx * vx + vy * vy);
+    if (m > max && m > 0) {
+      return [vx / m * max, vy / m * max];
+    }
+    return [vx, vy];
+  }
+
+  function update() {
+    var w = canvas.width;
+    var h = canvas.height;
+    var n = boids.length;
+    var i, j;
+
+    for (i = 0; i < n; i++) {
+      var b = boids[i];
+      var sepX = 0, sepY = 0;
+      var aliX = 0, aliY = 0;
+      var cohX = 0, cohY = 0;
+      var total = 0;
+      var sepTotal = 0;
+
+      for (j = 0; j < n; j++) {
+        if (i === j) continue;
+        var o = boids[j];
+        var dx = o.x - b.x;
+        var dy = o.y - b.y;
+        var d = Math.sqrt(dx * dx + dy * dy);
+        if (d > 0 && d < PERCEPTION) {
+          aliX += o.vx;
+          aliY += o.vy;
+          cohX += o.x;
+          cohY += o.y;
+          total++;
+          if (d < SEPARATION_DIST) {
+            sepX -= dx / d;
+            sepY -= dy / d;
+            sepTotal++;
+          }
+        }
+      }
+
+      var ax = 0, ay = 0;
+
+      if (total > 0) {
+        // alignment
+        aliX /= total;
+        aliY /= total;
+        var a = limit(aliX - b.vx, aliY - b.vy, MAX_FORCE);
+        ax += a[0];
+        ay += a[1];
+
+        // cohesion
+        cohX = cohX / total - b.x;
+        cohY = cohY / total - b.y;
+        var c = limit(cohX, cohY, MAX_FORCE);
+        ax += c[0];
+        ay += c[1];
+      }
+
+      if (sepTotal > 0) {
+        sepX /= sepTotal;
+        sepY /= sepTotal;
+        var s = limit(sepX, sepY, MAX_FORCE);
+        ax += s[0];
+        ay += s[1];
+      }
+
+      b.vx += ax;
+      b.vy += ay;
+
+      // limit speed
+      var sp = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
+      if (sp > MAX_SPEED) {
+        b.vx = b.vx / sp * MAX_SPEED;
+        b.vy = b.vy / sp * MAX_SPEED;
+      } else if (sp < MIN_SPEED && sp > 0) {
+        b.vx = b.vx / sp * MIN_SPEED;
+        b.vy = b.vy / sp * MIN_SPEED;
+      }
+
+      b.x += b.vx * speed;
+      b.y += b.vy * speed;
+
+      // wrap-around
+      if (b.x < 0) b.x += w;
+      if (b.x > w) b.x -= w;
+      if (b.y < 0) b.y += h;
+      if (b.y > h) b.y -= h;
+    }
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#070b14";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    for (var i = 0; i < boids.length; i++) {
+      var b = boids[i];
+      var angle = Math.atan2(b.vy, b.vx);
+      ctx.save();
+      ctx.translate(b.x, b.y);
+      ctx.rotate(angle);
+      ctx.beginPath();
+      ctx.moveTo(10, 0);
+      ctx.lineTo(-6, 5);
+      ctx.lineTo(-6, -5);
+      ctx.closePath();
+      ctx.fillStyle = "#7fdcff";
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  function updateHud() {
+    countEl.textContent = String(boids.length);
+    speedLabelEl.textContent = speed.toFixed(1);
+  }
+
+  var lastTime = performance.now();
+  var fpsAccum = 0;
+  var fpsFrames = 0;
+
+  function loop(now) {
+    var dt = now - lastTime;
+    lastTime = now;
+
+    if (!paused) {
+      update();
+    }
+    draw();
+
+    fpsFrames++;
+    fpsAccum += dt;
+    if (fpsAccum >= 250) {
+      var fps = Math.round(fpsFrames * 1000 / fpsAccum);
+      fpsEl.textContent = String(fps);
+      fpsFrames = 0;
+      fpsAccum = 0;
+    }
+
+    requestAnimationFrame(loop);
+  }
+
+  function step() {
+    if (paused) {
+      update();
+      draw();
+    }
+  }
+
+  function reset() {
+    initBoids();
+    paused = true;
+    playBtn.textContent = "Play";
+    window.app.paused = paused;
+    updateHud();
+    draw();
+  }
+
+  function togglePlay() {
+    paused = !paused;
+    playBtn.textContent = paused ? "Play" : "Pause";
+    window.app.paused = paused;
+  }
+
+  playBtn.addEventListener("click", function (e) {
+    e.stopPropagation();
+    togglePlay();
+  });
+
+  stepBtn.addEventListener("click", function (e) {
+    e.stopPropagation();
+    step();
+  });
+
+  resetBtn.addEventListener("click", function (e) {
+    e.stopPropagation();
+    reset();
+  });
+
+  speedInput.addEventListener("input", function (e) {
+    e.stopPropagation();
+    speed = parseFloat(speedInput.value);
+    updateHud();
+  });
+
+  canvas.addEventListener("click", function (e) {
+    var rect = canvas.getBoundingClientRect();
+    var x = e.clientX - rect.left;
+    var y = e.clientY - rect.top;
+    boids.push(makeBoid(x, y));
+    updateHud();
+    draw();
+  });
+
+  window.addEventListener("resize", function () {
+    resize();
+    draw();
+  });
+
+  window.app = {
+    boids: boids,
+    paused: paused,
+    speed: speed,
+    step: step,
+    reset: reset,
+    togglePlay: togglePlay
+  };
+
+  // keep window.app in sync with internal state
+  function syncApp() {
+    window.app.boids = boids;
+    window.app.paused = paused;
+    window.app.speed = speed;
+  }
+
+  resize();
+  initBoids();
+  updateHud();
+  draw();
+  syncApp();
+
+  // re-sync after any state change
+  var _togglePlay = togglePlay;
+  window.app.togglePlay = function () {
+    togglePlay();
+    syncApp();
+  };
+  window.app.step = function () {
+    step();
+    syncApp();
+  };
+  window.app.reset = function () {
+    reset();
+    syncApp();
+  };
+
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

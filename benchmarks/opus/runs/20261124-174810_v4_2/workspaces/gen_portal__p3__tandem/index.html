@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NEON PORTAL 3D</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: #05020f;
+    font-family: "Segoe UI", system-ui, sans-serif;
+  }
+  #c {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+  }
+  #hud {
+    position: fixed;
+    top: 16px;
+    left: 16px;
+    z-index: 10;
+    min-width: 210px;
+    padding: 14px 16px;
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 14px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+  }
+  #hud h1 {
+    margin: 0 0 10px 0;
+    font-size: 18px;
+    letter-spacing: 2px;
+    font-weight: 700;
+    text-shadow: 0 0 12px rgba(0, 240, 255, 0.8);
+  }
+  #hud .stat {
+    font-size: 13px;
+    line-height: 1.6;
+    font-variant-numeric: tabular-nums;
+  }
+  #hud .row {
+    margin-top: 12px;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  #hud button {
+    cursor: pointer;
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-size: 12px;
+    transition: background 0.15s ease;
+  }
+  #hud button:hover {
+    background: rgba(255, 255, 255, 0.22);
+  }
+  #hud .speed {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+    font-size: 12px;
+  }
+  #speed {
+    width: 120px;
+    accent-color: #00f0ff;
+  }
+</style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+  <div id="hud">
+    <h1>NEON PORTAL 3D</h1>
+    <div class="stat">FPS: <span id="fps">0</span></div>
+    <div class="stat">POLYS: <span id="polys">0</span></div>
+    <div class="stat">PARTS: <span id="parts">110</span></div>
+    <div class="row">
+      <button id="btnPause">Pause</button>
+      <button id="btnOrbit">Orbit ON</button>
+      <button id="btnReset">Reset</button>
+    </div>
+    <div class="speed">
+      <label for="speed">Speed</label>
+      <input type="range" id="speed" min="0" max="3" step="0.1" value="1">
+    </div>
+  </div>
+  <script src="engine3d.js"></script>
+  <script src="scene.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
