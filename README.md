@@ -55,7 +55,7 @@ Yes, on medium and large work. With **Opus 5.5** as the orchestrator in Claude C
 | Cron parser module with tests | $0.268 · 3/3 · 60 s | $0.210 · 2/3 · 26 min | **-22%** |
 | Boids web simulation | $0.205 · 3/3 · 54 s | $0.127 · 3/3 · 11 min | **-38%** |
 | Orbital web simulation | $0.951 · 1/3 · 86 s | $0.467 · 1/3 · 12 min | **-51%** |
-| 3D neon portal (4 files) | no success, $0.577 per attempt · 0/3 · 2.5 min | $0.548 · 1/3 · 33 min | Direct 0/3 (-68% per attempt) |
+| 3D neon portal (4 files) | no success · 0/6 (3 + 3 rerun) · 2.2 min · $0.562 per attempt | $0.548 · 1/3 · 33 min | Direct 0/6 (Tandem -68% per attempt) |
 | **All 15 attempts** | **$4.29 · 10/15 · $0.429** | **$2.02 · 10/15 · $0.202** | **-53%** |
 
 Each cell gives the cost per success (list prices, failed attempts counted), the successes inside the time budget and the median time. Run `20261124-174810_v4_2`, report [`REEVAL_4_2.json`](benchmarks/opus/REEVAL_4_2.json), evaluated three times per artifact by the same independent evaluators as 4.0.0 and 4.1.0 (identical SHA-256).
