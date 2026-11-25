@@ -131,11 +131,11 @@ No Direct portal passed in the campaign, so 3 more Direct-only portal attempts (
 
 | Pair | Result | Cloud cost | Time | Output tokens |
 | --- | --- | ---: | ---: | ---: |
-| 4 | fail (`interactions`: after Reset the scene stays paused) | $0.600 | 131 s | 16,095 |
-| 5 | fail (`interactions`: same Reset problem; `visual`) | $0.535 | 131 s | 16,146 |
-| 6 | fail (`interactions`: Orbit OFF does not stop the camera) | $0.506 | 132 s | 16,576 |
+| 4 | fail (`interactions`: Reset keeps a paused scene paused) | $0.600 | 131 s | 16,095 |
+| 5 | fail (`interactions`: same Reset behaviour; `visual`: too many near-white pixels) | $0.535 | 131 s | 16,146 |
+| 6 | fail (`interactions`: Orbit OFF stops the camera, but the grid floor keeps scrolling by design) | $0.506 | 132 s | 16,576 |
 
-All three verdicts agreed across their three repetitions. Across all 6 Direct portal attempts: **0/6**, `$3.37` total, `$0.562` per attempt, 2.2 min median, against `$0.183` per attempt for Tandem's 3 campaign attempts (**-68% per attempt**).
+All three verdicts agreed across their three repetitions. These pages run; they fail checks the prompt does not ask for, which only says "Pause/Orbit ON/Reset buttons": Reset must also restart a paused scene, the floor must stand still with Orbit OFF, and at most 4,500 pixels may be near white. Across all 6 Direct portal attempts: **0/6**, `$3.37` total, `$0.562` per attempt, 2.2 min median, against `$0.183` per attempt for Tandem's 3 campaign attempts (**-68% per attempt**).
 
 ## Visual review and screenshots
 
@@ -182,7 +182,7 @@ What changed in 4.2.0, and what it did in this run:
 ## What the numbers mean
 
 - **Small edits do not pay:** the 5-line fix cost `+8%` with Tandem (`$0.0670` against `$0.0618`), in line with `+10%` in 4.0.0. The guide tells Opus to do edits under about 30 lines itself.
-- **Medium and large work saves 22% to 51% per success** on the tasks where both arms succeeded, and Tandem delivered the only working 3D portal (Direct 0/6 with the rerun). Overall `-53%` per success (`$0.202` against `$0.429`), or `-49%` without the Direct API stall.
+- **Medium and large work saves 22% to 51% per success** on the tasks where both arms succeeded, and Tandem delivered the only 3D portal that passed the evaluator (Direct 0/6 with the rerun, on checks the prompt does not ask for). Overall `-53%` per success (`$0.202` against `$0.429`), or `-49%` without the Direct API stall.
 - **Where Tandem lost:** the 5-line fix (+8%), one Cron attempt (local job out of time, then an Opus patch, 31 minutes over budget) and two Portal attempts (one stuck then patched by Opus, one that passed every local check but fails the evaluator's `interactions`).
 - **Time:** a Tandem result takes a median of 11 to 33 minutes on medium and large tasks (about 12x slower than direct), the inherent trade-off of a local 27B model on a consumer GPU.
 - **Sample size:** with 3 pairs per task, a 1-success difference is not statistically decisive.
