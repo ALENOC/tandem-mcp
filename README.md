@@ -49,18 +49,18 @@ In short: without a server, the agent still reads and writes everything the loca
 
 Yes, on medium and large work. With **Opus 5.5** as the orchestrator in Claude Code and the autonomous profile (Tandem **4.2.0**), Opus writes a contract once. Tandem's local model then writes the code and repairs it against the checks, with no cloud call, and Opus gets back one line plus, on web work, a 1280x800 screenshot. In a fresh campaign of five tasks, three counterbalanced pairs each (15 attempts per arm), both arms delivered **10/15** results inside the budget, and Tandem cut the total cloud bill and the cost per successful result by **53%** (`$0.202` against `$0.429`), using **68% fewer output tokens**.
 
-| Task | Direct | With Tandem | Cloud cost per success |
+| Task | Direct | With Tandem | Cloud cost with Tandem |
 | --- | --- | --- | ---: |
-| 5-line bug fix | $0.062 · 3/3 · 10 s | $0.067 · 3/3 · 2 min | **+8%** |
-| Cron parser module with tests | $0.268 · 3/3 · 60 s | $0.210 · 2/3 · 26 min | **-22%** |
-| Boids web simulation | $0.205 · 3/3 · 54 s | $0.127 · 3/3 · 11 min | **-38%** |
-| Orbital web simulation | $0.951 · 1/3 · 86 s | $0.467 · 1/3 · 12 min | **-51%** |
-| 3D neon portal (4 files) | no success · 0/6 (3 + 3 rerun) · 2.2 min · $0.562 per attempt | $0.548 · 1/3 · 33 min | Direct 0/6 (Tandem -68% per attempt) |
-| **All 15 attempts** | **$4.29 · 10/15 · $0.429** | **$2.02 · 10/15 · $0.202** | **-53%** |
+| 5-line bug fix | $0.062 · 10 s | $0.067 · 2 min | **+8%** |
+| Cron parser module with tests | $0.268 · 60 s | $0.210 · 26 min | **-22%** |
+| Boids web simulation | $0.205 · 54 s | $0.127 · 11 min | **-38%** |
+| Orbital web simulation | $0.951 · 86 s | $0.467 · 12 min | **-51%** |
+| 3D neon portal (4 files) | no working portal · $3.37 spent · 2.2 min | $0.548 · 33 min | **-84%**\* |
+| **All tasks** | **$0.429** | **$0.202** | **-53%** |
 
-Each cell gives the cost per success (list prices, failed attempts counted), the successes inside the time budget and the median time. Run `20261124-174810_v4_2`, report [`REEVAL_4_2.json`](benchmarks/opus/REEVAL_4_2.json), evaluated three times per artifact by the same independent evaluators as 4.0.0 and 4.1.0 (identical SHA-256).
+Each cell gives the cloud cost per working result (list prices, failed attempts counted) and the median time. Run `20261124-174810_v4_2`, report [`REEVAL_4_2.json`](benchmarks/opus/REEVAL_4_2.json), evaluated three times per artifact by the same independent evaluators as 4.0.0 and 4.1.0 (identical SHA-256).
 
-Direct portal rerun: because no Direct portal passed, 3 more Direct-only portal attempts were run later (run `20261125-093809_v4_2_portal_direct`, report [`REEVAL_4_2_PORTAL_DIRECT.json`](benchmarks/opus/REEVAL_4_2_PORTAL_DIRECT.json), same evaluators, identical SHA-256). They failed too: after Reset the scene stays paused (2 attempts), Orbit OFF does not stop the camera (1 attempt), and one also fails `visual`. Across all 6 Direct attempts the portal is **0/6**, `$3.37` in total, `$0.562` per attempt and 2.2 min median, against `$0.183` per attempt for Tandem (**-68%**). These 3 attempts are not paired and use Claude Code 2.1.332 instead of 2.1.331, so they stay out of the 15-attempt totals above.
+\* Direct produced no working portal: it spent `$3.37` over 6 tries (3 in the campaign, 3 in a later Direct-only rerun, report [`REEVAL_4_2_PORTAL_DIRECT.json`](benchmarks/opus/REEVAL_4_2_PORTAL_DIRECT.json)), against `$0.548` for Tandem's working one. The All tasks row covers the paired campaign only, where the portal comparison is **-68%** (`$1.73` spent by Direct).
 
 The trade-offs:
 
@@ -92,7 +92,7 @@ Test machine: Intel Core i9-9900K, AMD Radeon RX 6800 series GPU with 16 GB VRAM
   </tr>
 </table>
 
-The only Tandem portal that passed, next to the Direct portal from the same pair (no Direct portal passed: 0/3 in the campaign, 0/3 in the rerun). Direct's scene is richer and fills the frame; Tandem's is correct but small and plain.
+The only Tandem portal that passed, next to the Direct portal from the same pair (Direct never produced a working portal). Direct's scene is richer and fills the frame; Tandem's is correct but small and plain.
 
 ### Orbital simulation
 
