@@ -35,6 +35,7 @@ node render_gifs.mjs \
 
 | Run | Tandem code | What it is |
 | --- | --- | --- |
+| `runs/20261125-093809_v4_2_portal_direct` | n/a (Direct only) | **supplementary Direct portal rerun**, pairs 4 to 6, report `REEVAL_4_2_PORTAL_DIRECT.json`, kept out of the paired 4.2.0 totals |
 | `runs/20261124-174810_v4_2` | 4.2.0 | **4.2.0 campaign**, 5 tasks x 3 pairs with local VLM review and screenshot receipts, report `REEVAL_4_2.json` (GIFs and site demos: Portal pair 2, Orbital pair 3) |
 | `runs/20261124-103103_adversarial_final` | 4.1.0 (round 3) | **4.1.0 final run**, 4 tasks x 1 pair, report `REEVAL_FINAL.json` (combined in `REEVAL_4_1.json`) |
 | `runs/20261124-052842_adversarial_confirm` | 4.1.0 (rounds 1+2) | **4.1.0 confirmation run**, 4 tasks x 2 pairs, report `REEVAL_CONFIRM.json` (combined in `REEVAL_4_1.json`) |

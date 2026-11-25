@@ -125,6 +125,18 @@ Every attempt is in the totals above; nothing was excluded or re-run.
 - **Evaluator flakiness:** Direct Orbital pairs 1 and 3 failed `clickSpawnsBurst` in the check run right after the attempt but passed 3/3 in the re-evaluation, which is the verdict used. All 30 re-evaluations agreed across their three repetitions.
 - **Local infrastructure:** no GPU reset (`journalctl -k` has no `amdgpu` errors in the run window), no `llama-server` crash, and `qwen3.8-27b@iq3_s` stayed loaded as `vlm` with a 40,960-token context from start to end. The only LM Studio errors were the routine `GET /props` and `GET /api/tags` probes.
 
+### Direct portal rerun (supplementary, not paired)
+
+No Direct portal passed in the campaign, so 3 more Direct-only portal attempts (pairs 4 to 6) were run the next day: run `20261125-093809_v4_2_portal_direct`, report [`REEVAL_4_2_PORTAL_DIRECT.json`](../benchmarks/opus/REEVAL_4_2_PORTAL_DIRECT.json), same evaluators (identical SHA-256), Claude Code 2.1.332 instead of 2.1.331. They are kept out of the paired totals above.
+
+| Pair | Result | Cloud cost | Time | Output tokens |
+| --- | --- | ---: | ---: | ---: |
+| 4 | fail (`interactions`: after Reset the scene stays paused) | $0.600 | 131 s | 16,095 |
+| 5 | fail (`interactions`: same Reset problem; `visual`) | $0.535 | 131 s | 16,146 |
+| 6 | fail (`interactions`: Orbit OFF does not stop the camera) | $0.506 | 132 s | 16,576 |
+
+All three verdicts agreed across their three repetitions. Across all 6 Direct portal attempts: **0/6**, `$3.37` total, `$0.562` per attempt, 2.2 min median, against `$0.183` per attempt for Tandem's 3 campaign attempts (**-68% per attempt**).
+
 ## Visual review and screenshots
 
 4.2.0 adds two visual channels for web work. **Local:** after the checks pass, the local VLM looks at the 1280x800 screenshot with the contract (stateless, one image, no history) and can send the job back up to 2 times. **Cloud:** the same screenshot is attached to the receipt as MCP image content, so Opus sees the page without opening a browser.
