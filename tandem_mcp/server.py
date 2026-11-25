@@ -155,7 +155,8 @@ def _host_managed_notice(job_id, receipt):
 
 
 mcp = MCPServer('tandem', version=__version__, instructions=_instructions())
-logging.getLogger('httpx').setLevel(logging.WARNING)
+for _http_log in ('httpx', 'httpx2'):  # openai 3.59+ uses httpx2
+    logging.getLogger(_http_log).setLevel(logging.WARNING)
 logging.getLogger('openai').setLevel(logging.WARNING)
 
 

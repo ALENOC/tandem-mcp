@@ -1097,11 +1097,17 @@ try:
     ok(got_400, 'engine.chat fails immediately on 400 and preserves __cause__')
 
     from openai import APIConnectionError, APITimeoutError, InternalServerError, RateLimitError
-    req = types.SimpleNamespace(url='http://127.0.0.1:1/v1/chat/completions', headers={})
+    # real request/response objects of the HTTP library openai uses (httpx before openai 3.59, httpx2 after):
+    # newer releases read response attributes that a stub lacks
+    try:
+        import httpx2 as httpx
+    except ImportError:
+        import httpx
+    req = httpx.Request('POST', 'http://127.0.0.1:1/v1/chat/completions')
     ok(engine._transient(APIConnectionError(request=req)), 'real APIConnectionError is transient')
     ok(not engine._transient(APITimeoutError(request=req)), 'generation timeout is not retried')
-    ok(engine._transient(RateLimitError('rl', response=types.SimpleNamespace(status_code=429, headers={}, request=req), body=None)), 'real 429 is transient')
-    ok(engine._transient(InternalServerError('ise', response=types.SimpleNamespace(status_code=503, headers={}, request=req), body=None)), 'real 5xx is transient')
+    ok(engine._transient(RateLimitError('rl', response=httpx.Response(429, request=req), body=None)), 'real 429 is transient')
+    ok(engine._transient(InternalServerError('ise', response=httpx.Response(503, request=req), body=None)), 'real 5xx is transient')
     try:
         raise engine.ExecutorError('wrapped conn') from APIConnectionError(request=req)
     except engine.ExecutorError as wrapped_conn:
