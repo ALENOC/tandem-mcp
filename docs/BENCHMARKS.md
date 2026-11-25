@@ -182,7 +182,7 @@ What changed in 4.2.0, and what it did in this run:
 ## What the numbers mean
 
 - **Small edits do not pay:** the 5-line fix cost `+8%` with Tandem (`$0.0670` against `$0.0618`), in line with `+10%` in 4.0.0. The guide tells Opus to do edits under about 30 lines itself.
-- **Medium and large work saves 22% to 51% per success** on the tasks where both arms succeeded, and Tandem delivered the only working 3D portal. Overall `-53%` per success (`$0.202` against `$0.429`), or `-49%` without the Direct API stall.
+- **Medium and large work saves 22% to 51% per success** on the tasks where both arms succeeded, and Tandem delivered the only working 3D portal (Direct 0/6 with the rerun). Overall `-53%` per success (`$0.202` against `$0.429`), or `-49%` without the Direct API stall.
 - **Where Tandem lost:** the 5-line fix (+8%), one Cron attempt (local job out of time, then an Opus patch, 31 minutes over budget) and two Portal attempts (one stuck then patched by Opus, one that passed every local check but fails the evaluator's `interactions`).
 - **Time:** a Tandem result takes a median of 11 to 33 minutes on medium and large tasks (about 12x slower than direct), the inherent trade-off of a local 27B model on a consumer GPU.
 - **Sample size:** with 3 pairs per task, a 1-success difference is not statistically decisive.
@@ -193,7 +193,7 @@ Screens of every web artifact were captured at 1280x800 with Tandem's own probe 
 
 - **Boids:** equivalent. All six pages run at 60 FPS with the requested HUD and controls.
 - **Orbital:** both arms are clean and run at 60 FPS. Direct adds polish not asked for in the prompt (glow halos, a ringed planet, tapered trails, a usage hint line); Tandem pages are plainer. The evaluator fails most pages of both arms on intermittent interaction checks (1/3 each).
-- **3D portal:** Direct portals are the richest scenes of the run (swirling core, glow, full neon grid) but none passed: pair 1 fails `interactions` and `visual` and draws 36 FPS, pair 2 fails `interactions`, pair 3 fails `visual`. The only Tandem portal that passed (pair 2) is correct and runs at 60 FPS, but it is small in the frame and plain even after Opus's visual hint. Tandem pair 3 is the best-looking local portal (framed glowing core) but fails `interactions`.
+- **3D portal:** Direct portals are the richest scenes of the run (swirling core, glow, full neon grid) but none passed: pair 1 fails `interactions` and `visual` and draws 36 FPS, pair 2 fails `interactions`, pair 3 fails `visual`, and the 3 Direct-only rerun attempts fail too (see [Direct portal rerun](#direct-portal-rerun-supplementary-not-paired)). The only Tandem portal that passed (pair 2) is correct and runs at 60 FPS, but it is small in the frame and plain even after Opus's visual hint. Tandem pair 3 is the best-looking local portal (framed glowing core) but fails `interactions`.
 
 The local model does only what the contract says. The guide therefore asks Opus to keep requested labels verbatim, write the contract in the user's language, and state palette, layout and finish for UI work; the screenshot on the receipt now lets Opus check the finish.
 

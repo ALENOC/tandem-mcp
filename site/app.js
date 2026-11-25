@@ -10,10 +10,10 @@ const TASKS = {
   gen_orbital: { name: "Orbital web simulation", kind: "Web page",
     why: "1/3 on both arms; the evaluator's interaction checks fail most pages of both arms. Direct pair 1 lost 82 minutes to a cloud API stall (its page passes). Opus sent 2 visual hints after seeing the screenshot." },
   gen_portal: { name: "3D neon portal (4 files)", kind: "3D web app",
-    why: "No Direct portal passed (interactions or visual). Tandem pair 2 passed at 60 FPS after one visual hint; pair 1 got stuck and Opus patched it (still failing, 12 FPS)." },
+    why: "No Direct portal passed (interactions or visual), nor did 3 more in an unpaired Direct-only rerun: 0/6, $0.562 per attempt (rerun listed under Every attempt, not in the totals). Tandem pair 2 passed at 60 FPS after one visual hint; pair 1 got stuck and Opus patched it (still failing, 12 FPS)." },
 };
 const ORDER = ["py_discount", "py_cron", "web_boids", "gen_orbital", "gen_portal"];
-const RUN_TAG = () => "";
+const RUN_TAG = (a) => (a.supplementary ? "rerun " : "");
 const DEMOS = {
   orbital: { d: "orbital/direct", t: "orbital/tandem", cd: "pair 3 · passed · $0.30 · 86 s", ct: "pair 3 · passed · $0.16 · 14 min",
     note: "Same pair, the only one where both arms pass. Both run at 60 FPS. Direct adds polish not asked for (glow halos, ringed planet, usage hint); Tandem is plainer, with a HUD fixed by one Opus hint after the screenshot." },
@@ -102,10 +102,10 @@ function renderTokens(data) {
 function renderAttempts(data, filter) {
   const box = $("#attempt-list");
   box.textContent = "";
-  for (const a of data.attempts.filter((x) => filter === "all" || x.task === filter)) {
+  for (const a of [...data.attempts, ...(data.supplementary || [])].filter((x) => filter === "all" || x.task === filter)) {
     const st = a.success ? ["ok", "pass"] : a.timed_out && !a.failed_checks.length ? ["late", "correct, late"] : ["ko", "fail"];
     const c = el("div", "att " + a.arm);
-    c.append(el("div", "top", `<span>${TASKS[a.task].name.split(" (")[0]} · ${RUN_TAG(a.run)}p${a.pair} · <span class="${a.arm === "direct" ? "arm-d" : "arm-t"}">${a.arm}</span></span><span class="st ${st[0]}">${st[1]}</span>`));
+    c.append(el("div", "top", `<span>${TASKS[a.task].name.split(" (")[0]} · ${RUN_TAG(a)}p${a.pair} · <span class="${a.arm === "direct" ? "arm-d" : "arm-t"}">${a.arm}</span></span><span class="st ${st[0]}">${st[1]}</span>`));
     let dl = `<dt>Cloud cost</dt><dd>${usd(a.cost_usd)}</dd><dt>Time</dt><dd>${dur(a.wall_seconds)}</dd><dt>Cloud output</dt><dd>${k(a.output_tokens)} tok</dd>`;
     if (a.arm === "tandem") dl += `<dt>Local tokens</dt><dd>${k(a.local_tokens)}</dd>`;
     if (a.arm === "tandem" && a.local_jobs && a.local_jobs.length) dl += `<dt>Local job</dt><dd>${a.local_jobs.join(", ")}</dd>`;

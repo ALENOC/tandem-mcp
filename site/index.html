@@ -73,7 +73,7 @@
     <section id="method" aria-labelledby="h-method">
       <h2 id="h-method">Method</h2>
       <ul class="method">
-        <li><b>Counterbalanced pairs:</b> one 4.2.0 campaign from scratch (<code>v4_2</code>), five tasks, three pairs per task, in fresh workspaces; the arm that runs first alternates from pair to pair. Every attempt is counted, including incidents and attempts that Opus patched after a local failure.</li>
+        <li><b>Counterbalanced pairs:</b> one 4.2.0 campaign from scratch (<code>v4_2</code>), five tasks, three pairs per task, in fresh workspaces; the arm that runs first alternates from pair to pair. Every attempt is counted, including incidents and attempts that Opus patched after a local failure. Since no Direct portal passed, 3 more Direct-only portal attempts were run the next day: they are listed as <i>rerun</i> under Every attempt and kept out of all totals (unpaired, Claude Code 2.1.332).</li>
         <li><b>Same isolated setup:</b> both arms run <code>claude -p</code> with no user settings, plugins or project instructions. The Tandem arm adds the MCP server in the autonomous profile and the suffix "Usa Tandem."</li>
         <li><b>Cloud cost:</b> <code>total_cost_usd</code> reported by the run, at list prices. Failed attempts are counted in the cost.</li>
         <li><b>Success:</b> <span id="rule"></span>. The evaluator is independent and neither arm sees it (identical SHA-256 to 4.0.0 and 4.1.0).</li>

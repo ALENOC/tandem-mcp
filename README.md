@@ -92,7 +92,7 @@ Test machine: Intel Core i9-9900K, AMD Radeon RX 6800 series GPU with 16 GB VRAM
   </tr>
 </table>
 
-The only Tandem portal that passed, next to the Direct portal from the same pair (no Direct portal passed). Direct's scene is richer and fills the frame; Tandem's is correct but small and plain.
+The only Tandem portal that passed, next to the Direct portal from the same pair (no Direct portal passed: 0/3 in the campaign, 0/3 in the rerun). Direct's scene is richer and fills the frame; Tandem's is correct but small and plain.
 
 ### Orbital simulation
 
