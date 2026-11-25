@@ -6,7 +6,7 @@
 
 <p>
   <a href="https://github.com/ALENOC/tandem-mcp/releases"><img src="https://img.shields.io/github/v/release/ALENOC/tandem-mcp" alt="GitHub Release"></a>
-  <a href="https://github.com/ALENOC/tandem-mcp/actions/workflows/tests.yml"><img src="https://img.shields.io/github/actions/workflows/tests.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/ALENOC/tandem-mcp/actions/workflows/tests.yml"><img src="https://img.shields.io/github/actions/workflow/status/ALENOC/tandem-mcp/tests.yml?branch=main&amp;label=tests" alt="CI"></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/python-3.11%2B-blue.svg" alt="Python 3.11+"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
 </p>
